@@ -57,12 +57,8 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
       const titleText = match[3].trimEnd();
 
       let priority: 'high' | 'urgent' | null = null;
-      if (titleText.includes('\u23EB') || titleText.includes('\u2B06\uFE0F')) {
-        // ⏫ = high (U+23EB is actually double up, let me use literal)
-      }
-      // Use literal emoji for reliable matching
-      if (titleText.includes('⏫')) priority = 'high';
       if (titleText.includes('🔺')) priority = 'urgent';
+      else if (titleText.includes('⏫')) priority = 'high';
 
       const urls: string[] = [];
       const mdRe = new RegExp(MD_LINK_RE.source, 'g');
@@ -104,8 +100,16 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
   return tasks;
 }
 
-export function computeFingerprint(title: string, boardId: string, occurrenceIndex: number): string {
+/**
+ * Compute a stable fingerprint for a task.
+ * Uses title + boardId (NOT occurrence index) so that reordering tasks
+ * doesn't change IDs and lose sidecar metadata.
+ * For duplicate titles, a collision suffix is appended.
+ */
+export function computeFingerprint(title: string, boardId: string, collisionIndex: number): string {
   const normalized = title.trim().toLowerCase().replace(/\s+/g, ' ');
-  const input = `${normalized}|${boardId}|${occurrenceIndex}`;
+  const input = collisionIndex === 0
+    ? `${normalized}|${boardId}`
+    : `${normalized}|${boardId}|dup${collisionIndex}`;
   return createHash('sha256').update(input).digest('hex').slice(0, 8);
 }

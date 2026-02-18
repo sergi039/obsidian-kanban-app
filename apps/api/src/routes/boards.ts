@@ -5,6 +5,24 @@ import { reconcileAll } from '../reconciler.js';
 
 const boards = new Hono();
 
+function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function formatCard(card: Record<string, unknown>) {
+  return {
+    ...card,
+    is_done: Boolean(card.is_done),
+    labels: safeJsonParse<string[]>(card.labels as string, []),
+    sub_items: safeJsonParse<string[]>(card.sub_items as string, []),
+  };
+}
+
 // GET /api/boards — list all boards with task counts
 boards.get('/', (c) => {
   const config = loadConfig();
@@ -49,14 +67,7 @@ boards.get('/:id', (c) => {
 
   const columns = board.columns.map((col) => ({
     name: col,
-    cards: cards
-      .filter((card) => card.column_name === col)
-      .map((card) => ({
-        ...card,
-        is_done: Boolean(card.is_done),
-        labels: JSON.parse(card.labels as string),
-        sub_items: JSON.parse(card.sub_items as string),
-      })),
+    cards: cards.filter((card) => card.column_name === col).map(formatCard),
   }));
 
   return c.json({
@@ -98,21 +109,19 @@ boards.get('/:id/cards', (c) => {
   sql += ' ORDER BY position';
 
   const cards = db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
-  const result = cards.map((card) => ({
-    ...card,
-    is_done: Boolean(card.is_done),
-    labels: JSON.parse(card.labels as string),
-    sub_items: JSON.parse(card.sub_items as string),
-  }));
-
-  return c.json(result);
+  return c.json(cards.map(formatCard));
 });
 
-// POST /api/sync/reload — force re-parse all files
+// POST /api/boards/sync/reload — force re-parse all files
 boards.post('/sync/reload', (c) => {
-  const config = loadConfig();
-  const results = reconcileAll(config.vaultRoot, config.boards);
-  return c.json({ ok: true, results });
+  try {
+    const config = loadConfig();
+    const results = reconcileAll(config.vaultRoot, config.boards);
+    return c.json({ ok: true, results });
+  } catch (err) {
+    console.error('[sync/reload] Error:', err);
+    return c.json({ ok: false, error: String(err) }, 500);
+  }
 });
 
 export default boards;

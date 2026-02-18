@@ -14,7 +14,13 @@ export interface ReconcileResult {
 
 export function reconcileBoard(board: BoardConfig, vaultRoot: string): ReconcileResult {
   const filePath = path.join(vaultRoot, board.file);
-  const content = readFileSync(filePath, 'utf-8');
+  let content: string;
+  try {
+    content = readFileSync(filePath, 'utf-8');
+  } catch (err) {
+    console.error(`[reconciler] Cannot read file for board ${board.id}: ${filePath}`, err);
+    return { boardId: board.id, added: 0, removed: 0, updated: 0 };
+  }
   const fileHash = createHash('sha256').update(content).digest('hex');
 
   const db = getDb();
@@ -56,10 +62,16 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
     WHERE id = ?
   `);
 
+  // Track title occurrences for collision-safe fingerprinting
+  const titleCounts = new Map<string, number>();
+
   const upsertAll = db.transaction(() => {
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i];
-      const id = computeFingerprint(task.title, board.id, i);
+      const titleKey = task.title.trim().toLowerCase().replace(/\s+/g, ' ') + '|' + board.id;
+      const collisionIndex = titleCounts.get(titleKey) || 0;
+      titleCounts.set(titleKey, collisionIndex + 1);
+      const id = computeFingerprint(task.title, board.id, collisionIndex);
       seenIds.add(id);
 
       const srcFp = createHash('sha256').update(task.rawLine).digest('hex').slice(0, 16);
