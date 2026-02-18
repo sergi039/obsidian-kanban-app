@@ -172,24 +172,46 @@ fields.put('/:fieldId/values/:cardId', async (c) => {
   const db = getDb();
   const field = db.prepare('SELECT * FROM fields WHERE id = ?').get(fieldId) as Record<string, unknown> | undefined;
   if (!field) return c.json({ error: 'Field not found' }, 404);
-  const card = db.prepare('SELECT id FROM cards WHERE id = ?').get(cardId);
+  const card = db.prepare('SELECT id, board_id FROM cards WHERE id = ?').get(cardId) as { id: string; board_id: string } | undefined;
   if (!card) return c.json({ error: 'Card not found' }, 404);
 
+  // Board integrity: field and card must belong to the same board
+  if (card.board_id !== field.board_id) {
+    return c.json({ error: 'Field and card belong to different boards' }, 400);
+  }
+
   // Validate value against field type
-  const value = parsed.data.value;
+  let value = parsed.data.value;
   if (value !== null) {
     const type = field.type as string;
-    if (type === 'NUMBER' && isNaN(Number(value))) {
-      return c.json({ error: 'Value must be a number' }, 400);
+    if (type === 'NUMBER') {
+      if (value.trim().length === 0 || !Number.isFinite(Number(value))) {
+        return c.json({ error: 'Value must be a finite number' }, 400);
+      }
     }
-    if (type === 'DATE' && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return c.json({ error: 'Value must be a date (YYYY-MM-DD)' }, 400);
+    if (type === 'DATE') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return c.json({ error: 'Value must be a date (YYYY-MM-DD)' }, 400);
+      }
+      const [y, m, d] = value.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+        return c.json({ error: 'Invalid calendar date' }, 400);
+      }
+    }
+    if (type === 'ITERATION') {
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        return c.json({ error: 'Iteration value must be a non-empty string' }, 400);
+      }
     }
     if (type === 'SINGLE_SELECT') {
       const options = safeJsonParse<Array<{ id: string; name: string }>>(field.options as string, []);
-      if (!options.some((o) => o.id === value || o.name === value)) {
+      const match = options.find((o) => o.id === value || o.name === value);
+      if (!match) {
         return c.json({ error: `Value must be one of: ${options.map((o) => o.name).join(', ')}` }, 400);
       }
+      // Always normalize to option.id for canonical storage
+      value = match.id;
     }
   }
 

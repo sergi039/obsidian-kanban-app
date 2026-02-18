@@ -64,6 +64,115 @@ function authorColor(author: string): string {
   return AUTHOR_COLORS[author] || 'bg-purple-500';
 }
 
+/** Debounced + safe custom field input (prevents request storms & race conditions) */
+function CustomFieldInput({ field, value, cardId, onSaved, onLocalChange }: {
+  field: Field;
+  value: string;
+  cardId: string;
+  onSaved: () => Promise<void>;
+  onLocalChange: (val: string) => void;
+}) {
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestRef = useRef(0); // monotonic counter to discard stale responses
+
+  const saveValue = useCallback(async (v: string | null) => {
+    const seq = ++latestRef.current;
+    try {
+      await setFieldValue(field.id, cardId, v);
+      if (seq === latestRef.current) {
+        await onSaved();
+      }
+    } catch (err) {
+      console.error(`Failed to save field ${field.name}:`, err);
+    }
+  }, [field.id, field.name, cardId, onSaved]);
+
+  const debouncedSave = useCallback((v: string | null, delayMs = 500) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => saveValue(v), delayMs);
+  }, [saveValue]);
+
+  // Cleanup on unmount
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  if (field.type === 'SINGLE_SELECT') {
+    return (
+      <div>
+        <label className="text-[11px] text-board-text-muted block mb-0.5">{field.name}</label>
+        <select
+          value={value}
+          onChange={(e) => {
+            const v = e.target.value || null;
+            onLocalChange(e.target.value);
+            saveValue(v);
+          }}
+          className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none cursor-pointer"
+        >
+          <option value="">—</option>
+          {field.options.map((opt) => (
+            <option key={opt.id} value={opt.id}>{opt.name}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  if (field.type === 'DATE') {
+    return (
+      <div>
+        <label className="text-[11px] text-board-text-muted block mb-0.5">{field.name}</label>
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => {
+            const v = e.target.value || null;
+            onLocalChange(e.target.value);
+            saveValue(v);
+          }}
+          className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none"
+        />
+      </div>
+    );
+  }
+
+  if (field.type === 'NUMBER') {
+    return (
+      <div>
+        <label className="text-[11px] text-board-text-muted block mb-0.5">{field.name}</label>
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => {
+            onLocalChange(e.target.value);
+            debouncedSave(e.target.value || null, 600);
+          }}
+          onBlur={(e) => {
+            // Flush any pending debounce immediately on blur
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            saveValue(e.target.value || null);
+          }}
+          className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none"
+        />
+      </div>
+    );
+  }
+
+  // TEXT / ITERATION — save on blur
+  return (
+    <div>
+      <label className="text-[11px] text-board-text-muted block mb-0.5">{field.name}</label>
+      <input
+        type="text"
+        value={value}
+        placeholder="Empty"
+        onChange={(e) => onLocalChange(e.target.value)}
+        onBlur={(e) => saveValue(e.target.value || null)}
+        className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none placeholder:text-board-text-muted/40"
+      />
+    </div>
+  );
+}
+
 export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) {
   const links = extractLinks(card.title);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -596,84 +705,31 @@ export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) 
                 <div>
                   <label className="text-xs font-medium text-board-text-muted uppercase tracking-wider block mb-2">Custom Fields</label>
                   <div className="space-y-2">
-                    {fields.map((field) => {
-                      const fv = fieldValues.find((v) => v.field_id === field.id);
-                      const value = fv?.value ?? '';
-                      return (
-                        <div key={field.id}>
-                          <label className="text-[11px] text-board-text-muted block mb-0.5">{field.name}</label>
-                          {field.type === 'SINGLE_SELECT' ? (
-                            <select
-                              value={value}
-                              onChange={async (e) => {
-                                const v = e.target.value || null;
-                                await setFieldValue(field.id, card.id, v);
-                                const updated = await fetchFieldValues(card.id);
-                                setFieldValues(updated);
-                                await onUpdate();
-                              }}
-                              className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none cursor-pointer"
-                            >
-                              <option value="">—</option>
-                              {field.options.map((opt) => (
-                                <option key={opt.id} value={opt.id}>{opt.name}</option>
-                              ))}
-                            </select>
-                          ) : field.type === 'DATE' ? (
-                            <input
-                              type="date"
-                              value={value}
-                              onChange={async (e) => {
-                                const v = e.target.value || null;
-                                await setFieldValue(field.id, card.id, v);
-                                const updated = await fetchFieldValues(card.id);
-                                setFieldValues(updated);
-                                await onUpdate();
-                              }}
-                              className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none"
-                            />
-                          ) : field.type === 'NUMBER' ? (
-                            <input
-                              type="number"
-                              value={value}
-                              onChange={async (e) => {
-                                const v = e.target.value || null;
-                                await setFieldValue(field.id, card.id, v);
-                                const updated = await fetchFieldValues(card.id);
-                                setFieldValues(updated);
-                              }}
-                              className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none"
-                            />
-                          ) : (
-                            <input
-                              type="text"
-                              value={value}
-                              placeholder="Empty"
-                              onBlur={async (e) => {
-                                const v = e.target.value || null;
-                                await setFieldValue(field.id, card.id, v);
-                                const updated = await fetchFieldValues(card.id);
-                                setFieldValues(updated);
-                                await onUpdate();
-                              }}
-                              onChange={(e) => {
-                                setFieldValues((prev) =>
-                                  prev.map((fv2) => fv2.field_id === field.id ? { ...fv2, value: e.target.value } : fv2)
-                                    .concat(prev.some((fv2) => fv2.field_id === field.id) ? [] : [{
-                                      field_id: field.id,
-                                      field_name: field.name,
-                                      field_type: field.type,
-                                      options: field.options,
-                                      value: e.target.value,
-                                    }])
-                                );
-                              }}
-                              className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none placeholder:text-board-text-muted/40"
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
+                    {fields.map((field) => (
+                        <CustomFieldInput
+                          key={field.id}
+                          field={field}
+                          value={fieldValues.find((v) => v.field_id === field.id)?.value ?? ''}
+                          cardId={card.id}
+                          onSaved={async () => {
+                            const updated = await fetchFieldValues(card.id);
+                            setFieldValues(updated);
+                            await onUpdate();
+                          }}
+                          onLocalChange={(val) => {
+                            setFieldValues((prev) =>
+                              prev.map((fv2) => fv2.field_id === field.id ? { ...fv2, value: val } : fv2)
+                                .concat(prev.some((fv2) => fv2.field_id === field.id) ? [] : [{
+                                  field_id: field.id,
+                                  field_name: field.name,
+                                  field_type: field.type,
+                                  options: field.options,
+                                  value: val,
+                                }])
+                            );
+                          }}
+                        />
+                      ))}
                   </div>
                 </div>
               )}
