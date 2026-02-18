@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  kanban:
+    build: .
+    ports:
+      - '4000:4000'
+    volumes:
+      # Mount Obsidian vault (read-write for bidirectional sync)
+      - ${VAULT_PATH:-/Users/ss/Desktop/Private/Obsidian/Notes/Notes}:/vault
+      # Persist SQLite database
+      - kanban-data:/app/data
+      # Config
+      - ./config.boards.json:/app/config.boards.json:ro
+    environment:
+      PORT: '4000'
+      VAULT_ROOT: /vault
+    restart: unless-stopped
+
+volumes:
+  kanban-data:

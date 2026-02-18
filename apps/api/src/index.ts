@@ -9,6 +9,7 @@ import { startWatcher } from './watcher.js';
 import { createWsServer } from './ws.js';
 import boardRoutes from './routes/boards.js';
 import cardRoutes from './routes/cards.js';
+import exportRoutes from './routes/export.js';
 
 const app = new Hono();
 
@@ -17,8 +18,15 @@ app.use('*', logger());
 
 app.route('/api/boards', boardRoutes);
 app.route('/api/cards', cardRoutes);
+app.route('/api/export', exportRoutes);
 
 app.get('/api/health', (c) => c.json({ ok: true }));
+
+// Serve built frontend in production
+if (process.env.NODE_ENV === 'production' || process.env.SERVE_STATIC) {
+  const { serveStatic } = await import('@hono/node-server/serve-static');
+  app.use('/*', serveStatic({ root: '../web/dist' }));
+}
 
 // --- Bootstrap ---
 const config = loadConfig();

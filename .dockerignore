@@ -1,0 +1,7 @@
+node_modules
+apps/*/node_modules
+data/
+dist/
+apps/web/dist/
+*.rtf
+.git
