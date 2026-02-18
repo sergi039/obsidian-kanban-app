@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { Card } from '../types';
 
 interface Props {
@@ -7,6 +8,15 @@ interface Props {
 
 const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
 const BARE_URL_RE = /https?:\/\/[^\s)\]]+/g;
+
+function safeUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    return u.hostname;
+  } catch {
+    return null;
+  }
+}
 
 function extractLinks(title: string): { text: string; url: string }[] {
   const links: { text: string; url: string }[] = [];
@@ -24,7 +34,8 @@ function extractLinks(title: string): { text: string; url: string }[] {
   const bareRe = new RegExp(BARE_URL_RE.source, 'g');
   while ((m = bareRe.exec(title)) !== null) {
     if (!seen.has(m[0])) {
-      links.push({ text: new URL(m[0]).hostname, url: m[0] });
+      const hostname = safeUrl(m[0]);
+      links.push({ text: hostname || m[0], url: m[0] });
       seen.add(m[0]);
     }
   }
@@ -33,14 +44,52 @@ function extractLinks(title: string): { text: string; url: string }[] {
 
 export function CardDetail({ card, onClose }: Props) {
   const links = extractLinks(card.title);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  // Focus trap + Escape to close
+  useEffect(() => {
+    closeRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+      // Simple focus trap: Tab within drawer
+      if (e.key === 'Tab' && drawerRef.current) {
+        const focusable = drawerRef.current.querySelectorAll<HTMLElement>(
+          'button, a, input, [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} aria-hidden="true" />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 w-[480px] max-w-full bg-board-bg border-l border-board-border z-50 overflow-y-auto">
+      <div
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Card details: ${card.title}`}
+        className="fixed right-0 top-0 bottom-0 w-[480px] max-w-full bg-board-bg border-l border-board-border z-50 overflow-y-auto"
+      >
         <div className="p-6">
           {/* Header */}
           <div className="flex items-start justify-between mb-6">
@@ -50,8 +99,10 @@ export function CardDetail({ card, onClose }: Props) {
               </h2>
             </div>
             <button
+              ref={closeRef}
               onClick={onClose}
-              className="text-board-text-muted hover:text-board-text text-xl leading-none px-2 py-1 rounded hover:bg-board-column"
+              aria-label="Close card details"
+              className="text-board-text-muted hover:text-board-text text-xl leading-none px-2 py-1 rounded hover:bg-board-column focus:outline-none focus:ring-2 focus:ring-board-accent/50"
             >
               ✕
             </button>

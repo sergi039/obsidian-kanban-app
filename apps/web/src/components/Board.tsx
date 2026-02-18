@@ -4,12 +4,14 @@ import {
   DragOverlay,
   closestCorners,
   PointerSensor,
+  KeyboardSensor,
   useSensor,
   useSensors,
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
 } from '@dnd-kit/core';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { moveCard } from '../api/client';
 import type { BoardDetail, Card } from '../types';
 import { Column } from './Column';
@@ -18,7 +20,7 @@ import { KanbanCard } from './Card';
 interface Props {
   board: BoardDetail;
   filterCards: (cards: Card[]) => Card[];
-  onCardMove: () => void;
+  onCardMove: () => Promise<void>;
   onCardClick: (card: Card) => void;
 }
 
@@ -27,6 +29,7 @@ export function Board({ board, filterCards, onCardMove, onCardClick }: Props) {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -44,22 +47,42 @@ export function Board({ board, filterCards, onCardMove, onCardClick }: Props) {
     if (!over) return;
 
     const cardId = String(active.id);
-    const targetColumnName = String(over.id);
-
-    // Determine target column - over.id could be a card id or a column id
-    const targetColumn = board.columns.find((col) => col.name === targetColumnName);
-    const colName = targetColumn
-      ? targetColumnName
-      : board.columns.find((col) => col.cards.some((c) => c.id === targetColumnName))?.name;
-
-    if (!colName) return;
-
+    const overId = String(over.id);
     const card = findCard(cardId);
-    if (!card || card.column_name === colName) return;
+    if (!card) return;
+
+    // Determine target column — over.id could be a column name or a card id
+    let targetColName: string | undefined;
+    let targetPosition = 0;
+
+    const targetColumn = board.columns.find((col) => col.name === overId);
+    if (targetColumn) {
+      // Dropped on column itself (empty area)
+      targetColName = overId;
+      targetPosition = filterCards(targetColumn.cards).length;
+    } else {
+      // Dropped on a card — find which column the target card belongs to
+      for (const col of board.columns) {
+        const idx = col.cards.findIndex((c) => c.id === overId);
+        if (idx !== -1) {
+          targetColName = col.name;
+          // Position = index of the card we dropped onto
+          const filteredCards = filterCards(col.cards);
+          const filteredIdx = filteredCards.findIndex((c) => c.id === overId);
+          targetPosition = filteredIdx !== -1 ? filteredIdx : idx;
+          break;
+        }
+      }
+    }
+
+    if (!targetColName) return;
+
+    // Skip if no actual change
+    if (card.column_name === targetColName && card.position === targetPosition) return;
 
     try {
-      await moveCard(cardId, { column: colName, position: 0 });
-      onCardMove();
+      await moveCard(cardId, { column: targetColName, position: targetPosition });
+      await onCardMove();
     } catch (err) {
       console.error('Move failed:', err);
     }

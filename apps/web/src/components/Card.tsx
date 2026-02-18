@@ -23,13 +23,9 @@ function extractUrls(title: string): string[] {
 }
 
 function cleanTitle(title: string): string {
-  // Remove markdown links, keep text
   let cleaned = title.replace(/\[([^\]]*)\]\([^)]+\)/g, '$1');
-  // Remove bare URLs
   cleaned = cleaned.replace(/https?:\/\/[^\s)\]]+/g, '').trim();
-  // Remove priority emoji
   cleaned = cleaned.replace(/[⏫🔺]/g, '').trim();
-  // Collapse multiple spaces
   cleaned = cleaned.replace(/\s+/g, ' ').replace(/^[-–]\s*/, '');
   return cleaned || title;
 }
@@ -38,10 +34,21 @@ export function KanbanCard({ card, onClick }: Props) {
   const urls = extractUrls(card.title);
   const displayTitle = cleanTitle(card.title);
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className={`group relative bg-board-card hover:bg-board-card-hover border border-board-border hover:border-board-border-hover rounded-lg px-3 py-2.5 cursor-pointer transition-all ${
+      onKeyDown={handleKeyDown}
+      aria-label={`${card.is_done ? 'Done: ' : ''}${displayTitle}${card.priority ? `, ${card.priority} priority` : ''}`}
+      className={`group relative bg-board-card hover:bg-board-card-hover border border-board-border hover:border-board-border-hover rounded-lg px-3 py-2.5 cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-board-accent/50 ${
         card.is_done ? 'opacity-50' : ''
       }`}
     >

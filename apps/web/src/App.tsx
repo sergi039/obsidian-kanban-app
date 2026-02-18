@@ -13,26 +13,40 @@ export default function App() {
   const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
   const [boardDetail, setBoardDetail] = useState<BoardDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<string>('');
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   // Load boards list
   useEffect(() => {
-    fetchBoards().then((data) => {
-      setBoards(data);
-      if (data.length > 0 && !activeBoardId) {
-        setActiveBoardId(data[0].id);
-      }
-      setLoading(false);
-    });
+    fetchBoards()
+      .then((data) => {
+        setBoards(data);
+        if (data.length > 0 && !activeBoardId) {
+          setActiveBoardId(data[0].id);
+        }
+        setError(null);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch boards:', err);
+        setError('Failed to load boards. Is the API running?');
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   // Load active board detail
   const loadBoard = useCallback(async () => {
     if (!activeBoardId) return;
-    const detail = await fetchBoard(activeBoardId);
-    setBoardDetail(detail);
+    try {
+      const detail = await fetchBoard(activeBoardId);
+      setBoardDetail(detail);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch board:', err);
+      setError(`Failed to load board "${activeBoardId}".`);
+    }
   }, [activeBoardId]);
 
   useEffect(() => {
@@ -42,12 +56,10 @@ export default function App() {
   // WebSocket: auto-refresh when files change
   const handleWsUpdate = useCallback(
     (boardId?: string) => {
-      // Refresh active board if it matches or no specific board
       if (!boardId || boardId === activeBoardId) {
         loadBoard();
       }
-      // Always refresh board list counts
-      fetchBoards().then(setBoards);
+      fetchBoards().then(setBoards).catch(() => {});
     },
     [activeBoardId, loadBoard],
   );
@@ -60,10 +72,27 @@ export default function App() {
   };
 
   const handleReload = async () => {
-    await reloadSync();
-    await loadBoard();
-    const updatedBoards = await fetchBoards();
-    setBoards(updatedBoards);
+    setSyncing(true);
+    try {
+      await reloadSync();
+      await loadBoard();
+      const updatedBoards = await fetchBoards();
+      setBoards(updatedBoards);
+      setError(null);
+    } catch (err) {
+      console.error('Sync failed:', err);
+      setError('Sync failed. Check server logs.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleCardMove = async () => {
+    try {
+      await loadBoard();
+    } catch {
+      // loadBoard already handles errors
+    }
   };
 
   const filterCards = (cards: Card[]) => {
@@ -109,13 +138,27 @@ export default function App() {
           />
           <button
             onClick={handleReload}
-            className="px-3 py-1.5 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors"
+            disabled={syncing}
+            className="px-3 py-1.5 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
             title="Reload from files"
           >
-            ↻ Sync
+            {syncing ? '⏳ Syncing…' : '↻ Sync'}
           </button>
         </div>
       </header>
+
+      {/* Error banner */}
+      {error && (
+        <div className="bg-red-900/30 border-b border-red-700/50 px-6 py-2 text-sm text-red-400">
+          ⚠️ {error}
+          <button
+            onClick={() => setError(null)}
+            className="ml-3 text-red-500 hover:text-red-300"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Board */}
       <main className="flex-1 overflow-x-auto p-6">
@@ -123,7 +166,7 @@ export default function App() {
           <Board
             board={boardDetail}
             filterCards={filterCards}
-            onCardMove={loadBoard}
+            onCardMove={handleCardMove}
             onCardClick={setSelectedCard}
           />
         ) : (
