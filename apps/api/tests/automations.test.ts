@@ -288,4 +288,69 @@ describe('automations engine', () => {
     const result = fireEvent({ type: 'card.moved', cardId: 'c1', boardId: 'b1', fromColumn: 'A', toColumn: 'B' });
     expect(result.rulesFired).toBe(0);
   });
+
+  // --- set_field board scoping ---
+  it('rejects cross-board set_field in action execution', () => {
+    // f1 belongs to b1, create a rule on b1 pointing to a field from another board
+    testDb.prepare('INSERT INTO fields (id, board_id, name, type, options, position) VALUES (?, ?, ?, ?, ?, ?)')
+      .run('f-other', 'b2', 'Other Sprint', 'TEXT', '[]', 0);
+
+    createRule({ board_id: 'b1', name: 'Cross-board field', trigger: { type: 'card.moved' }, actions: [{ type: 'set_field', field_id: 'f-other', value: 'test' }] });
+    const result = fireEvent({ type: 'card.moved', cardId: 'c1', boardId: 'b1', fromColumn: 'A', toColumn: 'B' });
+    expect(result.rulesFired).toBe(1);
+    expect(result.totalActions).toBe(0); // action rejected
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatch(/board/i);
+
+    // Verify no field_values row was created
+    const fv = testDb.prepare('SELECT * FROM field_values WHERE card_id = ? AND field_id = ?').get('c1', 'f-other');
+    expect(fv).toBeUndefined();
+  });
+
+  // --- Dry-run mode ---
+  it('dry-run does not mutate data', () => {
+    createRule({ board_id: 'b1', name: 'Dry', trigger: { type: 'card.moved' }, actions: [
+      { type: 'add_comment', text: 'should not appear' },
+      { type: 'set_due_date', days_from_now: 3 },
+    ] });
+
+    const result = fireEvent(
+      { type: 'card.moved', cardId: 'c1', boardId: 'b1', fromColumn: 'A', toColumn: 'B' },
+      { dryRun: true }
+    );
+    expect(result.rulesFired).toBe(1);
+    expect(result.totalActions).toBe(2); // counts expected actions
+    expect(result.matchedRules).toEqual(['Dry']);
+
+    // Verify NO mutations happened
+    const comments = testDb.prepare('SELECT * FROM comments WHERE card_id = ?').all('c1');
+    expect(comments).toHaveLength(0);
+    const card = testDb.prepare('SELECT due_date FROM cards WHERE id = ?').get('c1') as { due_date: string | null };
+    expect(card.due_date).toBeNull();
+  });
+
+  it('dry-run returns matched rule names', () => {
+    createRule({ board_id: 'b1', name: 'Rule A', trigger: { type: 'card.moved', to_column: 'Done' }, actions: [{ type: 'add_comment', text: 'a' }] });
+    createRule({ board_id: 'b1', name: 'Rule B', trigger: { type: 'card.moved' }, actions: [{ type: 'add_comment', text: 'b' }] });
+
+    const result = fireEvent(
+      { type: 'card.moved', cardId: 'c1', boardId: 'b1', fromColumn: 'Backlog', toColumn: 'Done' },
+      { dryRun: true }
+    );
+    expect(result.rulesFired).toBe(2);
+    expect(result.matchedRules).toEqual(['Rule A', 'Rule B']);
+  });
+
+  // --- Malformed stored JSON resilience ---
+  it('handles malformed trigger/actions JSON gracefully', () => {
+    // Insert rule with bad JSON directly into DB
+    testDb.prepare(`INSERT INTO automations (id, board_id, name, enabled, trigger_json, actions_json) VALUES (?, ?, ?, 1, ?, ?)`)
+      .run('bad-rule', 'b1', 'Bad JSON', '{invalid json}', '[{broken}]');
+
+    // Should not throw, just return rules with defaults
+    const rules = getRules('b1');
+    expect(rules).toHaveLength(1);
+    expect(rules[0].trigger).toEqual({ type: 'card.moved' }); // fallback
+    expect(rules[0].actions).toEqual([]); // fallback
+  });
 });

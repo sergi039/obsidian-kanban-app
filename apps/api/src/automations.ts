@@ -140,7 +140,7 @@ function matchesTrigger(trigger: Trigger, event: AutomationEvent): boolean {
 
 // --- Action execution ---
 
-function executeActions(actions: Action[], cardId: string, ctx: Record<string, string>): { executed: number; errors: string[] } {
+function executeActions(actions: Action[], cardId: string, boardId: string, ctx: Record<string, string>): { executed: number; errors: string[] } {
   const db = getDb();
   let executed = 0;
   const errors: string[] = [];
@@ -149,10 +149,14 @@ function executeActions(actions: Action[], cardId: string, ctx: Record<string, s
     try {
       switch (action.type) {
         case 'set_field': {
-          // Verify field exists
-          const field = db.prepare('SELECT id FROM fields WHERE id = ?').get(action.field_id);
+          // Verify field exists AND belongs to the same board as the card
+          const field = db.prepare('SELECT id, board_id FROM fields WHERE id = ?').get(action.field_id) as { id: string; board_id: string } | undefined;
           if (!field) {
             errors.push(`Field ${action.field_id} not found`);
+            break;
+          }
+          if (field.board_id !== boardId) {
+            errors.push(`Field ${action.field_id} belongs to board "${field.board_id}", not "${boardId}"`);
             break;
           }
           if (action.value === null) {
@@ -269,8 +273,10 @@ export function deleteRule(ruleId: string): boolean {
   return result.changes > 0;
 }
 
-/** Execute all matching rules for an event. Called from card routes. */
-export function fireEvent(event: AutomationEvent): { rulesFired: number; totalActions: number; errors: string[] } {
+/** Execute all matching rules for an event. Called from card routes.
+ *  Set dryRun=true to only evaluate matches without executing actions. */
+export function fireEvent(event: AutomationEvent, options?: { dryRun?: boolean }): { rulesFired: number; totalActions: number; errors: string[]; matchedRules?: string[] } {
+  const dryRun = options?.dryRun ?? false;
   const db = getDb();
 
   // Fetch enabled rules for the event's board
@@ -299,11 +305,21 @@ export function fireEvent(event: AutomationEvent): { rulesFired: number; totalAc
     } : {}),
   };
 
+  const matchedRuleNames: string[] = [];
+
   for (const rule of rules) {
     if (!matchesTrigger(rule.trigger, event)) continue;
 
-    const result = executeActions(rule.actions, event.cardId, ctx);
     rulesFired++;
+    matchedRuleNames.push(rule.name);
+
+    if (dryRun) {
+      // Dry-run: count expected actions without executing
+      totalActions += rule.actions.length;
+      continue;
+    }
+
+    const result = executeActions(rule.actions, event.cardId, event.boardId, ctx);
     totalActions += result.executed;
     allErrors.push(...result.errors.map((e) => `[${rule.name}] ${e}`));
 
@@ -314,8 +330,8 @@ export function fireEvent(event: AutomationEvent): { rulesFired: number; totalAc
     }
   }
 
-  // Broadcast card update if any actions executed
-  if (totalActions > 0) {
+  // Broadcast card update if any actions executed (never in dry-run)
+  if (!dryRun && totalActions > 0) {
     broadcast({
       type: 'card-updated',
       cardId: event.cardId,
@@ -324,5 +340,5 @@ export function fireEvent(event: AutomationEvent): { rulesFired: number; totalAc
     });
   }
 
-  return { rulesFired, totalActions, errors: allErrors };
+  return { rulesFired, totalActions, errors: allErrors, ...(dryRun ? { matchedRules: matchedRuleNames } : {}) };
 }

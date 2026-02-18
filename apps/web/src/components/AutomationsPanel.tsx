@@ -104,6 +104,8 @@ export function AutomationsPanel({ boardId, columns, fields, onClose }: Props) {
   const [creating, setCreating] = useState(false);
 
   const loadRules = useCallback(async () => {
+    setLoading(true);
+    setRules([]);
     try {
       const data = await fetchAutomations(boardId);
       setRules(data);

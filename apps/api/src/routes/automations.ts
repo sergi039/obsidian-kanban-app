@@ -134,7 +134,7 @@ automations.post('/test', async (c) => {
   const parsed = EventSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'Invalid event', details: parsed.error.flatten() }, 400);
 
-  const result = fireEvent(parsed.data);
+  const result = fireEvent(parsed.data, { dryRun: true });
   return c.json(result);
 });
 
