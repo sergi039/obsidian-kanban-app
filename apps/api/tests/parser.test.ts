@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMarkdownTasks, computeFingerprint } from '../src/parser.js';
+import { parseMarkdownTasks, computeFingerprint, generateKbId, extractKbId, injectKbId, stripKbIdFromTitle } from '../src/parser.js';
 
 // ─── Real content from VirtoSoftware file ─────────────────────
 const VS_CONTENT = `---
@@ -352,6 +352,95 @@ describe('parseMarkdownTasks', () => {
       const tasks = parseMarkdownTasks(content);
       expect(tasks.length).toBe(1);
       expect(tasks[0].title).toBe('Real task');
+    });
+  });
+});
+
+describe('kb:id markers', () => {
+  describe('generateKbId', () => {
+    it('generates 8-char hex string', () => {
+      const id = generateKbId();
+      expect(id).toMatch(/^[a-f0-9]{8}$/);
+    });
+
+    it('generates unique IDs', () => {
+      const ids = new Set(Array.from({ length: 100 }, () => generateKbId()));
+      expect(ids.size).toBe(100);
+    });
+  });
+
+  describe('extractKbId', () => {
+    it('extracts id from standard marker', () => {
+      expect(extractKbId('- [ ] Task text <!-- kb:id=a1b2c3d4 -->')).toBe('a1b2c3d4');
+    });
+
+    it('extracts id with spaces around marker', () => {
+      expect(extractKbId('- [ ] Task <!-- kb:id=abc12345 -->')).toBe('abc12345');
+    });
+
+    it('returns null when no marker', () => {
+      expect(extractKbId('- [ ] Task without marker')).toBeNull();
+    });
+
+    it('handles hyphens and underscores in id', () => {
+      expect(extractKbId('- [ ] Task <!-- kb:id=a1-b2_c3 -->')).toBe('a1-b2_c3');
+    });
+  });
+
+  describe('injectKbId', () => {
+    it('appends marker to line without one', () => {
+      expect(injectKbId('- [ ] Task text', 'abc12345')).toBe('- [ ] Task text <!-- kb:id=abc12345 -->');
+    });
+
+    it('replaces existing marker', () => {
+      expect(injectKbId('- [ ] Task <!-- kb:id=old123 -->', 'new456'))
+        .toBe('- [ ] Task <!-- kb:id=new456 -->');
+    });
+
+    it('trims trailing whitespace before appending', () => {
+      expect(injectKbId('- [ ] Task text   ', 'abc12345')).toBe('- [ ] Task text <!-- kb:id=abc12345 -->');
+    });
+  });
+
+  describe('stripKbIdFromTitle', () => {
+    it('strips marker from title', () => {
+      expect(stripKbIdFromTitle('Task text <!-- kb:id=abc12345 -->')).toBe('Task text');
+    });
+
+    it('returns title as-is when no marker', () => {
+      expect(stripKbIdFromTitle('Task text')).toBe('Task text');
+    });
+  });
+
+  describe('parseMarkdownTasks with kb:id', () => {
+    it('extracts kbId from task lines', () => {
+      const content = '- [ ] My task <!-- kb:id=a1b2c3d4 -->\n- [ ] Another task';
+      const tasks = parseMarkdownTasks(content);
+      expect(tasks).toHaveLength(2);
+      expect(tasks[0].kbId).toBe('a1b2c3d4');
+      expect(tasks[0].title).toBe('My task');
+      expect(tasks[1].kbId).toBeNull();
+    });
+
+    it('strips kb:id from displayed title', () => {
+      const content = '- [ ] Important task <!-- kb:id=deadbeef -->';
+      const tasks = parseMarkdownTasks(content);
+      expect(tasks[0].title).toBe('Important task');
+      expect(tasks[0].title).not.toContain('kb:id');
+    });
+
+    it('preserves URLs and priority with kb:id', () => {
+      const content = '- [ ] https://example.com 🔺 Task <!-- kb:id=abc12345 -->';
+      const tasks = parseMarkdownTasks(content);
+      expect(tasks[0].kbId).toBe('abc12345');
+      expect(tasks[0].priority).toBe('urgent');
+      expect(tasks[0].urls).toContain('https://example.com');
+    });
+
+    it('tasks without kb:id have null kbId', () => {
+      const tasks = parseMarkdownTasks('- [ ] Plain task\n- [x] Done task');
+      expect(tasks[0].kbId).toBeNull();
+      expect(tasks[1].kbId).toBeNull();
     });
   });
 });

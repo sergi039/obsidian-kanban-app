@@ -8,11 +8,58 @@ export interface ParsedTask {
   priority: 'high' | 'urgent' | null;
   urls: string[];
   subItems: string[];
+  /** Stable ID from <!-- kb:id=xxx --> marker, if present */
+  kbId: string | null;
 }
 
 const TASK_RE = /^(\s*)- \[([ xX])\]\s+(.*)/;
 const BARE_URL_RE = /https?:\/\/[^\s)\]]+/g;
 const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+
+/** Regex to extract kb:id from HTML comment marker */
+const KB_ID_RE = /<!--\s*kb:id=([a-zA-Z0-9_-]+)\s*-->/;
+
+/**
+ * Generate a new stable kb:id (8 chars, hex).
+ * Uses crypto random to avoid collisions.
+ */
+export function generateKbId(): string {
+  const bytes = new Uint8Array(4);
+  globalThis.crypto?.getRandomValues?.(bytes) ??
+    bytes.set(createHash('sha256').update(String(Date.now() + Math.random())).digest().subarray(0, 4));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Extract kb:id from a task line (HTML comment marker).
+ * Returns null if no marker found.
+ */
+export function extractKbId(line: string): string | null {
+  const match = line.match(KB_ID_RE);
+  return match ? match[1] : null;
+}
+
+/**
+ * Inject or replace <!-- kb:id=xxx --> marker in a task line.
+ * Places it at the end of the line (before trailing whitespace).
+ */
+export function injectKbId(line: string, kbId: string): string {
+  const marker = `<!-- kb:id=${kbId} -->`;
+  // Replace existing marker if present
+  if (KB_ID_RE.test(line)) {
+    return line.replace(KB_ID_RE, marker);
+  }
+  // Append marker at end (before trailing whitespace)
+  const trimmed = line.trimEnd();
+  return `${trimmed} ${marker}`;
+}
+
+/**
+ * Strip the kb:id marker from a title string (for display purposes).
+ */
+export function stripKbIdFromTitle(title: string): string {
+  return title.replace(KB_ID_RE, '').trimEnd();
+}
 
 export function parseMarkdownTasks(content: string): ParsedTask[] {
   const lines = content.split('\n');
@@ -28,7 +75,6 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
 
     // --- Frontmatter handling (only before first task) ---
     if (trimmed === '---' && !hasFoundTask) {
-      // Finalize any current task before toggling (shouldn't happen, but safety)
       if (currentTask) {
         tasks.push(currentTask);
         currentTask = null;
@@ -38,10 +84,8 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
     }
 
     if (inFrontmatter) {
-      // Check if this is actually a task inside unclosed frontmatter
       if (TASK_RE.test(line)) {
         inFrontmatter = false;
-        // fall through to task processing
       } else {
         continue;
       }
@@ -54,7 +98,11 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
       hasFoundTask = true;
 
       const isDone = match[2].toLowerCase() === 'x';
-      const titleText = match[3].trimEnd();
+      const rawTitleText = match[3].trimEnd();
+
+      // Extract kb:id marker (if present) and strip from display title
+      const kbId = extractKbId(rawTitleText);
+      const titleText = stripKbIdFromTitle(rawTitleText);
 
       let priority: 'high' | 'urgent' | null = null;
       if (titleText.includes('🔺')) priority = 'urgent';
@@ -79,6 +127,7 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
         priority,
         urls,
         subItems: [],
+        kbId,
       };
       continue;
     }
@@ -101,10 +150,8 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
 }
 
 /**
- * Compute a stable fingerprint for a task.
- * Uses title + boardId (NOT occurrence index) so that reordering tasks
- * doesn't change IDs and lose sidecar metadata.
- * For duplicate titles, a collision suffix is appended.
+ * Compute a legacy fingerprint for a task (used as fallback when no kb:id exists).
+ * Uses title + boardId. For duplicate titles, a collision suffix is appended.
  */
 export function computeFingerprint(title: string, boardId: string, collisionIndex: number): string {
   const normalized = title.trim().toLowerCase().replace(/\s+/g, ' ');

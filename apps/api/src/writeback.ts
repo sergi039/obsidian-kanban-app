@@ -7,9 +7,9 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { tmpdir } from 'node:os';
 import { loadConfig } from './config.js';
 import { getDb } from './db.js';
+import { extractKbId } from './parser.js';
 
 export interface WriteBackResult {
   success: boolean;
@@ -70,18 +70,35 @@ export function writeBackDoneState(
       return { success: false, changed: false, lineNumber: card.line_number, error: 'Line is not a checkbox' };
     }
 
-    // Validate line identity: compare normalized content to prevent wrong-task toggle
-    const fileLineNorm = normalizeForMatch(line);
-    const cardLineNorm = normalizeForMatch(card.raw_line);
-    if (fileLineNorm !== cardLineNorm) {
-      // Lines shifted — try to find the correct line nearby (±5 lines)
+    // Validate line identity: first try kb:id match, then normalized content
+    const fileKbId = extractKbId(line);
+    const cardKbId = extractKbId(card.raw_line);
+    const identityMatch = (fileKbId && cardKbId && fileKbId === cardKbId) ||
+      normalizeForMatch(line) === normalizeForMatch(card.raw_line);
+
+    if (!identityMatch) {
+      // Lines shifted — try to find the correct line (search entire file, prefer kb:id match)
       let found = -1;
-      for (let offset = -5; offset <= 5; offset++) {
-        const searchIdx = lineIdx + offset;
-        if (searchIdx < 0 || searchIdx >= lines.length || searchIdx === lineIdx) continue;
-        if (normalizeForMatch(lines[searchIdx]) === cardLineNorm) {
-          found = searchIdx;
-          break;
+
+      // First pass: find by kb:id (most reliable)
+      if (cardKbId) {
+        for (let si = 0; si < lines.length; si++) {
+          if (si === lineIdx) continue;
+          const lkb = extractKbId(lines[si]);
+          if (lkb === cardKbId) { found = si; break; }
+        }
+      }
+
+      // Second pass: find by normalized content nearby (±5 lines)
+      if (found === -1) {
+        const cardLineNorm = normalizeForMatch(card.raw_line);
+        for (let offset = -5; offset <= 5; offset++) {
+          const searchIdx = lineIdx + offset;
+          if (searchIdx < 0 || searchIdx >= lines.length || searchIdx === lineIdx) continue;
+          if (normalizeForMatch(lines[searchIdx]) === cardLineNorm) {
+            found = searchIdx;
+            break;
+          }
         }
       }
 
@@ -90,7 +107,7 @@ export function writeBackDoneState(
           success: false,
           changed: false,
           lineNumber: card.line_number,
-          error: `Line content mismatch: expected "${cardLineNorm.slice(0, 40)}…" but found "${fileLineNorm.slice(0, 40)}…"`,
+          error: `Line content mismatch: expected "${normalizeForMatch(card.raw_line).slice(0, 40)}…" but found "${normalizeForMatch(line).slice(0, 40)}…"`,
         };
       }
 

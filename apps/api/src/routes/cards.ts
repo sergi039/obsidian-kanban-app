@@ -8,6 +8,7 @@ import { loadConfig } from '../config.js';
 import { writeBackDoneState } from '../writeback.js';
 import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
+import { generateKbId, injectKbId } from '../parser.js';
 
 const cards = new Hono();
 
@@ -81,11 +82,12 @@ cards.post('/', async (c) => {
   const filePath = path.join(config.vaultRoot, board.file);
   const colName = column || 'Backlog';
 
-  // Append task to .md file
+  // Append task to .md file with stable kb:id
   suppressWatcher();
   try {
     const content = readFileSync(filePath, 'utf-8');
-    const newLine = `- [ ] ${title}`;
+    const id = generateKbId();
+    const newLine = injectKbId(`- [ ] ${title}`, id);
     const newContent = content.endsWith('\n')
       ? content + newLine + '\n'
       : content + '\n' + newLine + '\n';
@@ -99,11 +101,6 @@ cards.post('/', async (c) => {
 
     // Insert into DB
     const db = getDb();
-    const normalized = title.trim().toLowerCase().replace(/\s+/g, ' ');
-    const existingCount = (db.prepare('SELECT COUNT(*) as cnt FROM cards WHERE board_id = ? AND LOWER(title) = ?').get(board_id, normalized) as { cnt: number }).cnt;
-    const id = createHash('sha256').update(
-      existingCount === 0 ? `${normalized}|${board_id}` : `${normalized}|${board_id}|dup${existingCount}`
-    ).digest('hex').slice(0, 8);
 
     const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ?').get(board_id, colName) as { mp: number | null }).mp ?? -1;
 

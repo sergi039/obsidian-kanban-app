@@ -62,7 +62,7 @@ console.log(`[boot] Vault root: ${config.vaultRoot}`);
 // Initial sync
 const results = reconcileAll(config.vaultRoot, config.boards);
 for (const r of results) {
-  console.log(`[boot] ${r.boardId}: +${r.added} ~${r.updated} -${r.removed}`);
+  console.log(`[boot] ${r.boardId}: +${r.added} ~${r.updated} -${r.removed}${r.migrated ? ` 🔑${r.migrated} migrated` : ''}`);
 }
 
 // File watcher
