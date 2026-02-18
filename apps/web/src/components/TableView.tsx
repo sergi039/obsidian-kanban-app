@@ -97,8 +97,12 @@ export function TableView({ cards, onCardClick }: Props) {
             ].map((col) => (
               <th
                 key={col.field}
+                role="columnheader"
+                aria-sort={sortField === col.field ? (sortDir === 'ASC' ? 'ascending' : 'descending') : 'none'}
+                tabIndex={0}
                 className={`px-3 py-2 text-xs font-medium text-board-text-muted uppercase tracking-wider cursor-pointer hover:text-board-text transition-colors select-none ${col.width}`}
                 onClick={() => handleSort(col.field)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSort(col.field); } }}
               >
                 <span className="flex items-center">
                   {col.label}
@@ -112,8 +116,11 @@ export function TableView({ cards, onCardClick }: Props) {
           {sorted.map((card) => (
             <tr
               key={card.id}
+              role="row"
+              tabIndex={0}
               onClick={() => onCardClick(card)}
-              className="border-b border-board-border/50 hover:bg-board-column cursor-pointer transition-colors"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCardClick(card); } }}
+              className="border-b border-board-border/50 hover:bg-board-column cursor-pointer transition-colors focus:outline-none focus:bg-board-column"
             >
               <td className="px-3 py-2.5">
                 <div className="flex items-center gap-2">

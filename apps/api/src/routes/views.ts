@@ -27,6 +27,13 @@ const UpdateViewSchema = z.object({
   is_default: z.boolean().optional(),
 });
 
+function formatView(row: Record<string, unknown>) {
+  return {
+    ...row,
+    is_default: Boolean(row.is_default),
+  };
+}
+
 function generateId(): string {
   return createHash('sha256')
     .update(`${Date.now()}-${Math.random()}`)
@@ -56,8 +63,8 @@ views.get('/', (c) => {
   const db = getDb();
   const rows = db
     .prepare('SELECT * FROM views WHERE board_id = ? ORDER BY is_default DESC, created_at ASC')
-    .all(boardId);
-  return c.json(rows);
+    .all(boardId) as Array<Record<string, unknown>>;
+  return c.json(rows.map(formatView));
 });
 
 // POST /api/views — create a view
@@ -88,16 +95,16 @@ views.post('/', async (c) => {
     parsed.data.group_by,
   );
 
-  const view = db.prepare('SELECT * FROM views WHERE id = ?').get(id);
-  return c.json(view, 201);
+  const view = db.prepare('SELECT * FROM views WHERE id = ?').get(id) as Record<string, unknown>;
+  return c.json(formatView(view), 201);
 });
 
 // GET /api/views/:id — get a view
 views.get('/:id', (c) => {
   const db = getDb();
-  const view = db.prepare('SELECT * FROM views WHERE id = ?').get(c.req.param('id'));
+  const view = db.prepare('SELECT * FROM views WHERE id = ?').get(c.req.param('id')) as Record<string, unknown> | undefined;
   if (!view) return c.json({ error: 'View not found' }, 404);
-  return c.json(view);
+  return c.json(formatView(view));
 });
 
 // PATCH /api/views/:id — update a view
@@ -131,14 +138,14 @@ views.patch('/:id', async (c) => {
     params.push(fields.is_default ? 1 : 0);
   }
 
-  if (sets.length === 0) return c.json(existing);
+  if (sets.length === 0) return c.json(formatView(existing));
 
   sets.push("updated_at = datetime('now')");
   params.push(viewId);
   db.prepare(`UPDATE views SET ${sets.join(', ')} WHERE id = ?`).run(...params);
 
-  const updated = db.prepare('SELECT * FROM views WHERE id = ?').get(viewId);
-  return c.json(updated);
+  const updated = db.prepare('SELECT * FROM views WHERE id = ?').get(viewId) as Record<string, unknown>;
+  return c.json(formatView(updated));
 });
 
 // DELETE /api/views/:id — delete a view

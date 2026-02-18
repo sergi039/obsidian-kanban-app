@@ -8,6 +8,7 @@ export function ViewSwitcher({ layout, onLayoutChange }: Props) {
     <div className="flex items-center bg-board-column rounded-md border border-board-border overflow-hidden">
       <button
         onClick={() => onLayoutChange('board')}
+        aria-pressed={layout === 'board'}
         className={`px-2.5 py-1 text-xs font-medium transition-colors ${
           layout === 'board'
             ? 'bg-board-card text-board-text shadow-sm'
@@ -19,6 +20,7 @@ export function ViewSwitcher({ layout, onLayoutChange }: Props) {
       </button>
       <button
         onClick={() => onLayoutChange('table')}
+        aria-pressed={layout === 'table'}
         className={`px-2.5 py-1 text-xs font-medium transition-colors ${
           layout === 'table'
             ? 'bg-board-card text-board-text shadow-sm'
