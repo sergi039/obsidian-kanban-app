@@ -1,0 +1,30 @@
+{
+  "vaultRoot": "/Users/ss/Desktop/Private/Obsidian/Notes/Notes",
+  "boards": [
+    {
+      "id": "vs",
+      "name": "VirtoSoftware",
+      "file": "Business/VS/Tasks VirtoSoftware.md",
+      "columns": ["Backlog", "In Progress", "Blocked", "Done"]
+    },
+    {
+      "id": "private",
+      "name": "Private",
+      "file": "Private/Tasks Private.md",
+      "columns": ["Backlog", "In Progress", "Blocked", "Done"]
+    },
+    {
+      "id": "cervantes",
+      "name": "Cervantes 50",
+      "file": "Property/Cervantes 50/Task List Cervantes.md",
+      "columns": ["Backlog", "In Progress", "Blocked", "Done"]
+    },
+    {
+      "id": "vp",
+      "name": "VP",
+      "file": "Business/VP/Tasks VP.md",
+      "columns": ["Backlog", "In Progress", "Done"]
+    }
+  ],
+  "defaultColumns": ["Backlog", "In Progress", "Blocked", "Done"]
+}

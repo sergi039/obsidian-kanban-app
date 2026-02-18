@@ -1,0 +1,6 @@
+{
+  "name": "obsidian-kanban-app",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*"]
+}

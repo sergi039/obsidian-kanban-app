@@ -1,0 +1,8 @@
+node_modules/
+data/
+dist/
+*.db
+*.db-journal
+*.db-wal
+.env
+.DS_Store
