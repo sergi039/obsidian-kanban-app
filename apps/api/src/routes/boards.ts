@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { getDb } from '../db.js';
 import { loadConfig, updateBoardColumns, resetConfigCache } from '../config.js';
+import { parseFilterQuery, compileFilter } from '../filter-engine.js';
 
 const boards = new Hono();
 
@@ -78,18 +79,33 @@ boards.get('/:id', (c) => {
   });
 });
 
-// GET /api/boards/:id/cards — cards with filters
+// GET /api/boards/:id/cards — cards with filter engine
+// Supports both legacy params (?column=&priority=&search=) and new ?q= query
 boards.get('/:id/cards', (c) => {
   const config = loadConfig();
   const boardId = c.req.param('id');
   const board = config.boards.find((b) => b.id === boardId);
   if (!board) return c.json({ error: 'Board not found' }, 404);
 
+  const db = getDb();
+  const q = c.req.query('q');
+
+  if (q) {
+    // New filter engine
+    const parsed = parseFilterQuery(q);
+    const filter = compileFilter(parsed);
+
+    const sql = `SELECT * FROM cards WHERE board_id = ? AND ${filter.where} ORDER BY position`;
+    const params = [boardId, ...filter.params];
+    const cards = db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
+    return c.json(cards.map(formatCard));
+  }
+
+  // Legacy params (backwards compatible)
   const column = c.req.query('column');
   const priority = c.req.query('priority');
   const search = c.req.query('search');
 
-  const db = getDb();
   let sql = 'SELECT * FROM cards WHERE board_id = ?';
   const params: unknown[] = [boardId];
 

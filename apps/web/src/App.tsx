@@ -16,8 +16,7 @@ export default function App() {
   const [boardDetail, setBoardDetail] = useState<BoardDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchText, setSearchText] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState<string>('');
+  const [filterQuery, setFilterQuery] = useState('');
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [syncing, setSyncing] = useState(false);
   const { theme, cycleTheme } = useTheme();
@@ -70,8 +69,7 @@ export default function App() {
 
   const handleBoardChange = (boardId: string) => {
     setActiveBoardId(boardId);
-    setSearchText('');
-    setPriorityFilter('');
+    setFilterQuery('');
   };
 
   const handleReload = async () => {
@@ -125,17 +123,54 @@ export default function App() {
     await loadBoard();
   };
 
-  const filterCards = (cards: Card[]) => {
+  const filterCards = useCallback((cards: Card[]) => {
+    if (!filterQuery.trim()) return cards;
+
     return cards.filter((card) => {
-      if (searchText && !card.title.toLowerCase().includes(searchText.toLowerCase())) {
-        return false;
-      }
-      if (priorityFilter && card.priority !== priorityFilter) {
-        return false;
+      const parts = filterQuery.trim().split(/\s+/);
+      for (const part of parts) {
+        const m = part.match(/^(-?)([a-zA-Z_]+):(.+)$/);
+        if (m) {
+          const neg = m[1] === '-';
+          const qual = m[2].toLowerCase();
+          const vals = m[3].split(',');
+
+          let match = false;
+          switch (qual) {
+            case 'status':
+              match = vals.some((v) => card.column_name.toLowerCase() === v.toLowerCase());
+              break;
+            case 'priority':
+              if (vals.includes('none')) match = !card.priority;
+              else match = vals.some((v) => card.priority === v);
+              break;
+            case 'label':
+              match = vals.some((v) => card.labels.some((l) => l.toLowerCase().includes(v.toLowerCase())));
+              break;
+            case 'done':
+              match = ['yes', 'true', '1'].includes(vals[0]) ? card.is_done : !card.is_done;
+              break;
+            case 'has':
+              if (vals[0] === 'description') match = !!card.description;
+              else if (vals[0] === 'priority') match = !!card.priority;
+              else if (vals[0] === 'labels') match = card.labels.length > 0;
+              else if (vals[0] === 'due' || vals[0] === 'due_date') match = !!card.due_date;
+              break;
+            case 'due':
+              if (vals[0] === 'none') match = !card.due_date;
+              else if (vals[0] === 'any') match = !!card.due_date;
+              else match = card.due_date === vals[0];
+              break;
+          }
+          if (neg ? match : !match) return false;
+        } else {
+          // Free text search
+          if (!card.title.toLowerCase().includes(part.toLowerCase())) return false;
+        }
       }
       return true;
     });
-  };
+  }, [filterQuery]);
 
   if (loading) {
     return (
@@ -161,10 +196,8 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           <Filters
-            searchText={searchText}
-            onSearchChange={setSearchText}
-            priorityFilter={priorityFilter}
-            onPriorityChange={setPriorityFilter}
+            filterQuery={filterQuery}
+            onFilterChange={setFilterQuery}
           />
           <button
             onClick={handleReload}
