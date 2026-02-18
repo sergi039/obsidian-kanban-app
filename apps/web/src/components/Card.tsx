@@ -1,0 +1,95 @@
+import type { Card } from '../types';
+
+interface Props {
+  card: Card;
+  onClick: () => void;
+}
+
+const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+const BARE_URL_RE = /https?:\/\/[^\s)\]]+/g;
+
+function extractUrls(title: string): string[] {
+  const urls: string[] = [];
+  const mdRe = new RegExp(MD_LINK_RE.source, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = mdRe.exec(title)) !== null) {
+    urls.push(m[2]);
+  }
+  const bareRe = new RegExp(BARE_URL_RE.source, 'g');
+  while ((m = bareRe.exec(title)) !== null) {
+    if (!urls.includes(m[0])) urls.push(m[0]);
+  }
+  return urls;
+}
+
+function cleanTitle(title: string): string {
+  // Remove markdown links, keep text
+  let cleaned = title.replace(/\[([^\]]*)\]\([^)]+\)/g, '$1');
+  // Remove bare URLs
+  cleaned = cleaned.replace(/https?:\/\/[^\s)\]]+/g, '').trim();
+  // Remove priority emoji
+  cleaned = cleaned.replace(/[⏫🔺]/g, '').trim();
+  // Collapse multiple spaces
+  cleaned = cleaned.replace(/\s+/g, ' ').replace(/^[-–]\s*/, '');
+  return cleaned || title;
+}
+
+export function KanbanCard({ card, onClick }: Props) {
+  const urls = extractUrls(card.title);
+  const displayTitle = cleanTitle(card.title);
+
+  return (
+    <div
+      onClick={onClick}
+      className={`group relative bg-board-card hover:bg-board-card-hover border border-board-border hover:border-board-border-hover rounded-lg px-3 py-2.5 cursor-pointer transition-all ${
+        card.is_done ? 'opacity-50' : ''
+      }`}
+    >
+      {/* Priority left border */}
+      {card.priority && (
+        <div
+          className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${
+            card.priority === 'urgent' ? 'bg-priority-urgent' : 'bg-priority-high'
+          }`}
+        />
+      )}
+
+      {/* Title */}
+      <p
+        className={`text-sm leading-snug ${
+          card.is_done ? 'line-through text-board-text-muted' : 'text-board-text'
+        }`}
+      >
+        {displayTitle}
+      </p>
+
+      {/* Meta row */}
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        {card.priority && (
+          <span
+            className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${
+              card.priority === 'urgent'
+                ? 'bg-priority-urgent/15 text-priority-urgent'
+                : 'bg-priority-high/15 text-priority-high'
+            }`}
+          >
+            {card.priority === 'urgent' ? '🔺 Urgent' : '⏫ High'}
+          </span>
+        )}
+        {urls.length > 0 && (
+          <span className="text-[11px] text-board-text-muted flex items-center gap-0.5">
+            🔗 {urls.length}
+          </span>
+        )}
+        {card.sub_items.length > 0 && (
+          <span className="text-[11px] text-board-text-muted flex items-center gap-0.5">
+            ☰ {card.sub_items.length}
+          </span>
+        )}
+        {card.due_date && (
+          <span className="text-[11px] text-board-text-muted">📅 {card.due_date}</span>
+        )}
+      </div>
+    </div>
+  );
+}
