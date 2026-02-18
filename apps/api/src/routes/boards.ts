@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { getDb } from '../db.js';
-import { loadConfig } from '../config.js';
-import { reconcileAll } from '../reconciler.js';
+import { loadConfig, updateBoardColumns, resetConfigCache } from '../config.js';
 
 const boards = new Hono();
 
@@ -113,15 +113,116 @@ boards.get('/:id/cards', (c) => {
 });
 
 // POST /api/boards/sync/reload — force re-parse all files
-boards.post('/sync/reload', (c) => {
+boards.post('/sync/reload', async (c) => {
   try {
+    resetConfigCache();
     const config = loadConfig();
+    const { reconcileAll } = await import('../reconciler.js');
     const results = reconcileAll(config.vaultRoot, config.boards);
     return c.json({ ok: true, results });
   } catch (err) {
     console.error('[sync/reload] Error:', err);
     return c.json({ ok: false, error: String(err) }, 500);
   }
+});
+
+// --- Column management ---
+
+const AddColumnSchema = z.object({ name: z.string().min(1) });
+const RenameColumnSchema = z.object({ oldName: z.string(), newName: z.string().min(1) });
+const DeleteColumnSchema = z.object({ name: z.string(), moveTo: z.string().optional() });
+const ReorderColumnsSchema = z.object({ columns: z.array(z.string()).min(1) });
+
+// POST /api/boards/:id/columns — add a column
+boards.post('/:id/columns', async (c) => {
+  const boardId = c.req.param('id');
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+  const parsed = AddColumnSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === boardId);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+
+  if (board.columns.includes(parsed.data.name)) {
+    return c.json({ error: 'Column already exists' }, 409);
+  }
+
+  const newColumns = [...board.columns, parsed.data.name];
+  updateBoardColumns(boardId, newColumns);
+  return c.json({ ok: true, columns: newColumns }, 201);
+});
+
+// PUT /api/boards/:id/columns — reorder all columns
+boards.put('/:id/columns', async (c) => {
+  const boardId = c.req.param('id');
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+  const parsed = ReorderColumnsSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === boardId);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+
+  updateBoardColumns(boardId, parsed.data.columns);
+  return c.json({ ok: true, columns: parsed.data.columns });
+});
+
+// PATCH /api/boards/:id/columns/rename — rename a column
+boards.patch('/:id/columns/rename', async (c) => {
+  const boardId = c.req.param('id');
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+  const parsed = RenameColumnSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === boardId);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+
+  const { oldName, newName } = parsed.data;
+  const idx = board.columns.indexOf(oldName);
+  if (idx === -1) return c.json({ error: `Column "${oldName}" not found` }, 404);
+
+  const newColumns = [...board.columns];
+  newColumns[idx] = newName;
+  updateBoardColumns(boardId, newColumns);
+
+  // Update cards in DB
+  const db = getDb();
+  db.prepare('UPDATE cards SET column_name = ? WHERE board_id = ? AND column_name = ?').run(newName, boardId, oldName);
+
+  return c.json({ ok: true, columns: newColumns });
+});
+
+// DELETE /api/boards/:id/columns — delete a column (move cards to another)
+boards.delete('/:id/columns', async (c) => {
+  const boardId = c.req.param('id');
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+  const parsed = DeleteColumnSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === boardId);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+
+  const { name, moveTo } = parsed.data;
+  if (!board.columns.includes(name)) return c.json({ error: `Column "${name}" not found` }, 404);
+
+  const target = moveTo || board.columns.find((c) => c !== name) || 'Backlog';
+  const newColumns = board.columns.filter((c) => c !== name);
+  if (newColumns.length === 0) return c.json({ error: 'Cannot delete last column' }, 400);
+
+  updateBoardColumns(boardId, newColumns);
+
+  // Move cards from deleted column
+  const db = getDb();
+  db.prepare('UPDATE cards SET column_name = ? WHERE board_id = ? AND column_name = ?').run(target, boardId, name);
+
+  return c.json({ ok: true, columns: newColumns, movedTo: target });
 });
 
 export default boards;

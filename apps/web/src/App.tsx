@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchBoards, fetchBoard, reloadSync, createCard } from './api/client';
+import { fetchBoards, fetchBoard, reloadSync, createCard, addColumn, renameColumn, deleteColumn } from './api/client';
 import type { BoardSummary, BoardDetail } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
 import { Board } from './components/Board';
@@ -106,6 +106,25 @@ export default function App() {
     setBoards(updatedBoards);
   };
 
+  const handleColumnAdd = async (name: string) => {
+    if (!activeBoardId) return;
+    await addColumn(activeBoardId, name);
+    await loadBoard();
+  };
+
+  const handleColumnRename = async (oldName: string, newName: string) => {
+    if (!activeBoardId) return;
+    await renameColumn(activeBoardId, oldName, newName);
+    await loadBoard();
+  };
+
+  const handleColumnDelete = async (name: string) => {
+    if (!activeBoardId) return;
+    if (!confirm(`Delete column "${name}"? Cards will be moved to another column.`)) return;
+    await deleteColumn(activeBoardId, name);
+    await loadBoard();
+  };
+
   const filterCards = (cards: Card[]) => {
     return cards.filter((card) => {
       if (searchText && !card.title.toLowerCase().includes(searchText.toLowerCase())) {
@@ -181,6 +200,9 @@ export default function App() {
             onCardMove={handleCardMove}
             onCardClick={setSelectedCard}
             onCardAdd={handleCardAdd}
+            onColumnAdd={handleColumnAdd}
+            onColumnRename={handleColumnRename}
+            onColumnDelete={handleColumnDelete}
           />
         ) : (
           <div className="text-board-text-muted text-center mt-20">Select a board</div>
@@ -191,6 +213,7 @@ export default function App() {
       {selectedCard && (
         <CardDetail
           card={selectedCard}
+          columns={boardDetail?.columns.map((c) => c.name) || []}
           onClose={() => setSelectedCard(null)}
           onUpdate={async () => {
             await loadBoard();

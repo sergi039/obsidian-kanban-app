@@ -2,6 +2,7 @@ import { useDroppable } from '@dnd-kit/core';
 import type { Card } from '../types';
 import { DraggableCard } from './DraggableCard';
 import { AddCard } from './AddCard';
+import { ColumnMenu } from './ColumnManager';
 
 interface Props {
   name: string;
@@ -9,6 +10,8 @@ interface Props {
   boardId: string;
   onCardClick: (card: Card) => void;
   onCardAdd: (title: string, column: string) => Promise<void>;
+  onColumnRename: (oldName: string, newName: string) => Promise<void>;
+  onColumnDelete: (name: string) => Promise<void>;
 }
 
 const COLUMN_COLORS: Record<string, string> = {
@@ -16,24 +19,29 @@ const COLUMN_COLORS: Record<string, string> = {
   'In Progress': 'bg-blue-500',
   Blocked: 'bg-red-500',
   Done: 'bg-green-500',
+  Review: 'bg-purple-500',
+  Testing: 'bg-yellow-500',
 };
 
-export function Column({ name, cards, boardId, onCardClick, onCardAdd }: Props) {
+export function Column({ name, cards, boardId, onCardClick, onCardAdd, onColumnRename, onColumnDelete }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: name });
 
   return (
     <div
       ref={setNodeRef}
-      className="flex flex-col w-80 min-w-[320px] shrink-0 rounded-lg transition-colors"
+      className="group/col flex flex-col w-80 min-w-[320px] shrink-0 rounded-lg transition-colors"
       style={isOver ? { backgroundColor: 'var(--board-drop-highlight)' } : undefined}
     >
       {/* Column header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 mb-2">
+      <div className="flex items-center gap-2 px-3 py-2.5 mb-2 group">
         <span className={`w-2.5 h-2.5 rounded-full ${COLUMN_COLORS[name] || 'bg-gray-400'}`} />
         <h3 className="text-sm font-medium text-board-text">{name}</h3>
         <span className="text-xs text-board-text-muted bg-board-column px-1.5 py-0.5 rounded-full">
           {cards.length}
         </span>
+        <div className="ml-auto">
+          <ColumnMenu name={name} onRename={onColumnRename} onDelete={onColumnDelete} />
+        </div>
       </div>
 
       {/* Cards list */}
@@ -51,13 +59,9 @@ export function Column({ name, cards, boardId, onCardClick, onCardAdd }: Props) 
         )}
       </div>
 
-      {/* Add card button */}
+      {/* Add card */}
       <div className="px-1 pb-3">
-        <AddCard
-          boardId={boardId}
-          columnName={name}
-          onAdd={(title) => onCardAdd(title, name)}
-        />
+        <AddCard boardId={boardId} columnName={name} onAdd={(title) => onCardAdd(title, name)} />
       </div>
     </div>
   );

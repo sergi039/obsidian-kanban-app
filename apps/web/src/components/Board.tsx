@@ -13,6 +13,7 @@ import { moveCard } from '../api/client';
 import type { BoardDetail, Card } from '../types';
 import { Column } from './Column';
 import { KanbanCard } from './Card';
+import { AddColumnButton } from './ColumnManager';
 
 interface Props {
   board: BoardDetail;
@@ -20,9 +21,12 @@ interface Props {
   onCardMove: () => Promise<void>;
   onCardClick: (card: Card) => void;
   onCardAdd: (title: string, column: string) => Promise<void>;
+  onColumnAdd: (name: string) => Promise<void>;
+  onColumnRename: (oldName: string, newName: string) => Promise<void>;
+  onColumnDelete: (name: string) => Promise<void>;
 }
 
-export function Board({ board, filterCards, onCardMove, onCardClick, onCardAdd }: Props) {
+export function Board({ board, filterCards, onCardMove, onCardClick, onCardAdd, onColumnAdd, onColumnRename, onColumnDelete }: Props) {
   const [activeCard, setActiveCard] = useState<Card | null>(null);
 
   const sensors = useSensors(
@@ -78,8 +82,11 @@ export function Board({ board, filterCards, onCardMove, onCardClick, onCardAdd }
             boardId={board.id}
             onCardClick={onCardClick}
             onCardAdd={onCardAdd}
+            onColumnRename={onColumnRename}
+            onColumnDelete={onColumnDelete}
           />
         ))}
+        <AddColumnButton onAdd={onColumnAdd} />
       </div>
       <DragOverlay dropAnimation={null}>
         {activeCard ? (

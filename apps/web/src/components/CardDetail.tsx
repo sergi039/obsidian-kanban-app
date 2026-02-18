@@ -4,6 +4,7 @@ import type { Card } from '../types';
 
 interface Props {
   card: Card;
+  columns: string[];
   onClose: () => void;
   onUpdate: () => Promise<void>;
 }
@@ -34,7 +35,7 @@ function cleanTitle(t: string): string {
   return t.replace(/\[([^\]]*)\]\([^)]+\)/g, '$1').replace(/https?:\/\/[^\s)\]]+/g, '').replace(/[⏫🔺]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-export function CardDetail({ card, onClose, onUpdate }: Props) {
+export function CardDetail({ card, columns, onClose, onUpdate }: Props) {
   const links = extractLinks(card.title);
   const modalRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -210,10 +211,9 @@ export function CardDetail({ card, onClose, onUpdate }: Props) {
                   className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1.5 text-board-text focus:outline-none cursor-pointer"
                   style={{ ['--tw-ring-color' as string]: 'var(--board-accent-ring)' }}
                 >
-                  <option value="Backlog">Backlog</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Blocked">Blocked</option>
-                  <option value="Done">Done</option>
+                  {columns.map((col) => (
+                    <option key={col} value={col}>{col}</option>
+                  ))}
                 </select>
               </div>
 

@@ -61,3 +61,19 @@ export async function patchCard(cardId: string, patch: PatchCardRequest): Promis
 export async function reloadSync(): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>('/boards/sync/reload', { method: 'POST' });
 }
+
+export async function addColumn(boardId: string, name: string): Promise<{ ok: boolean; columns: string[] }> {
+  return request(`/boards/${boardId}/columns`, { method: 'POST', body: JSON.stringify({ name }) });
+}
+
+export async function reorderColumns(boardId: string, columns: string[]): Promise<{ ok: boolean; columns: string[] }> {
+  return request(`/boards/${boardId}/columns`, { method: 'PUT', body: JSON.stringify({ columns }) });
+}
+
+export async function renameColumn(boardId: string, oldName: string, newName: string): Promise<{ ok: boolean; columns: string[] }> {
+  return request(`/boards/${boardId}/columns/rename`, { method: 'PATCH', body: JSON.stringify({ oldName, newName }) });
+}
+
+export async function deleteColumn(boardId: string, name: string, moveTo?: string): Promise<{ ok: boolean; columns: string[] }> {
+  return request(`/boards/${boardId}/columns`, { method: 'DELETE', body: JSON.stringify({ name, moveTo }) });
+}

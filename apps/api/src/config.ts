@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync as writeFsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -41,4 +41,17 @@ export function loadConfig(configPath?: string): AppConfig {
 
 export function resetConfigCache(): void {
   cached = null;
+}
+
+/** Update a board's columns in config file and reset cache */
+export function updateBoardColumns(boardId: string, columns: string[]): boolean {
+  resetConfigCache();
+  const p = path.join(PROJECT_ROOT, 'config.boards.json');
+  const raw = JSON.parse(readFileSync(p, 'utf-8'));
+  const board = raw.boards?.find((b: { id: string }) => b.id === boardId);
+  if (!board) return false;
+  board.columns = columns;
+  writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
+  resetConfigCache();
+  return true;
 }
