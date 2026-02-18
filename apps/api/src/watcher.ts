@@ -5,27 +5,57 @@ import { broadcast } from './ws.js';
 import type { AppConfig, BoardConfig } from './config.js';
 
 let watcher: FSWatcher | null = null;
-let writeBackInProgress = false;
 
-/** Temporarily suppress watcher to avoid feedback loop during write-back */
+/**
+ * Reference-counted suppression to handle overlapping write-backs.
+ * Pending file changes during suppression are queued and replayed.
+ */
+let suppressCount = 0;
+let pendingChanges = new Set<string>();
+
 export function suppressWatcher(): void {
-  writeBackInProgress = true;
+  suppressCount++;
 }
 
-export function unsuppressWatcher(): void {
-  // Delay unsuppression to let chokidar debounce settle
-  setTimeout(() => {
-    writeBackInProgress = false;
-  }, 500);
+export function unsuppressWatcher(config?: AppConfig): void {
+  suppressCount = Math.max(0, suppressCount - 1);
+
+  if (suppressCount === 0 && pendingChanges.size > 0 && config) {
+    // Replay pending changes
+    const pending = new Set(pendingChanges);
+    pendingChanges.clear();
+    setTimeout(() => {
+      for (const filePath of pending) {
+        const board = fileToBoardMapGlobal.get(filePath);
+        if (board && config) {
+          try {
+            const result = reconcileBoard(board, config.vaultRoot);
+            console.log(
+              `[watcher] Replayed ${board.name}: +${result.added} ~${result.updated} -${result.removed}`,
+            );
+            broadcast({
+              type: 'board-updated',
+              boardId: board.id,
+              timestamp: new Date().toISOString(),
+            });
+          } catch (err) {
+            console.error(`[watcher] Replay error ${board.name}:`, err);
+          }
+        }
+      }
+    }, 500);
+  }
 }
+
+// Global map for replay access
+const fileToBoardMapGlobal = new Map<string, BoardConfig>();
 
 export function startWatcher(config: AppConfig): FSWatcher {
-  const fileToBoardMap = new Map<string, BoardConfig>();
   const filePaths: string[] = [];
 
   for (const board of config.boards) {
     const abs = path.join(config.vaultRoot, board.file);
-    fileToBoardMap.set(abs, board);
+    fileToBoardMapGlobal.set(abs, board);
     filePaths.push(abs);
   }
 
@@ -36,12 +66,13 @@ export function startWatcher(config: AppConfig): FSWatcher {
   });
 
   watcher.on('change', (filePath) => {
-    if (writeBackInProgress) {
-      console.log(`[watcher] Suppressed: write-back in progress`);
+    if (suppressCount > 0) {
+      console.log(`[watcher] Queued change during suppression: ${filePath}`);
+      pendingChanges.add(filePath);
       return;
     }
 
-    const board = fileToBoardMap.get(filePath);
+    const board = fileToBoardMapGlobal.get(filePath);
     if (!board) return;
 
     try {
@@ -50,7 +81,6 @@ export function startWatcher(config: AppConfig): FSWatcher {
         `[watcher] Reconciled ${board.name}: +${result.added} ~${result.updated} -${result.removed}`,
       );
 
-      // Broadcast change to all WebSocket clients
       broadcast({
         type: 'board-updated',
         boardId: board.id,

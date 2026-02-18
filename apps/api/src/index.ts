@@ -76,7 +76,8 @@ const server = createServer(async (req, res) => {
 // Attach WebSocket server
 createWsServer(server);
 
-server.listen(PORT, () => {
-  console.log(`[boot] Server listening on http://localhost:${PORT}`);
-  console.log(`[boot] WebSocket available at ws://localhost:${PORT}/ws`);
+const HOST = process.env.HOST || '127.0.0.1';
+server.listen(PORT, HOST, () => {
+  console.log(`[boot] Server listening on http://${HOST}:${PORT}`);
+  console.log(`[boot] WebSocket available at ws://${HOST}:${PORT}/ws`);
 });

@@ -1,9 +1,13 @@
 /**
  * Write-back: update the source .md file when a card is moved to Done (or un-done).
  * Line-preserving: only changes the specific line, preserves everything else.
+ * Validates line identity before modifying to prevent wrong-task toggle.
+ * Uses atomic write (write to temp, rename) to prevent data loss.
  */
-import { readFileSync, writeFileSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { loadConfig } from './config.js';
 import { getDb } from './db.js';
 
@@ -14,9 +18,19 @@ export interface WriteBackResult {
   error?: string;
 }
 
+const CHECKBOX_RE = /^(\s*- \[)([ xX])(\] .*)$/;
+
+/**
+ * Normalize a line for fuzzy matching: strip whitespace, checkbox state, and case.
+ */
+function normalizeForMatch(line: string): string {
+  return line.trim().replace(/^- \[[ xX]\]\s*/, '').toLowerCase().replace(/\s+/g, ' ');
+}
+
 /**
  * Toggle done state in the source .md file for a given card.
- * Only modifies the exact line, preserving all other content.
+ * Validates that the line content matches before modifying.
+ * Uses atomic write to prevent corruption.
  */
 export function writeBackDoneState(
   cardId: string,
@@ -24,7 +38,7 @@ export function writeBackDoneState(
 ): WriteBackResult {
   const db = getDb();
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(cardId) as
-    | { board_id: string; line_number: number; raw_line: string; is_done: number }
+    | { board_id: string; line_number: number; raw_line: string; is_done: number; title: string }
     | undefined;
 
   if (!card) {
@@ -51,14 +65,57 @@ export function writeBackDoneState(
     const line = lines[lineIdx];
 
     // Verify this is actually a checkbox line
-    const checkboxMatch = line.match(/^(\s*- \[)([ xX])(\] .*)$/);
+    const checkboxMatch = line.match(CHECKBOX_RE);
     if (!checkboxMatch) {
       return { success: false, changed: false, lineNumber: card.line_number, error: 'Line is not a checkbox' };
     }
 
+    // Validate line identity: compare normalized content to prevent wrong-task toggle
+    const fileLineNorm = normalizeForMatch(line);
+    const cardLineNorm = normalizeForMatch(card.raw_line);
+    if (fileLineNorm !== cardLineNorm) {
+      // Lines shifted — try to find the correct line nearby (±5 lines)
+      let found = -1;
+      for (let offset = -5; offset <= 5; offset++) {
+        const searchIdx = lineIdx + offset;
+        if (searchIdx < 0 || searchIdx >= lines.length || searchIdx === lineIdx) continue;
+        if (normalizeForMatch(lines[searchIdx]) === cardLineNorm) {
+          found = searchIdx;
+          break;
+        }
+      }
+
+      if (found === -1) {
+        return {
+          success: false,
+          changed: false,
+          lineNumber: card.line_number,
+          error: `Line content mismatch: expected "${cardLineNorm.slice(0, 40)}…" but found "${fileLineNorm.slice(0, 40)}…"`,
+        };
+      }
+
+      // Use the found line instead
+      const foundMatch = lines[found].match(CHECKBOX_RE);
+      if (!foundMatch) {
+        return { success: false, changed: false, lineNumber: found + 1, error: 'Found line is not a checkbox' };
+      }
+
+      const foundDone = foundMatch[2].toLowerCase() === 'x';
+      if (foundDone === isDone) {
+        return { success: true, changed: false, lineNumber: found + 1 };
+      }
+
+      lines[found] = `${foundMatch[1]}${isDone ? 'x' : ' '}${foundMatch[3]}`;
+      atomicWrite(filePath, lines.join('\n'));
+
+      // Update line_number in DB
+      db.prepare('UPDATE cards SET line_number = ? WHERE id = ?').run(found + 1, cardId);
+
+      return { success: true, changed: true, lineNumber: found + 1 };
+    }
+
     const currentlyDone = checkboxMatch[2].toLowerCase() === 'x';
     if (currentlyDone === isDone) {
-      // Already in the desired state
       return { success: true, changed: false, lineNumber: card.line_number };
     }
 
@@ -66,7 +123,7 @@ export function writeBackDoneState(
     const newMark = isDone ? 'x' : ' ';
     lines[lineIdx] = `${checkboxMatch[1]}${newMark}${checkboxMatch[3]}`;
 
-    writeFileSync(filePath, lines.join('\n'), 'utf-8');
+    atomicWrite(filePath, lines.join('\n'));
 
     return { success: true, changed: true, lineNumber: card.line_number };
   } catch (err) {
@@ -80,23 +137,10 @@ export function writeBackDoneState(
 }
 
 /**
- * Check if a file was modified externally since our last known sync.
- * Returns true if there might be a conflict.
+ * Atomic write: write to temp file, then rename (prevents corruption on crash).
  */
-export function checkConflict(filePath: string): boolean {
-  const db = getDb();
-  const syncRow = db
-    .prepare('SELECT file_hash FROM sync_state WHERE file_path = ?')
-    .get(filePath) as { file_hash: string } | undefined;
-
-  if (!syncRow) return false;
-
-  try {
-    const content = readFileSync(filePath, 'utf-8');
-    const { createHash } = require('node:crypto');
-    const currentHash = createHash('sha256').update(content).digest('hex');
-    return currentHash !== syncRow.file_hash;
-  } catch {
-    return true;
-  }
+function atomicWrite(filePath: string, content: string): void {
+  const tmpPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.tmp`);
+  writeFileSync(tmpPath, content, 'utf-8');
+  renameSync(tmpPath, filePath);
 }

@@ -176,15 +176,22 @@ cards.post('/:id/move', async (c) => {
   const { movingToDone, movingFromDone } = moveTransaction();
 
   // Write-back to .md file if moving to/from Done (outside transaction)
+  let writeBackError: string | undefined;
   if (movingToDone || movingFromDone) {
     suppressWatcher();
-    const result = writeBackDoneState(id, movingToDone);
-    unsuppressWatcher();
-
-    if (!result.success) {
-      console.warn(`[writeback] Failed for card ${id}: ${result.error}`);
-    } else if (result.changed) {
-      console.log(`[writeback] Card ${id} → ${movingToDone ? '[x]' : '[ ]'} at line ${result.lineNumber}`);
+    try {
+      const result = writeBackDoneState(id, movingToDone);
+      if (!result.success) {
+        writeBackError = result.error;
+        console.warn(`[writeback] Failed for card ${id}: ${result.error}`);
+      } else if (result.changed) {
+        console.log(`[writeback] Card ${id} → ${movingToDone ? '[x]' : '[ ]'} at line ${result.lineNumber}`);
+      }
+    } catch (err) {
+      writeBackError = String(err);
+      console.error(`[writeback] Unexpected error for card ${id}:`, err);
+    } finally {
+      unsuppressWatcher();
     }
   }
 
@@ -197,7 +204,11 @@ cards.post('/:id/move', async (c) => {
     timestamp: new Date().toISOString(),
   });
 
-  return c.json(formatCard(final));
+  const response = formatCard(final);
+  if (writeBackError) {
+    return c.json({ ...response, _writeBackWarning: writeBackError });
+  }
+  return c.json(response);
 });
 
 export default cards;

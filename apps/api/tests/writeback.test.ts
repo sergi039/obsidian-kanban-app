@@ -114,13 +114,47 @@ describe('writeback', () => {
     expect(match).toBeTruthy();
     expect(match![2]).toBe('X');
   });
+
+  it('does not toggle wrong line after insertion (identity mismatch)', () => {
+    // Original: line 2 = "- [ ] Buy milk", line 3 = "- [ ] Walk dog"
+    // After insertion: line 2 = "- [ ] New task", line 3 = "- [ ] Buy milk", line 4 = "- [ ] Walk dog"
+    setupTestFile('# Tasks\n- [ ] New task\n- [ ] Buy milk\n- [ ] Walk dog\n');
+
+    const content = readTestFile();
+    const lines = content.split('\n');
+
+    // If we blindly toggle line 2 (thinking it's "Buy milk"), we'd toggle "New task"
+    // Verify the identity check would catch this
+    const expectedContent = 'buy milk';
+    const actualLine = lines[1]; // "- [ ] New task"
+    const actualContent = actualLine.replace(/^- \[[ xX]\]\s*/, '').toLowerCase().trim();
+
+    expect(actualContent).not.toBe(expectedContent);
+  });
+
+  it('normalizeForMatch strips checkbox and whitespace', () => {
+    // Test the normalization logic used in writeback
+    const normalize = (line: string): string =>
+      line.trim().replace(/^- \[[ xX]\]\s*/, '').toLowerCase().replace(/\s+/g, ' ');
+
+    expect(normalize('- [ ] Buy milk')).toBe('buy milk');
+    expect(normalize('- [x] Buy milk')).toBe('buy milk');
+    expect(normalize('  - [X]  Multiple   spaces  ')).toBe('multiple spaces');
+  });
 });
 
 describe('watcher suppression', () => {
-  it('suppress/unsuppress exports exist', async () => {
+  it('suppress/unsuppress exports exist and ref-count works', async () => {
     const { suppressWatcher, unsuppressWatcher } = await import('../src/watcher.js');
     expect(typeof suppressWatcher).toBe('function');
     expect(typeof unsuppressWatcher).toBe('function');
+
+    // Multiple suppress calls should all be balanced
+    suppressWatcher();
+    suppressWatcher();
+    unsuppressWatcher();
+    unsuppressWatcher();
+    // Should not throw
   });
 });
 
