@@ -25,7 +25,7 @@ export function useWebSocket(onBoardUpdate: (boardId?: string) => void) {
     ws.onmessage = (event) => {
       try {
         const data: WsEvent = JSON.parse(event.data);
-        if (data.type === 'board-updated' || data.type === 'card-moved' || data.type === 'sync-complete') {
+        if (data.type === 'board-updated' || data.type === 'card-moved' || data.type === 'card-updated' || data.type === 'sync-complete') {
           onBoardUpdate(data.boardId);
         }
       } catch (err) {

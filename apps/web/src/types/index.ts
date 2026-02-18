@@ -11,7 +11,17 @@ export interface Card {
   labels: string[];
   due_date: string | null;
   sub_items: string[];
+  description: string;
   source_fingerprint: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Comment {
+  id: string;
+  card_id: string;
+  author: string;
+  text: string;
   created_at: string;
   updated_at: string;
 }
@@ -48,4 +58,5 @@ export interface PatchCardRequest {
   labels?: string[];
   priority?: 'high' | 'urgent' | null;
   due_date?: string | null;
+  description?: string;
 }

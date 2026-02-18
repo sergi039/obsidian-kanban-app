@@ -23,6 +23,16 @@ const PatchCardSchema = z.object({
   labels: z.array(z.string()).optional(),
   priority: z.enum(['high', 'urgent']).nullable().optional(),
   due_date: z.string().nullable().optional(),
+  description: z.string().optional(),
+});
+
+const CreateCommentSchema = z.object({
+  text: z.string().min(1),
+  author: z.string().min(1).default('user'),
+});
+
+const UpdateCommentSchema = z.object({
+  text: z.string().min(1),
 });
 
 const MoveCardSchema = z.object({
@@ -154,6 +164,10 @@ cards.patch('/:id', async (c) => {
     sets.push('due_date = ?');
     params.push(fields.due_date);
   }
+  if (fields.description !== undefined) {
+    sets.push('description = ?');
+    params.push(fields.description);
+  }
 
   if (sets.length === 0) {
     return c.json({ error: 'No fields to update' }, 400);
@@ -277,6 +291,97 @@ cards.post('/:id/move', async (c) => {
     return c.json({ ...response, _writeBackWarning: writeBackError });
   }
   return c.json(response);
+});
+
+// GET /api/cards/:id/comments — list comments for a card
+cards.get('/:id/comments', (c) => {
+  const cardId = c.req.param('id');
+  const db = getDb();
+  const card = db.prepare('SELECT id FROM cards WHERE id = ?').get(cardId);
+  if (!card) return c.json({ error: 'Card not found' }, 404);
+
+  const comments = db
+    .prepare('SELECT * FROM comments WHERE card_id = ? ORDER BY created_at ASC')
+    .all(cardId);
+  return c.json(comments);
+});
+
+// POST /api/cards/:id/comments — add a comment
+cards.post('/:id/comments', async (c) => {
+  const cardId = c.req.param('id');
+  const body = await safeParseJson(c);
+  if (body === null) return c.json({ error: 'Invalid JSON body' }, 400);
+  const parsed = CreateCommentSchema.safeParse(body);
+  if (!parsed.success)
+    return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const db = getDb();
+  const card = db.prepare('SELECT id, board_id FROM cards WHERE id = ?').get(cardId) as
+    | { id: string; board_id: string }
+    | undefined;
+  if (!card) return c.json({ error: 'Card not found' }, 404);
+
+  const id = createHash('sha256')
+    .update(`${cardId}|${Date.now()}|${Math.random()}`)
+    .digest('hex')
+    .slice(0, 12);
+
+  db.prepare(
+    `INSERT INTO comments (id, card_id, author, text) VALUES (?, ?, ?, ?)`,
+  ).run(id, cardId, parsed.data.author, parsed.data.text);
+
+  // Touch card updated_at
+  db.prepare("UPDATE cards SET updated_at = datetime('now') WHERE id = ?").run(cardId);
+
+  const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(id);
+
+  broadcast({
+    type: 'card-updated',
+    cardId,
+    boardId: card.board_id,
+    timestamp: new Date().toISOString(),
+  });
+
+  return c.json(comment, 201);
+});
+
+// PATCH /api/cards/:id/comments/:commentId — edit a comment
+cards.patch('/:id/comments/:commentId', async (c) => {
+  const cardId = c.req.param('id');
+  const commentId = c.req.param('commentId');
+  const body = await safeParseJson(c);
+  if (body === null) return c.json({ error: 'Invalid JSON body' }, 400);
+  const parsed = UpdateCommentSchema.safeParse(body);
+  if (!parsed.success)
+    return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const db = getDb();
+  const existing = db
+    .prepare('SELECT id FROM comments WHERE id = ? AND card_id = ?')
+    .get(commentId, cardId);
+  if (!existing) return c.json({ error: 'Comment not found' }, 404);
+
+  db.prepare(
+    "UPDATE comments SET text = ?, updated_at = datetime('now') WHERE id = ?",
+  ).run(parsed.data.text, commentId);
+
+  const updated = db.prepare('SELECT * FROM comments WHERE id = ?').get(commentId);
+  return c.json(updated);
+});
+
+// DELETE /api/cards/:id/comments/:commentId — delete a comment
+cards.delete('/:id/comments/:commentId', (c) => {
+  const cardId = c.req.param('id');
+  const commentId = c.req.param('commentId');
+
+  const db = getDb();
+  const existing = db
+    .prepare('SELECT id FROM comments WHERE id = ? AND card_id = ?')
+    .get(commentId, cardId);
+  if (!existing) return c.json({ error: 'Comment not found' }, 404);
+
+  db.prepare('DELETE FROM comments WHERE id = ?').run(commentId);
+  return c.json({ ok: true });
 });
 
 export default cards;

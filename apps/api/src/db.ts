@@ -19,7 +19,17 @@ CREATE TABLE IF NOT EXISTS cards (
   labels TEXT DEFAULT '[]',
   due_date TEXT,
   sub_items TEXT DEFAULT '[]',
+  description TEXT DEFAULT '',
   source_fingerprint TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS comments (
+  id TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  author TEXT NOT NULL DEFAULT 'user',
+  text TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -31,6 +41,20 @@ CREATE TABLE IF NOT EXISTS sync_state (
 );
 `;
 
+const MIGRATIONS = [
+  // Add description column if missing (for existing DBs)
+  `ALTER TABLE cards ADD COLUMN description TEXT DEFAULT ''`,
+  // Create comments table if missing
+  `CREATE TABLE IF NOT EXISTS comments (
+    id TEXT PRIMARY KEY,
+    card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    author TEXT NOT NULL DEFAULT 'user',
+    text TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`,
+];
+
 export function getDb(dbPath?: string): Database.Database {
   if (db) return db;
 
@@ -41,6 +65,15 @@ export function getDb(dbPath?: string): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+
+  // Run migrations for existing DBs
+  for (const sql of MIGRATIONS) {
+    try {
+      db.exec(sql);
+    } catch {
+      // Column/table already exists — safe to ignore
+    }
+  }
 
   return db;
 }

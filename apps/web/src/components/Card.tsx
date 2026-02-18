@@ -94,6 +94,11 @@ export function KanbanCard({ card, onClick }: Props) {
             ☰ {card.sub_items.length}
           </span>
         )}
+        {card.description && (
+          <span className="text-[11px] text-board-text-muted flex items-center gap-0.5" title="Has description">
+            📝
+          </span>
+        )}
         {card.due_date && (
           <span className="text-[11px] text-board-text-muted">📅 {card.due_date}</span>
         )}

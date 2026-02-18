@@ -1,4 +1,4 @@
-import type { BoardSummary, BoardDetail, Card, MoveCardRequest, PatchCardRequest } from '../types';
+import type { BoardSummary, BoardDetail, Card, Comment, MoveCardRequest, PatchCardRequest } from '../types';
 
 const BASE = '/api';
 
@@ -76,4 +76,29 @@ export async function renameColumn(boardId: string, oldName: string, newName: st
 
 export async function deleteColumn(boardId: string, name: string, moveTo?: string): Promise<{ ok: boolean; columns: string[] }> {
   return request(`/boards/${boardId}/columns`, { method: 'DELETE', body: JSON.stringify({ name, moveTo }) });
+}
+
+// Comments API
+export async function fetchComments(cardId: string): Promise<Comment[]> {
+  return request<Comment[]>(`/cards/${cardId}/comments`);
+}
+
+export async function addComment(cardId: string, text: string, author = 'user'): Promise<Comment> {
+  return request<Comment>(`/cards/${cardId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ text, author }),
+  });
+}
+
+export async function updateComment(cardId: string, commentId: string, text: string): Promise<Comment> {
+  return request<Comment>(`/cards/${cardId}/comments/${commentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export async function deleteComment(cardId: string, commentId: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/cards/${cardId}/comments/${commentId}`, {
+    method: 'DELETE',
+  });
 }
