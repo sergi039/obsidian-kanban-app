@@ -104,6 +104,11 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
           console.warn(`[reconciler] Duplicate kb:id "${task.kbId}" in ${board.id}, regenerating`);
           id = allocateUniqueKbId(isIdUsed);
           needsMarkerStamp = true;
+        } else if (allDbIds.has(task.kbId) && !existingById.has(task.kbId)) {
+          // kb:id collides with a card in ANOTHER board — regenerate
+          console.warn(`[reconciler] Cross-board kb:id collision "${task.kbId}" in ${board.id}, regenerating`);
+          id = allocateUniqueKbId(isIdUsed);
+          needsMarkerStamp = true;
         } else {
           // ✅ Task already has a unique stable kb:id marker
           id = task.kbId;
