@@ -37,6 +37,13 @@ export async function fetchCards(
   return request<Card[]>(`/boards/${boardId}/cards${qs ? `?${qs}` : ''}`);
 }
 
+export async function createCard(boardId: string, title: string, column?: string): Promise<Card> {
+  return request<Card>('/cards', {
+    method: 'POST',
+    body: JSON.stringify({ board_id: boardId, title, column }),
+  });
+}
+
 export async function moveCard(cardId: string, move: MoveCardRequest): Promise<Card> {
   return request<Card>(`/cards/${cardId}/move`, {
     method: 'POST',

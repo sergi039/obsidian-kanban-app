@@ -1,12 +1,14 @@
 import { useDroppable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { Card } from '../types';
-import { SortableCard } from './SortableCard';
+import { DraggableCard } from './DraggableCard';
+import { AddCard } from './AddCard';
 
 interface Props {
   name: string;
   cards: Card[];
+  boardId: string;
   onCardClick: (card: Card) => void;
+  onCardAdd: (title: string, column: string) => Promise<void>;
 }
 
 const COLUMN_COLORS: Record<string, string> = {
@@ -16,15 +18,14 @@ const COLUMN_COLORS: Record<string, string> = {
   Done: 'bg-green-500',
 };
 
-export function Column({ name, cards, onCardClick }: Props) {
+export function Column({ name, cards, boardId, onCardClick, onCardAdd }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id: name });
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col w-80 min-w-[320px] shrink-0 rounded-lg transition-colors ${
-        isOver ? 'bg-board-accent/5' : ''
-      }`}
+      className="flex flex-col w-80 min-w-[320px] shrink-0 rounded-lg transition-colors"
+      style={isOver ? { backgroundColor: 'var(--board-drop-highlight)' } : undefined}
     >
       {/* Column header */}
       <div className="flex items-center gap-2 px-3 py-2.5 mb-2">
@@ -36,18 +37,28 @@ export function Column({ name, cards, onCardClick }: Props) {
       </div>
 
       {/* Cards list */}
-      <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-col gap-2 px-1 pb-4 flex-1 min-h-[100px]">
-          {cards.map((card) => (
-            <SortableCard key={card.id} card={card} onClick={() => onCardClick(card)} />
-          ))}
-          {cards.length === 0 && (
-            <div className="text-xs text-board-text-muted/40 text-center py-8 border border-dashed border-board-border/50 rounded-lg">
-              Drop here
-            </div>
-          )}
-        </div>
-      </SortableContext>
+      <div className="flex flex-col gap-2 px-1 pb-2 flex-1 min-h-[100px]">
+        {cards.map((card) => (
+          <DraggableCard key={card.id} card={card} onClick={() => onCardClick(card)} />
+        ))}
+        {cards.length === 0 && !isOver && (
+          <div
+            className="text-xs text-board-text-muted text-center py-8 border border-dashed rounded-lg"
+            style={{ borderColor: 'var(--board-border)', opacity: 0.5 }}
+          >
+            No items
+          </div>
+        )}
+      </div>
+
+      {/* Add card button */}
+      <div className="px-1 pb-3">
+        <AddCard
+          boardId={boardId}
+          columnName={name}
+          onAdd={(title) => onCardAdd(title, name)}
+        />
+      </div>
     </div>
   );
 }

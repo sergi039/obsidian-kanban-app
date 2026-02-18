@@ -48,9 +48,10 @@ export function KanbanCard({ card, onClick }: Props) {
       onClick={onClick}
       onKeyDown={handleKeyDown}
       aria-label={`${card.is_done ? 'Done: ' : ''}${displayTitle}${card.priority ? `, ${card.priority} priority` : ''}`}
-      className={`group relative bg-board-card hover:bg-board-card-hover border border-board-border hover:border-board-border-hover rounded-lg px-3 py-2.5 cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-board-accent/50 ${
+      className={`group relative bg-board-card hover:bg-board-card-hover border border-board-border hover:border-board-border-hover rounded-lg px-3 py-2.5 cursor-pointer transition-all focus:outline-none ${
         card.is_done ? 'opacity-50' : ''
       }`}
+      style={{ ['--tw-ring-color' as string]: 'var(--board-accent-ring)' }}
     >
       {/* Priority left border */}
       {card.priority && (

@@ -1,11 +1,21 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync, renameSync } from 'node:fs';
+import path from 'node:path';
 import { getDb } from '../db.js';
+import { loadConfig } from '../config.js';
 import { writeBackDoneState } from '../writeback.js';
 import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
 
 const cards = new Hono();
+
+const CreateCardSchema = z.object({
+  board_id: z.string(),
+  title: z.string().min(1),
+  column: z.string().optional(),
+});
 
 const PatchCardSchema = z.object({
   column_name: z.string().optional(),
@@ -45,6 +55,64 @@ async function safeParseJson(c: { req: { json: () => Promise<unknown> } }): Prom
     return null;
   }
 }
+
+// POST /api/cards — create a new card (appends to .md file + DB)
+cards.post('/', async (c) => {
+  const body = await safeParseJson(c);
+  if (body === null) return c.json({ error: 'Invalid JSON body' }, 400);
+  const parsed = CreateCardSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const { board_id, title, column } = parsed.data;
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === board_id);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+
+  const filePath = path.join(config.vaultRoot, board.file);
+  const colName = column || 'Backlog';
+
+  // Append task to .md file
+  suppressWatcher();
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    const newLine = `- [ ] ${title}`;
+    const newContent = content.endsWith('\n')
+      ? content + newLine + '\n'
+      : content + '\n' + newLine + '\n';
+
+    const tmpPath = filePath + '.tmp';
+    writeFileSync(tmpPath, newContent, 'utf-8');
+    renameSync(tmpPath, filePath);
+
+    const lines = newContent.split('\n');
+    const lineNumber = lines.length - 1; // last non-empty line
+
+    // Insert into DB
+    const db = getDb();
+    const normalized = title.trim().toLowerCase().replace(/\s+/g, ' ');
+    const existingCount = (db.prepare('SELECT COUNT(*) as cnt FROM cards WHERE board_id = ? AND LOWER(title) = ?').get(board_id, normalized) as { cnt: number }).cnt;
+    const id = createHash('sha256').update(
+      existingCount === 0 ? `${normalized}|${board_id}` : `${normalized}|${board_id}|dup${existingCount}`
+    ).digest('hex').slice(0, 8);
+
+    const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ?').get(board_id, colName) as { mp: number | null }).mp ?? -1;
+
+    db.prepare(`
+      INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, labels, sub_items, source_fingerprint)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, null, '[]', '[]', ?)
+    `).run(id, board_id, colName, maxPos + 1, title, newLine, lineNumber, createHash('sha256').update(newLine).digest('hex').slice(0, 16));
+
+    const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
+
+    broadcast({ type: 'board-updated', boardId: board_id, timestamp: new Date().toISOString() });
+
+    return c.json(formatCard(card), 201);
+  } catch (err) {
+    return c.json({ error: `Failed to create card: ${err}` }, 500);
+  } finally {
+    unsuppressWatcher();
+  }
+});
 
 // PATCH /api/cards/:id — update card metadata
 cards.patch('/:id', async (c) => {

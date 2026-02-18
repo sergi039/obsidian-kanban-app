@@ -14,6 +14,9 @@
     --board-text: #1f2328;
     --board-text-muted: #656d76;
     --board-accent: #0969da;
+    --board-accent-subtle: rgba(9, 105, 218, 0.15);
+    --board-accent-ring: rgba(9, 105, 218, 0.4);
+    --board-drop-highlight: rgba(9, 105, 218, 0.08);
   }
 
   /* Dark theme */
@@ -27,6 +30,9 @@
     --board-text: #e6edf3;
     --board-text-muted: #7d8590;
     --board-accent: #58a6ff;
+    --board-accent-subtle: rgba(88, 166, 255, 0.15);
+    --board-accent-ring: rgba(88, 166, 255, 0.4);
+    --board-drop-highlight: rgba(88, 166, 255, 0.08);
   }
 
   * {

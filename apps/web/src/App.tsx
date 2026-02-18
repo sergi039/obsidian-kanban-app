@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchBoards, fetchBoard, reloadSync } from './api/client';
+import { fetchBoards, fetchBoard, reloadSync, createCard } from './api/client';
 import type { BoardSummary, BoardDetail } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
 import { Board } from './components/Board';
@@ -98,6 +98,14 @@ export default function App() {
     }
   };
 
+  const handleCardAdd = async (title: string, column: string) => {
+    if (!activeBoardId) return;
+    await createCard(activeBoardId, title, column);
+    await loadBoard();
+    const updatedBoards = await fetchBoards();
+    setBoards(updatedBoards);
+  };
+
   const filterCards = (cards: Card[]) => {
     return cards.filter((card) => {
       if (searchText && !card.title.toLowerCase().includes(searchText.toLowerCase())) {
@@ -172,6 +180,7 @@ export default function App() {
             filterCards={filterCards}
             onCardMove={handleCardMove}
             onCardClick={setSelectedCard}
+            onCardAdd={handleCardAdd}
           />
         ) : (
           <div className="text-board-text-muted text-center mt-20">Select a board</div>
