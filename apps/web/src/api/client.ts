@@ -1,4 +1,4 @@
-import type { BoardSummary, BoardDetail, Card, Comment, View, MoveCardRequest, PatchCardRequest } from '../types';
+import type { BoardSummary, BoardDetail, Card, Comment, View, Field, FieldValue, MoveCardRequest, PatchCardRequest } from '../types';
 
 const BASE = '/api';
 
@@ -129,4 +129,37 @@ export async function deleteView(viewId: string): Promise<{ ok: boolean }> {
 
 export async function fetchViewCards(viewId: string): Promise<Card[]> {
   return request<Card[]>(`/views/${viewId}/cards`);
+}
+
+// Fields API
+export async function fetchFields(boardId: string): Promise<Field[]> {
+  return request<Field[]>(`/fields?board_id=${boardId}`);
+}
+
+export async function createField(data: {
+  board_id: string;
+  name: string;
+  type?: string;
+  options?: Array<{ id: string; name: string; color?: string }>;
+}): Promise<Field> {
+  return request<Field>('/fields', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateField(fieldId: string, patch: Partial<Field>): Promise<Field> {
+  return request<Field>(`/fields/${fieldId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
+export async function deleteField(fieldId: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/fields/${fieldId}`, { method: 'DELETE' });
+}
+
+export async function fetchFieldValues(cardId: string): Promise<FieldValue[]> {
+  return request<FieldValue[]>(`/fields/values?card_id=${cardId}`);
+}
+
+export async function setFieldValue(fieldId: string, cardId: string, value: string | null): Promise<unknown> {
+  return request(`/fields/${fieldId}/values/${cardId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value }),
+  });
 }

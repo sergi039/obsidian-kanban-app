@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchBoards, fetchBoard, reloadSync, createCard, addColumn, renameColumn, deleteColumn } from './api/client';
-import type { BoardSummary, BoardDetail } from './types';
+import { fetchBoards, fetchBoard, reloadSync, createCard, addColumn, renameColumn, deleteColumn, fetchFields } from './api/client';
+import type { BoardSummary, BoardDetail, Field } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
 import { Board } from './components/Board';
 import { TableView } from './components/TableView';
@@ -21,6 +21,7 @@ export default function App() {
   const [filterQuery, setFilterQuery] = useState('');
   const [layout, setLayout] = useState<'board' | 'table'>('board');
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [boardFields, setBoardFields] = useState<Field[]>([]);
   const [syncing, setSyncing] = useState(false);
   const { theme, cycleTheme } = useTheme();
 
@@ -41,12 +42,16 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Load active board detail
+  // Load active board detail + fields
   const loadBoard = useCallback(async () => {
     if (!activeBoardId) return;
     try {
-      const detail = await fetchBoard(activeBoardId);
+      const [detail, fields] = await Promise.all([
+        fetchBoard(activeBoardId),
+        fetchFields(activeBoardId),
+      ]);
       setBoardDetail(detail);
+      setBoardFields(fields);
       setError(null);
     } catch (err) {
       console.error('Failed to fetch board:', err);
@@ -313,6 +318,7 @@ export default function App() {
         <CardDetail
           card={selectedCard}
           columns={boardDetail?.columns.map((c) => c.name) || []}
+          fields={boardFields}
           onClose={() => setSelectedCard(null)}
           onUpdate={async () => {
             await loadBoard();

@@ -61,6 +61,24 @@ export interface View {
   updated_at: string;
 }
 
+export interface Field {
+  id: string;
+  board_id: string;
+  name: string;
+  type: 'TEXT' | 'NUMBER' | 'DATE' | 'SINGLE_SELECT' | 'ITERATION';
+  options: Array<{ id: string; name: string; color?: string }>;
+  position: number;
+  created_at: string;
+}
+
+export interface FieldValue {
+  field_id: string;
+  field_name: string;
+  field_type: string;
+  options: Array<{ id: string; name: string; color?: string }>;
+  value: string | null;
+}
+
 export interface MoveCardRequest {
   column: string;
   position: number;

@@ -34,6 +34,23 @@ CREATE TABLE IF NOT EXISTS comments (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS fields (
+  id TEXT PRIMARY KEY,
+  board_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'TEXT',
+  options TEXT DEFAULT '[]',
+  position INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS field_values (
+  card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  field_id TEXT NOT NULL REFERENCES fields(id) ON DELETE CASCADE,
+  value TEXT,
+  PRIMARY KEY (card_id, field_id)
+);
+
 CREATE TABLE IF NOT EXISTS views (
   id TEXT PRIMARY KEY,
   board_id TEXT NOT NULL,
@@ -61,6 +78,9 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_cards_priority ON cards(priority)`,
   `CREATE INDEX IF NOT EXISTS idx_cards_due_date ON cards(due_date)`,
   `CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(card_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_fields_board ON fields(board_id, position)`,
+  `CREATE INDEX IF NOT EXISTS idx_field_values_card ON field_values(card_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_field_values_field ON field_values(field_id)`,
 ];
 
 const MIGRATIONS = [
@@ -79,6 +99,22 @@ const MIGRATIONS = [
     is_default INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
+  )`,
+  // Create fields tables if missing
+  `CREATE TABLE IF NOT EXISTS fields (
+    id TEXT PRIMARY KEY,
+    board_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'TEXT',
+    options TEXT DEFAULT '[]',
+    position INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS field_values (
+    card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    field_id TEXT NOT NULL REFERENCES fields(id) ON DELETE CASCADE,
+    value TEXT,
+    PRIMARY KEY (card_id, field_id)
   )`,
   // Create comments table if missing
   `CREATE TABLE IF NOT EXISTS comments (

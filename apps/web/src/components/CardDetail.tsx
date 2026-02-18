@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { patchCard, fetchComments, addComment, updateComment, deleteComment } from '../api/client';
-import type { Card, Comment } from '../types';
+import { patchCard, fetchComments, addComment, updateComment, deleteComment, fetchFieldValues, setFieldValue } from '../api/client';
+import type { Card, Comment, FieldValue, Field } from '../types';
 
 interface Props {
   card: Card;
   columns: string[];
+  fields: Field[];
   onClose: () => void;
   onUpdate: () => Promise<void>;
 }
@@ -63,7 +64,7 @@ function authorColor(author: string): string {
   return AUTHOR_COLORS[author] || 'bg-purple-500';
 }
 
-export function CardDetail({ card, columns, onClose, onUpdate }: Props) {
+export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) {
   const links = extractLinks(card.title);
   const modalRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -81,6 +82,9 @@ export function CardDetail({ card, columns, onClose, onUpdate }: Props) {
   const [editingDesc, setEditingDesc] = useState(false);
   const [descDraft, setDescDraft] = useState(card.description || '');
   const descRef = useRef<HTMLTextAreaElement>(null);
+
+  // Custom field values
+  const [fieldValues, setFieldValues] = useState<FieldValue[]>([]);
 
   // Comments
   const [comments, setComments] = useState<Comment[]>([]);
@@ -115,13 +119,17 @@ export function CardDetail({ card, columns, onClose, onUpdate }: Props) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose, editingDesc, editingCommentId, description]);
 
-  // Load comments
+  // Load comments + field values
   useEffect(() => {
     setLoadingComments(true);
     fetchComments(card.id)
       .then(setComments)
       .catch((err) => console.error('Failed to load comments:', err))
       .finally(() => setLoadingComments(false));
+
+    fetchFieldValues(card.id)
+      .then(setFieldValues)
+      .catch((err) => console.error('Failed to load field values:', err));
   }, [card.id]);
 
   // Auto-resize description textarea
@@ -579,6 +587,93 @@ export function CardDetail({ card, columns, onClose, onUpdate }: Props) {
                         {label}
                       </span>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom fields */}
+              {fields.length > 0 && (
+                <div>
+                  <label className="text-xs font-medium text-board-text-muted uppercase tracking-wider block mb-2">Custom Fields</label>
+                  <div className="space-y-2">
+                    {fields.map((field) => {
+                      const fv = fieldValues.find((v) => v.field_id === field.id);
+                      const value = fv?.value ?? '';
+                      return (
+                        <div key={field.id}>
+                          <label className="text-[11px] text-board-text-muted block mb-0.5">{field.name}</label>
+                          {field.type === 'SINGLE_SELECT' ? (
+                            <select
+                              value={value}
+                              onChange={async (e) => {
+                                const v = e.target.value || null;
+                                await setFieldValue(field.id, card.id, v);
+                                const updated = await fetchFieldValues(card.id);
+                                setFieldValues(updated);
+                                await onUpdate();
+                              }}
+                              className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none cursor-pointer"
+                            >
+                              <option value="">—</option>
+                              {field.options.map((opt) => (
+                                <option key={opt.id} value={opt.id}>{opt.name}</option>
+                              ))}
+                            </select>
+                          ) : field.type === 'DATE' ? (
+                            <input
+                              type="date"
+                              value={value}
+                              onChange={async (e) => {
+                                const v = e.target.value || null;
+                                await setFieldValue(field.id, card.id, v);
+                                const updated = await fetchFieldValues(card.id);
+                                setFieldValues(updated);
+                                await onUpdate();
+                              }}
+                              className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none"
+                            />
+                          ) : field.type === 'NUMBER' ? (
+                            <input
+                              type="number"
+                              value={value}
+                              onChange={async (e) => {
+                                const v = e.target.value || null;
+                                await setFieldValue(field.id, card.id, v);
+                                const updated = await fetchFieldValues(card.id);
+                                setFieldValues(updated);
+                              }}
+                              className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none"
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              value={value}
+                              placeholder="Empty"
+                              onBlur={async (e) => {
+                                const v = e.target.value || null;
+                                await setFieldValue(field.id, card.id, v);
+                                const updated = await fetchFieldValues(card.id);
+                                setFieldValues(updated);
+                                await onUpdate();
+                              }}
+                              onChange={(e) => {
+                                setFieldValues((prev) =>
+                                  prev.map((fv2) => fv2.field_id === field.id ? { ...fv2, value: e.target.value } : fv2)
+                                    .concat(prev.some((fv2) => fv2.field_id === field.id) ? [] : [{
+                                      field_id: field.id,
+                                      field_name: field.name,
+                                      field_type: field.type,
+                                      options: field.options,
+                                      value: e.target.value,
+                                    }])
+                                );
+                              }}
+                              className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1 text-board-text focus:outline-none placeholder:text-board-text-muted/40"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
