@@ -187,9 +187,17 @@ export default function App() {
         )}
       </main>
 
-      {/* Card detail drawer */}
+      {/* Card detail modal */}
       {selectedCard && (
-        <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />
+        <CardDetail
+          card={selectedCard}
+          onClose={() => setSelectedCard(null)}
+          onUpdate={async () => {
+            await loadBoard();
+            const updatedBoards = await fetchBoards();
+            setBoards(updatedBoards);
+          }}
+        />
       )}
     </div>
   );
