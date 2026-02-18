@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -62,15 +62,19 @@ export function Board({
   const [activeCard, setActiveCard] = useState<Card | null>(null);
   // Optimistic local state — null means use board from props
   const [localColumns, setLocalColumns] = useState<BoardDetail['columns'] | null>(null);
+  // Track the original column when drag starts (before optimistic moves)
+  const dragOriginRef = useRef<{ columnName: string; position: number } | null>(null);
 
   const columns = localColumns || board.columns;
 
-  // Reset local state when board changes from server
-  const prevBoardRef = { current: board };
-  if (board !== prevBoardRef.current) {
-    prevBoardRef.current = board;
-    setLocalColumns(null);
-  }
+  // Reset local state when board prop changes (e.g. after server reload)
+  const prevBoardRef = useRef(board);
+  useEffect(() => {
+    if (board !== prevBoardRef.current) {
+      prevBoardRef.current = board;
+      setLocalColumns(null);
+    }
+  }, [board]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -90,7 +94,18 @@ export function Board({
 
   const handleDragStart = (event: DragStartEvent) => {
     const card = findCard(String(event.active.id));
-    if (card) setActiveCard(card);
+    if (card) {
+      setActiveCard(card);
+      // Remember where the card started
+      const currentCols = localColumns || board.columns;
+      const pos = findColumnForCard(currentCols, card.id);
+      if (pos) {
+        dragOriginRef.current = {
+          columnName: currentCols[pos.colIndex].name,
+          position: pos.cardIndex,
+        };
+      }
+    }
   };
 
   // DragOver: move card between columns optimistically during drag
@@ -101,7 +116,6 @@ export function Board({
     const activeId = String(active.id);
     const overId = String(over.id);
 
-    // Determine source and target columns
     const currentCols = localColumns || board.columns;
     const activePos = findColumnForCard(currentCols, activeId);
     if (!activePos) return;
@@ -112,11 +126,12 @@ export function Board({
     let targetCardIndex: number;
 
     if (targetColName) {
-      // Dropped on empty column area
+      // Dropped on column container (empty area or bottom)
       targetColIndex = currentCols.findIndex((c) => c.name === targetColName);
-      targetCardIndex = currentCols[targetColIndex]?.cards.length ?? 0;
+      if (targetColIndex === -1) return;
+      targetCardIndex = currentCols[targetColIndex].cards.length;
     } else {
-      // Dropped on another card
+      // Over another card
       const overPos = findColumnForCard(currentCols, overId);
       if (!overPos) return;
       targetColIndex = overPos.colIndex;
@@ -140,10 +155,13 @@ export function Board({
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
-    setActiveCard(null);
     const { active, over } = event;
-    if (!over) {
-      setLocalColumns(null); // Reset on cancelled drag
+    const origin = dragOriginRef.current;
+    setActiveCard(null);
+    dragOriginRef.current = null;
+
+    if (!over || !origin) {
+      setLocalColumns(null);
       return;
     }
 
@@ -157,37 +175,49 @@ export function Board({
       return;
     }
 
-    const activeColName = currentCols[activePos.colIndex].name;
+    const currentColName = currentCols[activePos.colIndex].name;
 
-    // Determine target
+    // Determine final target column and position
     const targetColName = getColumnName(overId);
     let finalColName: string;
     let finalPosition: number;
 
     if (targetColName) {
-      // Dropped on empty column
+      // Dropped on column container (empty area or bottom of column)
       finalColName = targetColName;
       const targetCol = currentCols.find((c) => c.name === targetColName);
-      finalPosition = targetCol?.cards.length ?? 0;
+      if (!targetCol) { setLocalColumns(null); return; }
+      // If card is already in this column (from dragOver), position is its current spot
+      const cardInTarget = targetCol.cards.findIndex((c) => c.id === activeId);
+      finalPosition = cardInTarget !== -1 ? cardInTarget : targetCol.cards.length;
     } else {
       // Dropped on a card
       const overPos = findColumnForCard(currentCols, overId);
-      if (!overPos) {
-        setLocalColumns(null);
-        return;
-      }
+      if (!overPos) { setLocalColumns(null); return; }
       finalColName = currentCols[overPos.colIndex].name;
       finalPosition = overPos.cardIndex;
     }
 
-    // Same column reordering
-    if (activeColName === finalColName) {
+    // Check if this is actually a cross-column move (compare to ORIGINAL position, not current)
+    const isCrossColumn = origin.columnName !== finalColName;
+
+    if (!isCrossColumn) {
+      // Same column reorder
       const colIndex = currentCols.findIndex((c) => c.name === finalColName);
       const col = currentCols[colIndex];
-      const oldIndex = col.cards.findIndex((c) => c.id === activeId);
-      const newIndex = col.cards.findIndex((c) => c.id === overId);
+      if (!col) { setLocalColumns(null); return; }
 
-      if (oldIndex === newIndex || newIndex === -1) {
+      const oldIndex = col.cards.findIndex((c) => c.id === activeId);
+      let newIndex: number;
+
+      if (targetColName) {
+        // Dropped on column container — move to end
+        newIndex = col.cards.length - 1;
+      } else {
+        newIndex = col.cards.findIndex((c) => c.id === overId);
+      }
+
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
         setLocalColumns(null);
         return;
       }
@@ -199,13 +229,12 @@ export function Board({
       });
       setLocalColumns(newCols);
 
-      // API call
       try {
         await moveCard(activeId, { column: finalColName, position: newIndex });
         await onCardMove();
       } catch (err) {
         console.error('Move failed:', err);
-        setLocalColumns(null); // Rollback
+        setLocalColumns(null);
       }
       return;
     }
@@ -216,8 +245,14 @@ export function Board({
       await onCardMove();
     } catch (err) {
       console.error('Cross-column move failed:', err);
-      setLocalColumns(null); // Rollback
+      setLocalColumns(null);
     }
+  };
+
+  const handleDragCancel = () => {
+    setActiveCard(null);
+    dragOriginRef.current = null;
+    setLocalColumns(null);
   };
 
   return (
@@ -227,6 +262,7 @@ export function Board({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div className="flex gap-4 h-full min-h-[calc(100vh-120px)]">
         {columns.map((col) => (
