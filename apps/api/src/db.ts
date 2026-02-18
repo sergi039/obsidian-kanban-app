@@ -41,6 +41,14 @@ CREATE TABLE IF NOT EXISTS sync_state (
 );
 `;
 
+const INDEXES = [
+  `CREATE INDEX IF NOT EXISTS idx_cards_board_position ON cards(board_id, position)`,
+  `CREATE INDEX IF NOT EXISTS idx_cards_board_column ON cards(board_id, column_name)`,
+  `CREATE INDEX IF NOT EXISTS idx_cards_priority ON cards(priority)`,
+  `CREATE INDEX IF NOT EXISTS idx_cards_due_date ON cards(due_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(card_id)`,
+];
+
 const MIGRATIONS = [
   // Add description column if missing (for existing DBs)
   `ALTER TABLE cards ADD COLUMN description TEXT DEFAULT ''`,
@@ -65,6 +73,11 @@ export function getDb(dbPath?: string): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+
+  // Create indexes
+  for (const sql of INDEXES) {
+    db.exec(sql);
+  }
 
   // Run migrations for existing DBs
   for (const sql of MIGRATIONS) {

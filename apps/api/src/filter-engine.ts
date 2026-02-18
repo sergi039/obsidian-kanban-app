@@ -68,6 +68,7 @@ export function parseFilterQuery(query: string): ParsedFilter {
 
       if (KNOWN_QUALIFIERS.has(qualifier)) {
         const values = rawValue.split(',').map((v) => v.trim()).filter(Boolean);
+        if (values.length === 0) continue; // Skip empty values (e.g. "status:,")
         tokens.push({ negated, qualifier, values });
         continue;
       }

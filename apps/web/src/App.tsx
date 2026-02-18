@@ -126,14 +126,33 @@ export default function App() {
   const filterCards = useCallback((cards: Card[]) => {
     if (!filterQuery.trim()) return cards;
 
+    // Parse query with same logic as backend: split by whitespace, respect quotes
+    const parts: string[] = [];
+    let current = '';
+    let inQuote = false;
+    let qChar = '';
+    for (const ch of filterQuery.trim()) {
+      if (inQuote) {
+        if (ch === qChar) inQuote = false;
+        else current += ch;
+      } else if (ch === '"' || ch === "'") {
+        inQuote = true; qChar = ch;
+      } else if (ch === ' ' || ch === '\t') {
+        if (current) { parts.push(current); current = ''; }
+      } else current += ch;
+    }
+    if (current) parts.push(current);
+
+    const KNOWN = new Set(['status', 'priority', 'label', 'due', 'done', 'has', 'board']);
+
     return cards.filter((card) => {
-      const parts = filterQuery.trim().split(/\s+/);
       for (const part of parts) {
         const m = part.match(/^(-?)([a-zA-Z_]+):(.+)$/);
-        if (m) {
+        if (m && KNOWN.has(m[2].toLowerCase())) {
           const neg = m[1] === '-';
           const qual = m[2].toLowerCase();
-          const vals = m[3].split(',');
+          const vals = m[3].split(',').filter(Boolean);
+          if (vals.length === 0) continue;
 
           let match = false;
           switch (qual) {
@@ -142,29 +161,63 @@ export default function App() {
               break;
             case 'priority':
               if (vals.includes('none')) match = !card.priority;
-              else match = vals.some((v) => card.priority === v);
+              else match = vals.some((v) => card.priority === v.toLowerCase());
               break;
             case 'label':
-              match = vals.some((v) => card.labels.some((l) => l.toLowerCase().includes(v.toLowerCase())));
+              // Exact JSON token match (mirrors backend %"val"%)
+              match = neg
+                ? vals.every((v) => card.labels.some((l) => l.toLowerCase() === v.toLowerCase()))
+                : vals.some((v) => card.labels.some((l) => l.toLowerCase() === v.toLowerCase()));
               break;
             case 'done':
-              match = ['yes', 'true', '1'].includes(vals[0]) ? card.is_done : !card.is_done;
+              match = ['yes', 'true', '1'].includes(vals[0]?.toLowerCase()) ? card.is_done : !card.is_done;
               break;
-            case 'has':
-              if (vals[0] === 'description') match = !!card.description;
-              else if (vals[0] === 'priority') match = !!card.priority;
-              else if (vals[0] === 'labels') match = card.labels.length > 0;
-              else if (vals[0] === 'due' || vals[0] === 'due_date') match = !!card.due_date;
+            case 'has': {
+              const hv = vals[0]?.toLowerCase();
+              if (hv === 'description') match = !!card.description;
+              else if (hv === 'priority') match = !!card.priority;
+              else if (hv === 'labels' || hv === 'label') match = card.labels.length > 0;
+              else if (hv === 'due' || hv === 'due_date') match = !!card.due_date;
+              // has:comments not available client-side (no comment count on card)
               break;
-            case 'due':
-              if (vals[0] === 'none') match = !card.due_date;
-              else if (vals[0] === 'any') match = !!card.due_date;
-              else match = card.due_date === vals[0];
+            }
+            case 'due': {
+              const dv = vals[0]?.toLowerCase();
+              if (dv === 'none') match = !card.due_date;
+              else if (dv === 'any') match = !!card.due_date;
+              else if (dv === 'overdue') {
+                match = !!card.due_date && new Date(card.due_date) < new Date(new Date().toISOString().slice(0, 10));
+              } else if (dv === 'today') {
+                match = card.due_date === new Date().toISOString().slice(0, 10);
+              } else if (dv === 'tomorrow') {
+                const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+                match = card.due_date === tmr.toISOString().slice(0, 10);
+              } else if (dv === 'this-week') {
+                if (card.due_date) {
+                  const d = new Date(card.due_date);
+                  const now = new Date(new Date().toISOString().slice(0, 10));
+                  const week = new Date(now); week.setDate(week.getDate() + 7);
+                  match = d >= now && d <= week;
+                }
+              } else if (dv === 'this-month') {
+                if (card.due_date) {
+                  const d = new Date(card.due_date);
+                  const now = new Date(new Date().toISOString().slice(0, 10));
+                  const month = new Date(now); month.setDate(month.getDate() + 30);
+                  match = d >= now && d <= month;
+                }
+              } else {
+                match = card.due_date === dv;
+              }
+              break;
+            }
+            case 'board':
+              match = vals.some((v) => card.board_id.toLowerCase() === v.toLowerCase());
               break;
           }
           if (neg ? match : !match) return false;
         } else {
-          // Free text search
+          // Unknown qualifier or free text — search title
           if (!card.title.toLowerCase().includes(part.toLowerCase())) return false;
         }
       }

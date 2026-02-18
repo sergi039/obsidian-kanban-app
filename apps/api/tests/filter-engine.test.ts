@@ -69,6 +69,16 @@ describe('parseFilterQuery', () => {
     expect(result.tokens).toHaveLength(1);
   });
 
+  it('skips empty values (status:,)', () => {
+    const result = parseFilterQuery('status:,');
+    expect(result.tokens).toHaveLength(0);
+  });
+
+  it('skips qualifier with only commas', () => {
+    const result = parseFilterQuery('priority:,,');
+    expect(result.tokens).toHaveLength(0);
+  });
+
   it('handles complex real-world query', () => {
     const result = parseFilterQuery('-status:Backlog,Done priority:high -label:wontfix calendar');
     expect(result.tokens).toHaveLength(3);
