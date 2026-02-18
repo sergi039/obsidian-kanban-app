@@ -1,5 +1,9 @@
 import { createServer } from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { loadConfig } from './config.js';
@@ -25,7 +29,27 @@ app.get('/api/health', (c) => c.json({ ok: true }));
 // Serve built frontend in production
 if (process.env.NODE_ENV === 'production' || process.env.SERVE_STATIC) {
   const { serveStatic } = await import('@hono/node-server/serve-static');
-  app.use('/*', serveStatic({ root: '../web/dist' }));
+  const staticRoot = path.resolve(__dirname, '..', '..', 'web', 'dist');
+  const { existsSync, readFileSync: readFs } = await import('node:fs');
+
+  if (existsSync(staticRoot)) {
+    // Serve static assets
+    app.use('/*', serveStatic({ root: staticRoot }));
+
+    // SPA fallback: serve index.html for non-API, non-asset routes
+    app.get('*', (c) => {
+      const indexPath = path.join(staticRoot, 'index.html');
+      if (existsSync(indexPath)) {
+        const html = readFs(indexPath, 'utf-8');
+        return c.html(html);
+      }
+      return c.text('Not found', 404);
+    });
+
+    console.log(`[boot] Serving static files from ${staticRoot}`);
+  } else {
+    console.warn(`[boot] Static root not found: ${staticRoot} — run 'cd apps/web && npx vite build'`);
+  }
 }
 
 // --- Bootstrap ---

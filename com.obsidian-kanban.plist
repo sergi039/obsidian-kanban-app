@@ -16,6 +16,10 @@
   <dict>
     <key>PORT</key>
     <string>4000</string>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>SERVE_STATIC</key>
+    <string>1</string>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>

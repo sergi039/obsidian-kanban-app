@@ -16,6 +16,15 @@ interface CardRow {
   due_date: string | null;
 }
 
+function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 function cleanTitle(title: string): string {
   let cleaned = title.replace(/\[([^\]]*)\]\([^)]+\)/g, '$1');
   cleaned = cleaned.replace(/https?:\/\/[^\s)\]]+/g, '').trim();
@@ -42,7 +51,7 @@ function formatMarkdown(boardName: string, columns: Map<string, CardRow[]>): str
       const due = card.due_date ? ` 📅 ${card.due_date}` : '';
       lines.push(`- ${check} ${prio}${prio ? ' ' : ''}${title}${due}`);
 
-      const subItems = JSON.parse(card.sub_items || '[]') as string[];
+      const subItems = safeJsonParse<string[]>(card.sub_items, []);
       for (const sub of subItems) {
         lines.push(`  - ${sub}`);
       }

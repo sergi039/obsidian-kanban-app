@@ -28,7 +28,14 @@ export function loadConfig(configPath?: string): AppConfig {
   if (cached) return cached;
   const p = configPath || path.join(PROJECT_ROOT, 'config.boards.json');
   const raw = JSON.parse(readFileSync(p, 'utf-8'));
-  cached = ConfigSchema.parse(raw);
+  const config = ConfigSchema.parse(raw);
+
+  // Allow env override for Docker/container deployments
+  if (process.env.VAULT_ROOT) {
+    config.vaultRoot = process.env.VAULT_ROOT;
+  }
+
+  cached = config;
   return cached;
 }
 
