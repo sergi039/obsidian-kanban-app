@@ -65,6 +65,17 @@ CREATE TABLE IF NOT EXISTS views (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS automations (
+  id TEXT PRIMARY KEY,
+  board_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  trigger_json TEXT NOT NULL DEFAULT '{}',
+  actions_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS sync_state (
   file_path TEXT PRIMARY KEY,
   file_hash TEXT NOT NULL,
@@ -81,6 +92,7 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_fields_board ON fields(board_id, position)`,
   `CREATE INDEX IF NOT EXISTS idx_field_values_card ON field_values(card_id)`,
   `CREATE INDEX IF NOT EXISTS idx_field_values_field ON field_values(field_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_automations_board ON automations(board_id, enabled)`,
 ];
 
 const MIGRATIONS = [
@@ -115,6 +127,17 @@ const MIGRATIONS = [
     field_id TEXT NOT NULL REFERENCES fields(id) ON DELETE CASCADE,
     value TEXT,
     PRIMARY KEY (card_id, field_id)
+  )`,
+  // Create automations table if missing
+  `CREATE TABLE IF NOT EXISTS automations (
+    id TEXT PRIMARY KEY,
+    board_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    trigger_json TEXT NOT NULL DEFAULT '{}',
+    actions_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
   )`,
   // Create comments table if missing
   `CREATE TABLE IF NOT EXISTS comments (

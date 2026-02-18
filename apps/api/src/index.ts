@@ -16,6 +16,7 @@ import cardRoutes from './routes/cards.js';
 import exportRoutes from './routes/export.js';
 import viewRoutes from './routes/views.js';
 import fieldRoutes from './routes/fields.js';
+import automationRoutes from './routes/automations.js';
 
 const app = new Hono();
 
@@ -26,6 +27,7 @@ app.route('/api/boards', boardRoutes);
 app.route('/api/cards', cardRoutes);
 app.route('/api/views', viewRoutes);
 app.route('/api/fields', fieldRoutes);
+app.route('/api/automations', automationRoutes);
 app.route('/api/export', exportRoutes);
 
 app.get('/api/health', (c) => c.json({ ok: true }));

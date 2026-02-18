@@ -9,6 +9,7 @@ import { writeBackDoneState } from '../writeback.js';
 import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
 import { allocateUniqueKbId, injectKbId } from '../parser.js';
+import { fireEvent } from '../automations.js';
 
 const cards = new Hono();
 
@@ -113,6 +114,13 @@ cards.post('/', async (c) => {
     const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
 
     broadcast({ type: 'board-updated', boardId: board_id, timestamp: new Date().toISOString() });
+
+    // Fire automations for card.created
+    try {
+      fireEvent({ type: 'card.created', cardId: id, boardId: board_id, column: colName, title });
+    } catch (err) {
+      console.warn('[automations] Error on card.created:', err);
+    }
 
     return c.json(formatCard(card), 201);
   } catch (err) {
@@ -283,6 +291,15 @@ cards.post('/:id/move', async (c) => {
     boardId: final.board_id as string,
     timestamp: new Date().toISOString(),
   });
+
+  // Fire automations for card.moved (only if column actually changed)
+  if (oldColumn !== column) {
+    try {
+      fireEvent({ type: 'card.moved', cardId: id, boardId, fromColumn: oldColumn, toColumn: column });
+    } catch (err) {
+      console.warn('[automations] Error on card.moved:', err);
+    }
+  }
 
   const response = formatCard(final);
   if (writeBackError) {

@@ -10,6 +10,7 @@ import { CardDetail } from './components/CardDetail';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useTheme } from './hooks/useTheme';
 import { ThemeToggle } from './components/ThemeToggle';
+import { AutomationsPanel } from './components/AutomationsPanel';
 import type { Card } from './types';
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [boardFields, setBoardFields] = useState<Field[]>([]);
   const [syncing, setSyncing] = useState(false);
+  const [showAutomations, setShowAutomations] = useState(false);
   const { theme, cycleTheme } = useTheme();
 
   // Load boards list
@@ -264,6 +266,13 @@ export default function App() {
           />
           <ViewSwitcher layout={layout} onLayoutChange={setLayout} />
           <button
+            onClick={() => setShowAutomations(true)}
+            className="px-3 py-1.5 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors"
+            title="Automations"
+          >
+            ⚡ Auto
+          </button>
+          <button
             onClick={handleReload}
             disabled={syncing}
             className="px-3 py-1.5 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
@@ -325,6 +334,16 @@ export default function App() {
             const updatedBoards = await fetchBoards();
             setBoards(updatedBoards);
           }}
+        />
+      )}
+
+      {/* Automations panel */}
+      {showAutomations && activeBoardId && (
+        <AutomationsPanel
+          boardId={activeBoardId}
+          columns={boardDetail?.columns.map((c) => c.name) || []}
+          fields={boardFields}
+          onClose={() => setShowAutomations(false)}
         />
       )}
     </div>

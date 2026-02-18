@@ -79,6 +79,54 @@ export interface FieldValue {
   value: string | null;
 }
 
+// Automation types
+export type TriggerType = 'card.moved' | 'card.created';
+
+export interface TriggerCardMoved {
+  type: 'card.moved';
+  from_column?: string;
+  to_column?: string;
+  board_id?: string;
+}
+
+export interface TriggerCardCreated {
+  type: 'card.created';
+  column?: string;
+  board_id?: string;
+}
+
+export type Trigger = TriggerCardMoved | TriggerCardCreated;
+
+export interface ActionSetField {
+  type: 'set_field';
+  field_id: string;
+  value: string | null;
+}
+
+export interface ActionAddComment {
+  type: 'add_comment';
+  text: string;
+  author?: string;
+}
+
+export interface ActionSetDueDate {
+  type: 'set_due_date';
+  days_from_now: number;
+}
+
+export type AutomationAction = ActionSetField | ActionAddComment | ActionSetDueDate;
+
+export interface AutomationRule {
+  id: string;
+  board_id: string;
+  name: string;
+  enabled: boolean;
+  trigger: Trigger;
+  actions: AutomationAction[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface MoveCardRequest {
   column: string;
   position: number;

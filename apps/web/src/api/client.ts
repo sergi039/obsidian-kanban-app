@@ -1,4 +1,4 @@
-import type { BoardSummary, BoardDetail, Card, Comment, View, Field, FieldValue, MoveCardRequest, PatchCardRequest } from '../types';
+import type { BoardSummary, BoardDetail, Card, Comment, View, Field, FieldValue, MoveCardRequest, PatchCardRequest, AutomationRule, Trigger, AutomationAction } from '../types';
 
 const BASE = '/api';
 
@@ -162,4 +162,32 @@ export async function setFieldValue(fieldId: string, cardId: string, value: stri
     method: 'PUT',
     body: JSON.stringify({ value }),
   });
+}
+
+// Automations API
+export async function fetchAutomations(boardId: string): Promise<AutomationRule[]> {
+  return request<AutomationRule[]>(`/automations?board_id=${boardId}`);
+}
+
+export async function createAutomation(data: {
+  board_id: string;
+  name: string;
+  trigger: Trigger;
+  actions: AutomationAction[];
+  enabled?: boolean;
+}): Promise<AutomationRule> {
+  return request<AutomationRule>('/automations', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateAutomation(ruleId: string, patch: Partial<{
+  name: string;
+  enabled: boolean;
+  trigger: Trigger;
+  actions: AutomationAction[];
+}>): Promise<AutomationRule> {
+  return request<AutomationRule>(`/automations/${ruleId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
+export async function deleteAutomation(ruleId: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/automations/${ruleId}`, { method: 'DELETE' });
 }
