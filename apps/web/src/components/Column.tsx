@@ -33,13 +33,13 @@ export function Column({ name, cards, boardId, onCardClick, onCardAdd, onColumnR
       style={isOver ? { backgroundColor: 'var(--board-drop-highlight)' } : undefined}
     >
       {/* Column header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 mb-2 group">
+      <div className="flex items-center justify-center gap-2 px-3 py-2.5 mb-2 group relative">
         <span className={`w-2.5 h-2.5 rounded-full ${COLUMN_COLORS[name] || 'bg-gray-400'}`} />
         <h3 className="text-sm font-medium text-board-text">{name}</h3>
         <span className="text-xs text-board-text-muted bg-board-column px-1.5 py-0.5 rounded-full">
           {cards.length}
         </span>
-        <div className="ml-auto">
+        <div className="absolute right-3">
           <ColumnMenu name={name} onRename={onColumnRename} onDelete={onColumnDelete} />
         </div>
       </div>
