@@ -5,6 +5,7 @@ import { BoardSwitcher } from './components/BoardSwitcher';
 import { Board } from './components/Board';
 import { Filters } from './components/Filters';
 import { CardDetail } from './components/CardDetail';
+import { useWebSocket } from './hooks/useWebSocket';
 import type { Card } from './types';
 
 export default function App() {
@@ -37,6 +38,20 @@ export default function App() {
   useEffect(() => {
     loadBoard();
   }, [loadBoard]);
+
+  // WebSocket: auto-refresh when files change
+  const handleWsUpdate = useCallback(
+    (boardId?: string) => {
+      // Refresh active board if it matches or no specific board
+      if (!boardId || boardId === activeBoardId) {
+        loadBoard();
+      }
+      // Always refresh board list counts
+      fetchBoards().then(setBoards);
+    },
+    [activeBoardId, loadBoard],
+  );
+  useWebSocket(handleWsUpdate);
 
   const handleBoardChange = (boardId: string) => {
     setActiveBoardId(boardId);

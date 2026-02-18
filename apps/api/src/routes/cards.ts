@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { getDb } from '../db.js';
+import { writeBackDoneState } from '../writeback.js';
+import { broadcast } from '../ws.js';
+import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
 
 const cards = new Hono();
 
@@ -16,6 +19,15 @@ const MoveCardSchema = z.object({
   column: z.string(),
   position: z.number().int(),
 });
+
+function formatCard(row: Record<string, unknown>) {
+  return {
+    ...row,
+    is_done: Boolean(row.is_done),
+    labels: JSON.parse(row.labels as string),
+    sub_items: JSON.parse(row.sub_items as string),
+  };
+}
 
 // PATCH /api/cards/:id — update card metadata
 cards.patch('/:id', async (c) => {
@@ -65,12 +77,15 @@ cards.patch('/:id', async (c) => {
   db.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).run(...params);
 
   const updated = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
-  return c.json({
-    ...updated,
-    is_done: Boolean(updated.is_done),
-    labels: JSON.parse(updated.labels as string),
-    sub_items: JSON.parse(updated.sub_items as string),
+
+  broadcast({
+    type: 'card-moved',
+    cardId: id,
+    boardId: updated.board_id as string,
+    timestamp: new Date().toISOString(),
   });
+
+  return c.json(formatCard(updated));
 });
 
 // POST /api/cards/:id/move — move card to column + position
@@ -87,6 +102,7 @@ cards.post('/:id/move', async (c) => {
   if (!existing) return c.json({ error: 'Card not found' }, 404);
 
   const { column, position } = parsed.data;
+  const oldColumn = existing.column_name as string;
 
   // Shift positions in the target column to make room
   db.prepare(
@@ -97,13 +113,41 @@ cards.post('/:id/move', async (c) => {
     `UPDATE cards SET column_name = ?, position = ?, updated_at = datetime('now') WHERE id = ?`,
   ).run(column, position, id);
 
+  // Write-back to .md file if moving to/from Done
+  const movingToDone = column === 'Done' && oldColumn !== 'Done';
+  const movingFromDone = column !== 'Done' && oldColumn === 'Done';
+
+  if (movingToDone || movingFromDone) {
+    suppressWatcher();
+    const result = writeBackDoneState(id, movingToDone);
+    unsuppressWatcher();
+
+    if (!result.success) {
+      console.warn(`[writeback] Failed for card ${id}: ${result.error}`);
+    } else if (result.changed) {
+      console.log(`[writeback] Card ${id} → ${movingToDone ? '[x]' : '[ ]'} at line ${result.lineNumber}`);
+    }
+  }
+
   const updated = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
-  return c.json({
-    ...updated,
-    is_done: Boolean(updated.is_done),
-    labels: JSON.parse(updated.labels as string),
-    sub_items: JSON.parse(updated.sub_items as string),
+
+  // Also update is_done in DB to match
+  if (movingToDone) {
+    db.prepare('UPDATE cards SET is_done = 1 WHERE id = ?').run(id);
+  } else if (movingFromDone) {
+    db.prepare('UPDATE cards SET is_done = 0 WHERE id = ?').run(id);
+  }
+
+  const final = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
+
+  broadcast({
+    type: 'card-moved',
+    cardId: id,
+    boardId: final.board_id as string,
+    timestamp: new Date().toISOString(),
   });
+
+  return c.json(formatCard(final));
 });
 
 export default cards;

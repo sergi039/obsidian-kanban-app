@@ -1,4 +1,4 @@
-import { serve } from '@hono/node-server';
+import { createServer } from 'node:http';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
@@ -6,6 +6,7 @@ import { loadConfig } from './config.js';
 import { getDb } from './db.js';
 import { reconcileAll } from './reconciler.js';
 import { startWatcher } from './watcher.js';
+import { createWsServer } from './ws.js';
 import boardRoutes from './routes/boards.js';
 import cardRoutes from './routes/cards.js';
 
@@ -35,7 +36,39 @@ for (const r of results) {
 // File watcher
 startWatcher(config);
 
+// HTTP + WebSocket server
 const PORT = Number(process.env.PORT) || 4000;
-console.log(`[boot] Server listening on http://localhost:${PORT}`);
 
-serve({ fetch: app.fetch, port: PORT });
+const server = createServer(async (req, res) => {
+  const response = await app.fetch(
+    new Request(`http://localhost:${PORT}${req.url}`, {
+      method: req.method,
+      headers: Object.entries(req.headers).reduce(
+        (acc, [k, v]) => {
+          if (v) acc[k] = Array.isArray(v) ? v.join(', ') : v;
+          return acc;
+        },
+        {} as Record<string, string>,
+      ),
+      body: ['GET', 'HEAD'].includes(req.method || 'GET')
+        ? undefined
+        : await new Promise<string>((resolve) => {
+            let body = '';
+            req.on('data', (chunk) => (body += chunk));
+            req.on('end', () => resolve(body));
+          }),
+    }),
+  );
+
+  res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+  const body = await response.arrayBuffer();
+  res.end(Buffer.from(body));
+});
+
+// Attach WebSocket server
+createWsServer(server);
+
+server.listen(PORT, () => {
+  console.log(`[boot] Server listening on http://localhost:${PORT}`);
+  console.log(`[boot] WebSocket available at ws://localhost:${PORT}/ws`);
+});
