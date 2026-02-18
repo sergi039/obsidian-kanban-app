@@ -151,7 +151,7 @@ export default function App() {
         if (m && KNOWN.has(m[2].toLowerCase())) {
           const neg = m[1] === '-';
           const qual = m[2].toLowerCase();
-          const vals = m[3].split(',').filter(Boolean);
+          const vals = m[3].split(',').map((v) => v.trim()).filter(Boolean);
           if (vals.length === 0) continue;
 
           let match = false;
@@ -164,10 +164,12 @@ export default function App() {
               else match = vals.some((v) => card.priority === v.toLowerCase());
               break;
             case 'label':
-              // Exact JSON token match (mirrors backend %"val"%)
-              match = neg
-                ? vals.every((v) => card.labels.some((l) => l.toLowerCase() === v.toLowerCase()))
-                : vals.some((v) => card.labels.some((l) => l.toLowerCase() === v.toLowerCase()));
+              // Mirror backend: non-negated = OR (any label matches), negated = AND (all labels must NOT match)
+              // Negation is applied by the outer `if (neg ? match : !match)` so:
+              // - label:bug,feature → match if card has bug OR feature
+              // - -label:bug,feature → match if card has NONE of bug, feature
+              //   (outer negation flips: match=true means "has one" → neg+match → filtered out)
+              match = vals.some((v) => card.labels.some((l) => l.toLowerCase() === v.toLowerCase()));
               break;
             case 'done':
               match = ['yes', 'true', '1'].includes(vals[0]?.toLowerCase()) ? card.is_done : !card.is_done;
