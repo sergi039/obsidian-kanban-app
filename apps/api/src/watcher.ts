@@ -17,19 +17,23 @@ export function suppressWatcher(): void {
   suppressCount++;
 }
 
+// Store active config for replay (set by startWatcher)
+let activeConfig: AppConfig | null = null;
+
 export function unsuppressWatcher(config?: AppConfig): void {
   suppressCount = Math.max(0, suppressCount - 1);
 
-  if (suppressCount === 0 && pendingChanges.size > 0 && config) {
+  const replayConfig = config || activeConfig;
+  if (suppressCount === 0 && pendingChanges.size > 0 && replayConfig) {
     // Replay pending changes
     const pending = new Set(pendingChanges);
     pendingChanges.clear();
     setTimeout(() => {
       for (const filePath of pending) {
         const board = fileToBoardMapGlobal.get(filePath);
-        if (board && config) {
+        if (board && replayConfig) {
           try {
-            const result = reconcileBoard(board, config.vaultRoot);
+            const result = reconcileBoard(board, replayConfig.vaultRoot);
             console.log(
               `[watcher] Replayed ${board.name}: +${result.added} ~${result.updated} -${result.removed}`,
             );
@@ -51,6 +55,7 @@ export function unsuppressWatcher(config?: AppConfig): void {
 const fileToBoardMapGlobal = new Map<string, BoardConfig>();
 
 export function startWatcher(config: AppConfig): FSWatcher {
+  activeConfig = config;
   const filePaths: string[] = [];
 
   for (const board of config.boards) {

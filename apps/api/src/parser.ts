@@ -31,6 +31,20 @@ export function generateKbId(): string {
 }
 
 /**
+ * Allocate a unique kb:id that doesn't collide with existing IDs.
+ * Retries up to maxAttempts times if collision detected.
+ * @param isUsed - function that returns true if an ID is already in use
+ */
+export function allocateUniqueKbId(isUsed: (id: string) => boolean, maxAttempts = 10): string {
+  for (let i = 0; i < maxAttempts; i++) {
+    const id = generateKbId();
+    if (!isUsed(id)) return id;
+  }
+  // Fallback: use timestamp + random for near-zero collision chance
+  return createHash('sha256').update(`${Date.now()}-${Math.random()}`).digest('hex').slice(0, 8);
+}
+
+/**
  * Extract kb:id from a task line (HTML comment marker).
  * Returns null if no marker found.
  */

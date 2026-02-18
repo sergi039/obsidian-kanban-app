@@ -8,7 +8,7 @@ import { loadConfig } from '../config.js';
 import { writeBackDoneState } from '../writeback.js';
 import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
-import { generateKbId, injectKbId } from '../parser.js';
+import { allocateUniqueKbId, injectKbId } from '../parser.js';
 
 const cards = new Hono();
 
@@ -86,7 +86,10 @@ cards.post('/', async (c) => {
   suppressWatcher();
   try {
     const content = readFileSync(filePath, 'utf-8');
-    const id = generateKbId();
+    const db = getDb();
+    const id = allocateUniqueKbId((candidate) =>
+      !!(db.prepare('SELECT 1 FROM cards WHERE id = ?').get(candidate)),
+    );
     const newLine = injectKbId(`- [ ] ${title}`, id);
     const newContent = content.endsWith('\n')
       ? content + newLine + '\n'
@@ -100,8 +103,6 @@ cards.post('/', async (c) => {
     const lineNumber = lines.length - 1; // last non-empty line
 
     // Insert into DB
-    const db = getDb();
-
     const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ?').get(board_id, colName) as { mp: number | null }).mp ?? -1;
 
     db.prepare(`

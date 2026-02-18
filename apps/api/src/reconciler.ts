@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { parseMarkdownTasks, computeFingerprint, generateKbId, injectKbId } from './parser.js';
+import { parseMarkdownTasks, computeFingerprint, allocateUniqueKbId, injectKbId } from './parser.js';
 import { getDb } from './db.js';
 import type { BoardConfig } from './config.js';
 import { suppressWatcher, unsuppressWatcher } from './watcher.js';
@@ -63,8 +63,13 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
   let updated = 0;
   let migrated = 0;
 
-  // Lines to update with kb:id markers (line index → new line content)
-  const lineUpdates = new Map<number, string>();
+  // Lines to update with kb:id markers (line index → { oldLine, newLine })
+  const lineUpdates = new Map<number, { oldLine: string; newLine: string }>();
+
+  // All IDs in DB for global collision check
+  const allDbIds = new Set(
+    (db.prepare('SELECT id FROM cards').all() as Array<{ id: string }>).map((r) => r.id),
+  );
 
   const insertStmt = db.prepare(`
     INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, sub_items, source_fingerprint)
@@ -90,9 +95,19 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
       let id: string;
       let needsMarkerStamp = false;
 
+      // Helper: check if ID is already used in this run or globally
+      const isIdUsed = (candidate: string) => seenIds.has(candidate) || allDbIds.has(candidate);
+
       if (task.kbId) {
-        // ✅ Task already has a stable kb:id marker
-        id = task.kbId;
+        if (seenIds.has(task.kbId)) {
+          // Duplicate kb:id in same file (copy/paste) — regenerate
+          console.warn(`[reconciler] Duplicate kb:id "${task.kbId}" in ${board.id}, regenerating`);
+          id = allocateUniqueKbId(isIdUsed);
+          needsMarkerStamp = true;
+        } else {
+          // ✅ Task already has a unique stable kb:id marker
+          id = task.kbId;
+        }
       } else {
         // No kb:id — try legacy fingerprint match
         const titleKey = task.title.trim().toLowerCase().replace(/\s+/g, ' ') + '|' + board.id;
@@ -100,25 +115,25 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         titleCounts.set(titleKey, collisionIndex + 1);
         const legacyId = computeFingerprint(task.title, board.id, collisionIndex);
 
-        if (existingById.has(legacyId)) {
+        if (existingById.has(legacyId) && !seenIds.has(legacyId)) {
           // Found existing card by legacy ID — migrate it
           id = legacyId;
           needsMarkerStamp = true;
           migrated++;
         } else {
-          // Completely new task — generate fresh kb:id
-          id = generateKbId();
+          // Completely new task — generate fresh unique kb:id
+          id = allocateUniqueKbId(isIdUsed);
           needsMarkerStamp = true;
         }
       }
 
       seenIds.add(id);
+      allDbIds.add(id); // Prevent cross-board collisions within same boot
 
-      // Schedule line update to stamp kb:id marker
+      // Schedule line update to stamp kb:id marker (store old line for safe matching)
       if (needsMarkerStamp) {
         const updatedLine = injectKbId(task.rawLine, id);
-        lineUpdates.set(task.lineNumber - 1, updatedLine); // 0-indexed
-        // Update rawLine for DB storage
+        lineUpdates.set(task.lineNumber - 1, { oldLine: task.rawLine, newLine: updatedLine });
         task.rawLine = updatedLine;
       }
 
@@ -180,27 +195,44 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
       // Re-read file to get latest content (may have changed during transaction)
       const freshContent = readFileSync(filePath, 'utf-8');
       const lines = freshContent.split('\n');
+      let stamped = 0;
 
-      for (const [lineIdx, newLine] of lineUpdates) {
-        if (lineIdx >= 0 && lineIdx < lines.length) {
+      for (const [lineIdx, { oldLine, newLine }] of lineUpdates) {
+        // Safety: verify the line at this index matches what we parsed
+        if (lineIdx >= 0 && lineIdx < lines.length && lines[lineIdx] === oldLine) {
           lines[lineIdx] = newLine;
+          stamped++;
+        } else {
+          // Line shifted or changed — search entire file for exact match
+          const foundIdx = lines.findIndex((l) => l === oldLine);
+          if (foundIdx !== -1) {
+            lines[foundIdx] = newLine;
+            stamped++;
+          } else {
+            console.warn(`[reconciler] Skipped unsafe stamp for line ${lineIdx + 1} in ${board.id} — line not found`);
+          }
         }
       }
 
-      const updatedContent = lines.join('\n');
-      const updatedHash = createHash('sha256').update(updatedContent).digest('hex');
+      if (stamped === 0) {
+        console.warn(`[reconciler] No lines stamped in ${board.id}, skipping file write`);
+        // sync state updated below in finally-adjacent block
+      } else {
+        const updatedContent = lines.join('\n');
+        const updatedHash = createHash('sha256').update(updatedContent).digest('hex');
 
-      // Atomic write
-      const tmpPath = filePath + '.tmp';
-      writeFileSync(tmpPath, updatedContent, 'utf-8');
-      renameSync(tmpPath, filePath);
+        // Atomic write
+        const tmpPath = filePath + '.tmp';
+        writeFileSync(tmpPath, updatedContent, 'utf-8');
+        renameSync(tmpPath, filePath);
 
-      // Update sync state with new hash (so we don't re-reconcile our own changes)
-      db.prepare(
-        `INSERT OR REPLACE INTO sync_state (file_path, file_hash, last_synced) VALUES (?, ?, datetime('now'))`,
-      ).run(filePath, updatedHash);
+        // Update sync state with new hash (so we don't re-reconcile our own changes)
+        db.prepare(
+          `INSERT OR REPLACE INTO sync_state (file_path, file_hash, last_synced) VALUES (?, ?, datetime('now'))`,
+        ).run(filePath, updatedHash);
 
-      console.log(`[reconciler] Stamped kb:id markers on ${lineUpdates.size} tasks in ${board.id}`);
+        console.log(`[reconciler] Stamped ${stamped}/${lineUpdates.size} kb:id markers in ${board.id}`);
+      }
     } catch (err) {
       console.error(`[reconciler] Failed to write kb:id markers for ${board.id}:`, err);
     } finally {
