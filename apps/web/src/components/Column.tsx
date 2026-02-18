@@ -1,4 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { Card } from '../types';
 import { DraggableCard } from './DraggableCard';
 import { AddCard } from './AddCard';
@@ -24,11 +25,15 @@ const COLUMN_COLORS: Record<string, string> = {
 };
 
 export function Column({ name, cards, boardId, onCardClick, onCardAdd, onColumnRename, onColumnDelete }: Props) {
-  const { setNodeRef, isOver } = useDroppable({ id: name });
+  const { setNodeRef, isOver } = useDroppable({
+    id: `column:${name}`,
+    data: { type: 'column', columnName: name },
+  });
+
+  const cardIds = cards.map((c) => c.id);
 
   return (
     <div
-      ref={setNodeRef}
       className="group/col flex flex-col w-80 min-w-[320px] shrink-0 rounded-lg transition-colors"
       style={isOver ? { backgroundColor: 'var(--board-drop-highlight)' } : undefined}
     >
@@ -44,11 +49,13 @@ export function Column({ name, cards, boardId, onCardClick, onCardAdd, onColumnR
         </div>
       </div>
 
-      {/* Cards list */}
-      <div className="flex flex-col gap-2 px-1 pb-2 flex-1 min-h-[100px]">
-        {cards.map((card) => (
-          <DraggableCard key={card.id} card={card} onClick={() => onCardClick(card)} />
-        ))}
+      {/* Cards list — sortable within column */}
+      <div ref={setNodeRef} className="flex flex-col gap-2 px-1 pb-2 flex-1 min-h-[100px]">
+        <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
+          {cards.map((card) => (
+            <DraggableCard key={card.id} card={card} onClick={() => onCardClick(card)} />
+          ))}
+        </SortableContext>
         {cards.length === 0 && !isOver && (
           <div
             className="text-xs text-board-text-muted text-center py-8 border border-dashed rounded-lg"
