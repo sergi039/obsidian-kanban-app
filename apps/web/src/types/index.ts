@@ -47,6 +47,20 @@ export interface BoardDetail {
   columns: Column[];
 }
 
+export interface View {
+  id: string;
+  board_id: string;
+  name: string;
+  layout: 'board' | 'table';
+  filter_query: string;
+  sort_field: string;
+  sort_dir: 'ASC' | 'DESC';
+  group_by: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface MoveCardRequest {
   column: string;
   position: number;

@@ -1,4 +1,4 @@
-import type { BoardSummary, BoardDetail, Card, Comment, MoveCardRequest, PatchCardRequest } from '../types';
+import type { BoardSummary, BoardDetail, Card, Comment, View, MoveCardRequest, PatchCardRequest } from '../types';
 
 const BASE = '/api';
 
@@ -101,4 +101,32 @@ export async function deleteComment(cardId: string, commentId: string): Promise<
   return request<{ ok: boolean }>(`/cards/${cardId}/comments/${commentId}`, {
     method: 'DELETE',
   });
+}
+
+// Views API
+export async function fetchViews(boardId: string): Promise<View[]> {
+  return request<View[]>(`/views?board_id=${boardId}`);
+}
+
+export async function createView(data: {
+  board_id: string;
+  name: string;
+  layout?: 'board' | 'table';
+  filter_query?: string;
+  sort_field?: string;
+  sort_dir?: 'ASC' | 'DESC';
+}): Promise<View> {
+  return request<View>('/views', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateView(viewId: string, patch: Partial<View>): Promise<View> {
+  return request<View>(`/views/${viewId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
+export async function deleteView(viewId: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/views/${viewId}`, { method: 'DELETE' });
+}
+
+export async function fetchViewCards(viewId: string): Promise<Card[]> {
+  return request<Card[]>(`/views/${viewId}/cards`);
 }

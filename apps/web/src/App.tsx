@@ -3,6 +3,8 @@ import { fetchBoards, fetchBoard, reloadSync, createCard, addColumn, renameColum
 import type { BoardSummary, BoardDetail } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
 import { Board } from './components/Board';
+import { TableView } from './components/TableView';
+import { ViewSwitcher } from './components/ViewSwitcher';
 import { Filters } from './components/Filters';
 import { CardDetail } from './components/CardDetail';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -17,6 +19,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
+  const [layout, setLayout] = useState<'board' | 'table'>('board');
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [syncing, setSyncing] = useState(false);
   const { theme, cycleTheme } = useTheme();
@@ -254,6 +257,7 @@ export default function App() {
             filterQuery={filterQuery}
             onFilterChange={setFilterQuery}
           />
+          <ViewSwitcher layout={layout} onLayoutChange={setLayout} />
           <button
             onClick={handleReload}
             disabled={syncing}
@@ -282,16 +286,23 @@ export default function App() {
       {/* Board */}
       <main className="flex-1 overflow-x-auto p-6">
         {boardDetail ? (
-          <Board
-            board={boardDetail}
-            filterCards={filterCards}
-            onCardMove={handleCardMove}
-            onCardClick={setSelectedCard}
-            onCardAdd={handleCardAdd}
-            onColumnAdd={handleColumnAdd}
-            onColumnRename={handleColumnRename}
-            onColumnDelete={handleColumnDelete}
-          />
+          layout === 'board' ? (
+            <Board
+              board={boardDetail}
+              filterCards={filterCards}
+              onCardMove={handleCardMove}
+              onCardClick={setSelectedCard}
+              onCardAdd={handleCardAdd}
+              onColumnAdd={handleColumnAdd}
+              onColumnRename={handleColumnRename}
+              onColumnDelete={handleColumnDelete}
+            />
+          ) : (
+            <TableView
+              cards={filterCards(boardDetail.columns.flatMap((col) => col.cards))}
+              onCardClick={setSelectedCard}
+            />
+          )
         ) : (
           <div className="text-board-text-muted text-center mt-20">Select a board</div>
         )}

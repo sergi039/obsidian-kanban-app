@@ -34,6 +34,20 @@ CREATE TABLE IF NOT EXISTS comments (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS views (
+  id TEXT PRIMARY KEY,
+  board_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  layout TEXT NOT NULL DEFAULT 'board',
+  filter_query TEXT DEFAULT '',
+  sort_field TEXT DEFAULT 'position',
+  sort_dir TEXT DEFAULT 'ASC',
+  group_by TEXT DEFAULT '',
+  is_default INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS sync_state (
   file_path TEXT PRIMARY KEY,
   file_hash TEXT NOT NULL,
@@ -52,6 +66,20 @@ const INDEXES = [
 const MIGRATIONS = [
   // Add description column if missing (for existing DBs)
   `ALTER TABLE cards ADD COLUMN description TEXT DEFAULT ''`,
+  // Create views table if missing
+  `CREATE TABLE IF NOT EXISTS views (
+    id TEXT PRIMARY KEY,
+    board_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    layout TEXT NOT NULL DEFAULT 'board',
+    filter_query TEXT DEFAULT '',
+    sort_field TEXT DEFAULT 'position',
+    sort_dir TEXT DEFAULT 'ASC',
+    group_by TEXT DEFAULT '',
+    is_default INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`,
   // Create comments table if missing
   `CREATE TABLE IF NOT EXISTS comments (
     id TEXT PRIMARY KEY,
