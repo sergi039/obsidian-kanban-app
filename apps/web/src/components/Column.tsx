@@ -10,7 +10,7 @@ interface Props {
 }
 
 const COLUMN_COLORS: Record<string, string> = {
-  Backlog: 'bg-gray-500',
+  Backlog: 'bg-gray-400 dark:bg-gray-500',
   'In Progress': 'bg-blue-500',
   Blocked: 'bg-red-500',
   Done: 'bg-green-500',

@@ -7,15 +7,15 @@ const config: Config = {
     extend: {
       colors: {
         board: {
-          bg: '#0d1117',
-          column: '#161b22',
-          card: '#1c2128',
-          'card-hover': '#242a33',
-          border: '#30363d',
-          'border-hover': '#484f58',
-          text: '#e6edf3',
-          'text-muted': '#7d8590',
-          accent: '#58a6ff',
+          bg: 'var(--board-bg)',
+          column: 'var(--board-column)',
+          card: 'var(--board-card)',
+          'card-hover': 'var(--board-card-hover)',
+          border: 'var(--board-border)',
+          'border-hover': 'var(--board-border-hover)',
+          text: 'var(--board-text)',
+          'text-muted': 'var(--board-text-muted)',
+          accent: 'var(--board-accent)',
         },
         priority: {
           high: '#d29922',

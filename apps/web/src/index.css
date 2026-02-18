@@ -2,6 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  /* Light theme (default) */
+  :root {
+    --board-bg: #ffffff;
+    --board-column: #f6f8fa;
+    --board-card: #ffffff;
+    --board-card-hover: #f3f4f6;
+    --board-border: #d0d7de;
+    --board-border-hover: #afb8c1;
+    --board-text: #1f2328;
+    --board-text-muted: #656d76;
+    --board-accent: #0969da;
+  }
+
+  /* Dark theme */
+  .dark {
+    --board-bg: #0d1117;
+    --board-column: #161b22;
+    --board-card: #1c2128;
+    --board-card-hover: #242a33;
+    --board-border: #30363d;
+    --board-border-hover: #484f58;
+    --board-text: #e6edf3;
+    --board-text-muted: #7d8590;
+    --board-accent: #58a6ff;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+    background-color: var(--board-bg);
+    color: var(--board-text);
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--board-border);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--board-border-hover);
+  }
+}
+
 @layer utilities {
   .sr-only {
     position: absolute;
@@ -13,29 +65,5 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border-width: 0;
-  }
-}
-
-@layer base {
-  * {
-    box-sizing: border-box;
-  }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
-  }
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: #30363d;
-    border-radius: 4px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #484f58;
   }
 }

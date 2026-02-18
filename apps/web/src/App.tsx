@@ -6,6 +6,8 @@ import { Board } from './components/Board';
 import { Filters } from './components/Filters';
 import { CardDetail } from './components/CardDetail';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useTheme } from './hooks/useTheme';
+import { ThemeToggle } from './components/ThemeToggle';
 import type { Card } from './types';
 
 export default function App() {
@@ -18,6 +20,7 @@ export default function App() {
   const [priorityFilter, setPriorityFilter] = useState<string>('');
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const { theme, cycleTheme } = useTheme();
 
   // Load boards list
   useEffect(() => {
@@ -144,12 +147,13 @@ export default function App() {
           >
             {syncing ? '⏳ Syncing…' : '↻ Sync'}
           </button>
+          <ThemeToggle theme={theme} onCycle={cycleTheme} />
         </div>
       </header>
 
       {/* Error banner */}
       {error && (
-        <div className="bg-red-900/30 border-b border-red-700/50 px-6 py-2 text-sm text-red-400">
+        <div className="bg-red-100 dark:bg-red-900/30 border-b border-red-300 dark:border-red-700/50 px-6 py-2 text-sm text-red-700 dark:text-red-400">
           ⚠️ {error}
           <button
             onClick={() => setError(null)}
