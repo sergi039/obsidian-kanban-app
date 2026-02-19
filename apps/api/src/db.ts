@@ -153,6 +153,23 @@ const MIGRATIONS = [
   )`,
 ];
 
+/**
+ * Create an isolated in-memory database for testing.
+ * Does NOT set the global singleton — safe for parallel tests.
+ */
+export function createTestDb(): Database.Database {
+  const testDb = new Database(':memory:');
+  testDb.pragma('foreign_keys = ON');
+  testDb.exec(SCHEMA);
+  for (const sql of INDEXES) {
+    testDb.exec(sql);
+  }
+  for (const sql of MIGRATIONS) {
+    try { testDb.exec(sql); } catch { /* already exists */ }
+  }
+  return testDb;
+}
+
 export function getDb(dbPath?: string): Database.Database {
   if (db) return db;
 

@@ -1,27 +1,30 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { getDb } from '../src/db.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createTestDb } from '../src/db.js';
+import type Database from 'better-sqlite3';
+
+let testDb: Database.Database;
 
 function insertCard(id: string, boardId: string, column: string, position: number) {
-  const db = getDb();
-  db.prepare(`
+  testDb.prepare(`
     INSERT OR REPLACE INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, labels, sub_items, source_fingerprint)
     VALUES (?, ?, ?, ?, ?, ?, 1, 0, null, '[]', '[]', 'fp')
   `).run(id, boardId, column, position, `Task ${id}`, `- [ ] Task ${id}`);
 }
 
 function getPositions(boardId: string, column: string): Array<{ id: string; position: number }> {
-  const db = getDb();
-  return db.prepare('SELECT id, position FROM cards WHERE board_id = ? AND column_name = ? ORDER BY position').all(boardId, column) as Array<{ id: string; position: number }>;
+  return testDb.prepare('SELECT id, position FROM cards WHERE board_id = ? AND column_name = ? ORDER BY position').all(boardId, column) as Array<{ id: string; position: number }>;
 }
 
 describe('card move ordering', () => {
   beforeEach(() => {
-    const db = getDb();
-    db.prepare('DELETE FROM cards').run();
+    testDb = createTestDb();
+  });
+
+  afterEach(() => {
+    testDb.close();
   });
 
   it('cross-column move: closes gap in source, makes room in target', () => {
-    const db = getDb();
     // Source column: a(0), b(1), c(2)
     insertCard('a', 'b1', 'Backlog', 0);
     insertCard('b', 'b1', 'Backlog', 1);
@@ -31,13 +34,13 @@ describe('card move ordering', () => {
     insertCard('e', 'b1', 'Done', 1);
 
     // Move 'b' from Backlog pos=1 → Done pos=1
-    const moveTransaction = db.transaction(() => {
+    const moveTransaction = testDb.transaction(() => {
       // Close gap in source
-      db.prepare('UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ?').run('b1', 'Backlog', 1);
+      testDb.prepare('UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ?').run('b1', 'Backlog', 1);
       // Make room in target
-      db.prepare('UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ?').run('b1', 'Done', 1);
+      testDb.prepare('UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ?').run('b1', 'Done', 1);
       // Move card
-      db.prepare('UPDATE cards SET column_name = ?, position = ? WHERE id = ?').run('Done', 1, 'b');
+      testDb.prepare('UPDATE cards SET column_name = ?, position = ? WHERE id = ?').run('Done', 1, 'b');
     });
     moveTransaction();
 
@@ -58,7 +61,6 @@ describe('card move ordering', () => {
   });
 
   it('same-column move down: a(0) b(1) c(2) d(3) → move a to pos 2', () => {
-    const db = getDb();
     insertCard('a', 'b1', 'Backlog', 0);
     insertCard('b', 'b1', 'Backlog', 1);
     insertCard('c', 'b1', 'Backlog', 2);
@@ -67,9 +69,9 @@ describe('card move ordering', () => {
     const oldPos = 0;
     const newPos = 2;
     // Moving down: shift [old+1, new] up by 1
-    db.prepare('UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ? AND position <= ? AND id != ?')
+    testDb.prepare('UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ? AND position <= ? AND id != ?')
       .run('b1', 'Backlog', oldPos, newPos, 'a');
-    db.prepare('UPDATE cards SET position = ? WHERE id = ?').run(newPos, 'a');
+    testDb.prepare('UPDATE cards SET position = ? WHERE id = ?').run(newPos, 'a');
 
     const result = getPositions('b1', 'Backlog');
     expect(result).toEqual([
@@ -81,7 +83,6 @@ describe('card move ordering', () => {
   });
 
   it('same-column move up: a(0) b(1) c(2) d(3) → move c to pos 0', () => {
-    const db = getDb();
     insertCard('a', 'b1', 'Backlog', 0);
     insertCard('b', 'b1', 'Backlog', 1);
     insertCard('c', 'b1', 'Backlog', 2);
@@ -90,9 +91,9 @@ describe('card move ordering', () => {
     const oldPos = 2;
     const newPos = 0;
     // Moving up: shift [new, old-1] down by 1
-    db.prepare('UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ? AND position < ? AND id != ?')
+    testDb.prepare('UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ? AND position < ? AND id != ?')
       .run('b1', 'Backlog', newPos, oldPos, 'c');
-    db.prepare('UPDATE cards SET position = ? WHERE id = ?').run(newPos, 'c');
+    testDb.prepare('UPDATE cards SET position = ? WHERE id = ?').run(newPos, 'c');
 
     const result = getPositions('b1', 'Backlog');
     expect(result).toEqual([

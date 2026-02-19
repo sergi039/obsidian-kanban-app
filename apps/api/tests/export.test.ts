@@ -1,8 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { getDb } from '../src/db.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createTestDb } from '../src/db.js';
+import type Database from 'better-sqlite3';
+
+let testDb: Database.Database;
 
 function insertCard(
-  db: ReturnType<typeof getDb>,
+  db: Database.Database,
   id: string,
   boardId: string,
   column: string,
@@ -63,17 +66,19 @@ describe('export formatters', () => {
 
 describe('export route DB integration', () => {
   beforeEach(() => {
-    const db = getDb();
-    db.prepare('DELETE FROM cards').run();
+    testDb = createTestDb();
+  });
+
+  afterEach(() => {
+    testDb.close();
   });
 
   it('returns cards grouped by column', () => {
-    const db = getDb();
-    insertCard(db, 'e1', 'test', 'Backlog', 0, 'Task 1', false);
-    insertCard(db, 'e2', 'test', 'Backlog', 1, 'Task 2', false, 'high');
-    insertCard(db, 'e3', 'test', 'Done', 0, 'Task 3', true);
+    insertCard(testDb, 'e1', 'test', 'Backlog', 0, 'Task 1', false);
+    insertCard(testDb, 'e2', 'test', 'Backlog', 1, 'Task 2', false, 'high');
+    insertCard(testDb, 'e3', 'test', 'Done', 0, 'Task 3', true);
 
-    const cards = db.prepare('SELECT * FROM cards WHERE board_id = ? ORDER BY column_name, position').all('test') as Array<{ column_name: string }>;
+    const cards = testDb.prepare('SELECT * FROM cards WHERE board_id = ? ORDER BY column_name, position').all('test') as Array<{ column_name: string }>;
 
     const columns = new Map<string, typeof cards>();
     for (const card of cards) {
@@ -87,25 +92,22 @@ describe('export route DB integration', () => {
   });
 
   it('handles board with no cards', () => {
-    const db = getDb();
-    const card = db.prepare('SELECT board_id FROM cards WHERE board_id = ? LIMIT 1').get('empty');
+    const card = testDb.prepare('SELECT board_id FROM cards WHERE board_id = ? LIMIT 1').get('empty');
     expect(card).toBeUndefined();
   });
 
   it('cards have sub_items as JSON', () => {
-    const db = getDb();
-    insertCard(db, 'e4', 'test', 'Backlog', 0, 'Task with subs', false, null, ['sub 1', 'sub 2']);
+    insertCard(testDb, 'e4', 'test', 'Backlog', 0, 'Task with subs', false, null, ['sub 1', 'sub 2']);
 
-    const card = db.prepare('SELECT sub_items FROM cards WHERE id = ?').get('e4') as { sub_items: string };
+    const card = testDb.prepare('SELECT sub_items FROM cards WHERE id = ?').get('e4') as { sub_items: string };
     const subs = JSON.parse(card.sub_items);
     expect(subs).toEqual(['sub 1', 'sub 2']);
   });
 
   it('cards have due_date', () => {
-    const db = getDb();
-    insertCard(db, 'e5', 'test', 'Backlog', 0, 'Task with due', false, null, [], '2026-03-01');
+    insertCard(testDb, 'e5', 'test', 'Backlog', 0, 'Task with due', false, null, [], '2026-03-01');
 
-    const card = db.prepare('SELECT due_date FROM cards WHERE id = ?').get('e5') as { due_date: string };
+    const card = testDb.prepare('SELECT due_date FROM cards WHERE id = ?').get('e5') as { due_date: string };
     expect(card.due_date).toBe('2026-03-01');
   });
 });
