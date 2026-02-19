@@ -5,11 +5,11 @@ interface Props {
 
 export function ViewSwitcher({ layout, onLayoutChange }: Props) {
   return (
-    <div className="flex items-center bg-board-column rounded-md border border-board-border overflow-hidden">
+    <div className="flex items-center bg-board-column rounded-md border border-board-border overflow-hidden h-8">
       <button
         onClick={() => onLayoutChange('board')}
         aria-pressed={layout === 'board'}
-        className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+        className={`px-2.5 h-8 text-xs font-medium transition-colors ${
           layout === 'board'
             ? 'bg-board-card text-board-text shadow-sm'
             : 'text-board-text-muted hover:text-board-text'
@@ -21,7 +21,7 @@ export function ViewSwitcher({ layout, onLayoutChange }: Props) {
       <button
         onClick={() => onLayoutChange('table')}
         aria-pressed={layout === 'table'}
-        className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+        className={`px-2.5 h-8 text-xs font-medium transition-colors ${
           layout === 'table'
             ? 'bg-board-card text-board-text shadow-sm'
             : 'text-board-text-muted hover:text-board-text'

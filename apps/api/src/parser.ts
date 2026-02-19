@@ -10,14 +10,16 @@ export interface ParsedTask {
   subItems: string[];
   /** Stable ID from <!-- kb:id=xxx --> marker, if present */
   kbId: string | null;
+  /** Column name from <!-- kb:id=xxx kb:col=XXX --> marker, if present */
+  kbCol: string | null;
 }
 
 const TASK_RE = /^(\s*)- \[([ xX])\]\s+(.*)/;
 const BARE_URL_RE = /https?:\/\/[^\s)\]]+/g;
 const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
 
-/** Regex to extract kb:id from HTML comment marker */
-const KB_ID_RE = /<!--\s*kb:id=([a-zA-Z0-9_-]+)\s*-->/;
+/** Regex to extract kb:id (and optional kb:col) from HTML comment marker */
+const KB_ID_RE = /<!--\s*kb:id=([a-zA-Z0-9_-]+)(?:\s+kb:col=([A-Za-z0-9+_-]+))?\s*-->/;
 
 /**
  * Generate a new stable kb:id (8 chars, hex).
@@ -54,11 +56,45 @@ export function extractKbId(line: string): string | null {
 }
 
 /**
+ * Extract kb:col from a task line (HTML comment marker).
+ * Returns null if no marker found.
+ * Decodes '+' back to spaces.
+ */
+export function extractKbCol(line: string): string | null {
+  const match = line.match(KB_ID_RE);
+  return match?.[2] ? match[2].replace(/\+/g, ' ') : null;
+}
+
+/** Encode column name for marker: spaces → '+' */
+export function encodeCol(col: string): string {
+  return col.replace(/ /g, '+');
+}
+
+/**
+ * Inject or update kb:col in an existing marker line.
+ * If marker has no kb:col, adds it. If it has one, replaces it.
+ * If col is null/empty, removes kb:col from marker.
+ */
+export function injectKbCol(line: string, col: string | null): string {
+  const match = line.match(KB_ID_RE);
+  if (!match) return line; // no marker to update
+
+  const id = match[1];
+  const colPart = col ? ` kb:col=${encodeCol(col)}` : '';
+  const newMarker = `<!-- kb:id=${id}${colPart} -->`;
+  return line.replace(KB_ID_RE, newMarker);
+}
+
+/**
  * Inject or replace <!-- kb:id=xxx --> marker in a task line.
  * Places it at the end of the line (before trailing whitespace).
+ * Preserves existing kb:col if present.
  */
-export function injectKbId(line: string, kbId: string): string {
-  const marker = `<!-- kb:id=${kbId} -->`;
+export function injectKbId(line: string, kbId: string, col?: string | null): string {
+  const existingCol = extractKbCol(line);
+  const colVal = col ?? existingCol;
+  const colPart = colVal ? ` kb:col=${encodeCol(colVal)}` : '';
+  const marker = `<!-- kb:id=${kbId}${colPart} -->`;
   // Replace existing marker if present
   if (KB_ID_RE.test(line)) {
     return line.replace(KB_ID_RE, marker);
@@ -114,8 +150,9 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
       const isDone = match[2].toLowerCase() === 'x';
       const rawTitleText = match[3].trimEnd();
 
-      // Extract kb:id marker (if present) and strip from display title
+      // Extract kb:id and kb:col markers (if present) and strip from display title
       const kbId = extractKbId(rawTitleText);
+      const kbCol = extractKbCol(rawTitleText);
       const titleText = stripKbIdFromTitle(rawTitleText);
 
       let priority: 'high' | 'urgent' | null = null;
@@ -142,6 +179,7 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
         urls,
         subItems: [],
         kbId,
+        kbCol,
       };
       continue;
     }

@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import { getDb } from '../db.js';
 import { loadConfig } from '../config.js';
-import { writeBackDoneState } from '../writeback.js';
+import { writeBackDoneState, writeBackPriority, writeBackColumn } from '../writeback.js';
 import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
 import { allocateUniqueKbId, injectKbId } from '../parser.js';
@@ -106,10 +106,14 @@ cards.post('/', async (c) => {
     // Insert into DB
     const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ?').get(board_id, colName) as { mp: number | null }).mp ?? -1;
 
+    // Get next seq_id for this board
+    const maxSeqRow = db.prepare('SELECT COALESCE(MAX(seq_id), 0) as max_seq FROM cards WHERE board_id = ?').get(board_id) as { max_seq: number };
+    const nextSeqId = maxSeqRow.max_seq + 1;
+
     db.prepare(`
-      INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, labels, sub_items, source_fingerprint)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, null, '[]', '[]', ?)
-    `).run(id, board_id, colName, maxPos + 1, title, newLine, lineNumber, createHash('sha256').update(newLine).digest('hex').slice(0, 16));
+      INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, labels, sub_items, source_fingerprint, seq_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, null, '[]', '[]', ?, ?)
+    `).run(id, board_id, colName, maxPos + 1, title, newLine, lineNumber, createHash('sha256').update(newLine).digest('hex').slice(0, 16), nextSeqId);
 
     const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
 
@@ -166,6 +170,9 @@ cards.patch('/:id', async (c) => {
     sets.push('priority = ?');
     params.push(fields.priority);
   }
+
+  // Track if priority changed for writeback
+  const priorityChanged = fields.priority !== undefined;
   if (fields.due_date !== undefined) {
     sets.push('due_date = ?');
     params.push(fields.due_date);
@@ -183,6 +190,32 @@ cards.patch('/:id', async (c) => {
   params.push(id);
 
   db.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+
+  // Write back priority to .md file
+  if (priorityChanged) {
+    suppressWatcher();
+    try {
+      const result = writeBackPriority(id, fields.priority ?? null);
+      if (!result.success) {
+        console.warn(`[writeback] Priority failed for card ${id}: ${result.error}`);
+      }
+    } finally {
+      unsuppressWatcher();
+    }
+  }
+
+  // Write back column to .md file (for recovery)
+  if (fields.column_name !== undefined) {
+    suppressWatcher();
+    try {
+      const result = writeBackColumn(id, fields.column_name);
+      if (!result.success) {
+        console.warn(`[writeback] Column failed for card ${id}: ${result.error}`);
+      }
+    } finally {
+      unsuppressWatcher();
+    }
+  }
 
   const updated = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
 
@@ -278,6 +311,19 @@ cards.post('/:id/move', async (c) => {
     } catch (err) {
       writeBackError = String(err);
       console.error(`[writeback] Unexpected error for card ${id}:`, err);
+    } finally {
+      unsuppressWatcher();
+    }
+  }
+
+  // Always write back column to .md for recovery
+  if (oldColumn !== column) {
+    suppressWatcher();
+    try {
+      const colResult = writeBackColumn(id, column);
+      if (!colResult.success) {
+        console.warn(`[writeback] Column failed for card ${id}: ${colResult.error}`);
+      }
     } finally {
       unsuppressWatcher();
     }

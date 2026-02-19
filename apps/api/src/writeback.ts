@@ -7,9 +7,10 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { suppressWatcher, unsuppressWatcher } from './watcher.js';
 import { loadConfig } from './config.js';
 import { getDb } from './db.js';
-import { extractKbId } from './parser.js';
+import { extractKbId, injectKbCol } from './parser.js';
 
 export interface WriteBackResult {
   success: boolean;
@@ -151,6 +152,221 @@ export function writeBackDoneState(
       error: String(err),
     };
   }
+}
+
+/**
+ * Write-back priority emoji to .md file.
+ * Adds, removes, or changes 🔺 (urgent) / ⏫ (high) in the task line.
+ */
+export function writeBackPriority(
+  cardId: string,
+  priority: 'urgent' | 'high' | null,
+): WriteBackResult {
+  const db = getDb();
+  const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(cardId) as
+    | { board_id: string; line_number: number; raw_line: string; title: string }
+    | undefined;
+
+  if (!card) {
+    return { success: false, changed: false, lineNumber: 0, error: 'Card not found' };
+  }
+
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === card.board_id);
+  if (!board) {
+    return { success: false, changed: false, lineNumber: card.line_number, error: 'Board config not found' };
+  }
+
+  const filePath = path.join(config.vaultRoot, board.file);
+
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+
+    // Find the correct line (by kb:id)
+    const cardKbId = extractKbId(card.raw_line);
+    let lineIdx = card.line_number - 1;
+
+    // Verify or find correct line
+    if (cardKbId) {
+      const fileKbId = lineIdx >= 0 && lineIdx < lines.length ? extractKbId(lines[lineIdx]) : null;
+      if (fileKbId !== cardKbId) {
+        // Search for it
+        const found = lines.findIndex((l) => extractKbId(l) === cardKbId);
+        if (found === -1) {
+          return { success: false, changed: false, lineNumber: card.line_number, error: 'Line not found by kb:id' };
+        }
+        lineIdx = found;
+      }
+    }
+
+    if (lineIdx < 0 || lineIdx >= lines.length) {
+      return { success: false, changed: false, lineNumber: card.line_number, error: 'Line number out of range' };
+    }
+
+    let line = lines[lineIdx];
+
+    // Remove existing priority emoji
+    const hadUrgent = line.includes('🔺');
+    const hadHigh = line.includes('⏫');
+    line = line.replace(/\s*🔺/g, '').replace(/\s*⏫/g, '');
+
+    // Add new priority emoji (after checkbox, before title text)
+    if (priority) {
+      const emoji = priority === 'urgent' ? '🔺' : '⏫';
+      // Insert after "- [ ] " or "- [x] "
+      line = line.replace(/^(\s*- \[[ xX]\]\s*)/, `$1${emoji} `);
+    }
+
+    const alreadyCorrect =
+      (priority === 'urgent' && hadUrgent && !hadHigh) ||
+      (priority === 'high' && hadHigh && !hadUrgent) ||
+      (priority === null && !hadUrgent && !hadHigh);
+
+    if (alreadyCorrect) {
+      return { success: true, changed: false, lineNumber: lineIdx + 1 };
+    }
+
+    lines[lineIdx] = line;
+    atomicWrite(filePath, lines.join('\n'));
+
+    // Update raw_line and line_number in DB
+    db.prepare('UPDATE cards SET raw_line = ?, line_number = ? WHERE id = ?').run(line, lineIdx + 1, cardId);
+
+    console.log(`[writeback] Card ${cardId} priority → ${priority ?? 'none'} at line ${lineIdx + 1}`);
+    return { success: true, changed: true, lineNumber: lineIdx + 1 };
+  } catch (err) {
+    return { success: false, changed: false, lineNumber: card.line_number, error: String(err) };
+  }
+}
+
+/**
+ * Write-back column name to .md file marker.
+ * Updates <!-- kb:id=xxx --> to <!-- kb:id=xxx kb:col=ColName -->.
+ * This enables recovery: if DB is lost, reconciler reads kb:col from .md.
+ */
+export function writeBackColumn(
+  cardId: string,
+  column: string,
+): WriteBackResult {
+  const db = getDb();
+  const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(cardId) as
+    | { board_id: string; line_number: number; raw_line: string }
+    | undefined;
+
+  if (!card) {
+    return { success: false, changed: false, lineNumber: 0, error: 'Card not found' };
+  }
+
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === card.board_id);
+  if (!board) {
+    return { success: false, changed: false, lineNumber: card.line_number, error: 'Board config not found' };
+  }
+
+  const filePath = path.join(config.vaultRoot, board.file);
+
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+
+    // Find the correct line by kb:id
+    const cardKbId = extractKbId(card.raw_line);
+    if (!cardKbId) {
+      return { success: false, changed: false, lineNumber: card.line_number, error: 'Card has no kb:id marker' };
+    }
+
+    let lineIdx = card.line_number - 1;
+    const fileKbId = lineIdx >= 0 && lineIdx < lines.length ? extractKbId(lines[lineIdx]) : null;
+    if (fileKbId !== cardKbId) {
+      const found = lines.findIndex((l) => extractKbId(l) === cardKbId);
+      if (found === -1) {
+        return { success: false, changed: false, lineNumber: card.line_number, error: 'Line not found by kb:id' };
+      }
+      lineIdx = found;
+    }
+
+    const updatedLine = injectKbCol(lines[lineIdx], column);
+    if (updatedLine === lines[lineIdx]) {
+      return { success: true, changed: false, lineNumber: lineIdx + 1 };
+    }
+
+    lines[lineIdx] = updatedLine;
+    atomicWrite(filePath, lines.join('\n'));
+
+    // Update raw_line in DB to keep in sync
+    db.prepare('UPDATE cards SET raw_line = ?, line_number = ? WHERE id = ?').run(updatedLine, lineIdx + 1, cardId);
+
+    return { success: true, changed: true, lineNumber: lineIdx + 1 };
+  } catch (err) {
+    return { success: false, changed: false, lineNumber: card.line_number, error: String(err) };
+  }
+}
+
+/**
+ * Stamp current column assignments from DB into all .md files.
+ * Called on startup to ensure .md files have kb:col markers.
+ * Returns number of lines updated.
+ */
+export function stampAllColumns(): number {
+  const db = getDb();
+  const config = loadConfig();
+  let totalStamped = 0;
+
+  for (const board of config.boards) {
+    const filePath = path.join(config.vaultRoot, board.file);
+    let content: string;
+    try {
+      content = readFileSync(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+
+    const cards = db.prepare('SELECT id, column_name, raw_line, line_number FROM cards WHERE board_id = ?').all(board.id) as Array<{
+      id: string; column_name: string; raw_line: string; line_number: number;
+    }>;
+
+    if (cards.length === 0) continue;
+
+    const lines = content.split('\n');
+    let changed = false;
+
+    for (const card of cards) {
+      const cardKbId = extractKbId(card.raw_line);
+      if (!cardKbId) continue;
+
+      // Find line by kb:id
+      let lineIdx = card.line_number - 1;
+      const fileKbId = lineIdx >= 0 && lineIdx < lines.length ? extractKbId(lines[lineIdx]) : null;
+      if (fileKbId !== cardKbId) {
+        lineIdx = lines.findIndex((l) => extractKbId(l) === cardKbId);
+        if (lineIdx === -1) continue;
+      }
+
+      const updatedLine = injectKbCol(lines[lineIdx], card.column_name);
+      if (updatedLine !== lines[lineIdx]) {
+        lines[lineIdx] = updatedLine;
+        changed = true;
+        totalStamped++;
+
+        // Update raw_line in DB
+        db.prepare('UPDATE cards SET raw_line = ?, line_number = ? WHERE id = ?').run(updatedLine, lineIdx + 1, card.id);
+      }
+    }
+
+    if (changed) {
+      suppressWatcher();
+      try {
+        atomicWrite(filePath, lines.join('\n'));
+        const newHash = createHash('sha256').update(lines.join('\n')).digest('hex');
+        db.prepare(`INSERT OR REPLACE INTO sync_state (file_path, file_hash, last_synced) VALUES (?, ?, datetime('now'))`).run(filePath, newHash);
+      } finally {
+        unsuppressWatcher();
+      }
+    }
+  }
+
+  return totalStamped;
 }
 
 /**

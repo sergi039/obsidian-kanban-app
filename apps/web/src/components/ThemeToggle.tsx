@@ -21,7 +21,7 @@ export function ThemeToggle({ theme, onCycle }: Props) {
       onClick={onCycle}
       aria-label={LABELS[theme]}
       title={`${LABELS[theme]} — click to cycle`}
-      className="px-2 py-1.5 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md transition-colors"
+      className="px-2 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md transition-colors"
     >
       {ICONS[theme]}
     </button>

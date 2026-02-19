@@ -1,5 +1,6 @@
 export interface Card {
   id: string;
+  seq_id: number | null;
   board_id: string;
   column_name: string;
   position: number;

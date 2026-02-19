@@ -62,9 +62,14 @@ export function KanbanCard({ card, onClick }: Props) {
         />
       )}
 
+      {/* Card ID badge (like GitHub #123) */}
+      <span className="text-[10px] font-mono text-board-text-muted opacity-60 select-none">
+        #{card.seq_id ?? card.id}
+      </span>
+
       {/* Title */}
       <p
-        className={`text-sm leading-snug ${
+        className={`text-sm leading-snug mt-0.5 ${
           card.is_done ? 'line-through text-board-text-muted' : 'text-board-text'
         }`}
       >

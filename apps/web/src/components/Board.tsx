@@ -3,16 +3,19 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
-  KeyboardSensor,
   useSensor,
   useSensors,
-  closestCorners,
+  pointerWithin,
+  rectIntersection,
+  closestCenter,
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
+  type CollisionDetection,
+  type UniqueIdentifier,
 } from '@dnd-kit/core';
-import { arrayMove } from '@dnd-kit/sortable';
-import { moveCard } from '../api/client';
+import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable';
+import { moveCard, reorderColumns } from '../api/client';
 import type { BoardDetail, Card } from '../types';
 import { Column } from './Column';
 import { KanbanCard } from './Card';
@@ -29,25 +32,33 @@ interface Props {
   onColumnDelete: (name: string) => Promise<void>;
 }
 
-/** Find which column a card belongs to */
-function findColumnForCard(
-  columns: BoardDetail['columns'],
-  cardId: string,
-): { colIndex: number; cardIndex: number } | null {
-  for (let ci = 0; ci < columns.length; ci++) {
-    const cardIdx = columns[ci].cards.findIndex((c) => c.id === cardId);
-    if (cardIdx !== -1) return { colIndex: ci, cardIndex: cardIdx };
+// ---- Collision detection: same as working test ----
+const kanbanCollision: CollisionDetection = (args) => {
+  const pw = pointerWithin(args);
+  if (pw.length > 0) {
+    const cards = pw.filter((c) => {
+      const container = args.droppableContainers.find((dc) => dc.id === c.id);
+      return container?.data?.current?.type === 'card';
+    });
+    if (cards.length > 0) {
+      return closestCenter({
+        ...args,
+        droppableContainers: args.droppableContainers.filter((c) =>
+          cards.some((cc) => cc.id === c.id),
+        ),
+      });
+    }
+    return pw;
   }
-  return null;
-}
+  return rectIntersection(args);
+};
 
-/** Parse a droppable ID to get column name */
-function getColumnName(id: string): string | null {
-  if (typeof id === 'string' && id.startsWith('column:')) {
-    return id.slice(7);
-  }
-  return null;
-}
+// Column sortable ID prefix
+const COL_PREFIX = 'col:';
+const DROP_PREFIX = 'drop:';
+const toColId = (name: string) => `${COL_PREFIX}${name}`;
+const fromColId = (id: string) => id.startsWith(COL_PREFIX) ? id.slice(COL_PREFIX.length) : null;
+const fromDropId = (id: string) => id.startsWith(DROP_PREFIX) ? id.slice(DROP_PREFIX.length) : null;
 
 export function Board({
   board,
@@ -60,14 +71,13 @@ export function Board({
   onColumnDelete,
 }: Props) {
   const [activeCard, setActiveCard] = useState<Card | null>(null);
-  // Optimistic local state — null means use board from props
+  const [activeColName, setActiveColName] = useState<string | null>(null);
   const [localColumns, setLocalColumns] = useState<BoardDetail['columns'] | null>(null);
-  // Track the original column when drag starts (before optimistic moves)
-  const dragOriginRef = useRef<{ columnName: string; position: number } | null>(null);
+  const dragOriginRef = useRef<{ columnName: string } | null>(null);
 
   const columns = localColumns || board.columns;
+  const columnSortableIds = columns.map((c) => toColId(c.name));
 
-  // Reset local state when board prop changes (e.g. after server reload)
   const prevBoardRef = useRef(board);
   useEffect(() => {
     if (board !== prevBoardRef.current) {
@@ -77,8 +87,28 @@ export function Board({
   }, [board]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  // ---- Find which column contains a card or is the ID itself ----
+  const findContainer = useCallback(
+    (id: UniqueIdentifier): string | null => {
+      const sid = String(id);
+      // Is it a column sortable id?
+      const colName = fromColId(sid);
+      if (colName) return colName;
+      // Is it a column drop zone?
+      const dropName = fromDropId(sid);
+      if (dropName) return dropName;
+      // Is it a column name directly?
+      if (columns.find((c) => c.name === sid)) return sid;
+      // Find card's column
+      for (const col of columns) {
+        if (col.cards.find((c) => c.id === sid)) return col.name;
+      }
+      return null;
+    },
+    [columns],
   );
 
   const findCard = useCallback(
@@ -92,165 +122,156 @@ export function Board({
     [columns],
   );
 
+  // ---- Drag Start ----
   const handleDragStart = (event: DragStartEvent) => {
-    const card = findCard(String(event.active.id));
+    const id = String(event.active.id);
+    const data = event.active.data.current;
+
+    if (data?.type === 'column') {
+      setActiveColName(data.columnName);
+      return;
+    }
+
+    const card = findCard(id);
     if (card) {
       setActiveCard(card);
-      // Remember where the card started
-      const currentCols = localColumns || board.columns;
-      const pos = findColumnForCard(currentCols, card.id);
-      if (pos) {
-        dragOriginRef.current = {
-          columnName: currentCols[pos.colIndex].name,
-          position: pos.cardIndex,
-        };
-      }
+      const container = findContainer(id);
+      if (container) dragOriginRef.current = { columnName: container };
     }
   };
 
-  // DragOver: move card between columns optimistically during drag
+  // ---- Drag Over: cross-column card moves (same pattern as test) ----
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
 
-    const activeId = String(active.id);
-    const overId = String(over.id);
+    // Skip if dragging a column
+    if (active.data.current?.type === 'column') return;
 
-    const currentCols = localColumns || board.columns;
-    const activePos = findColumnForCard(currentCols, activeId);
-    if (!activePos) return;
+    const activeContainer = findContainer(active.id);
+    const overContainer = findContainer(over.id);
 
-    // Target could be a column droppable or another card
-    const targetColName = getColumnName(overId);
-    let targetColIndex: number;
-    let targetCardIndex: number;
+    if (!activeContainer || !overContainer || activeContainer === overContainer) return;
 
-    if (targetColName) {
-      // Dropped on column container (empty area or bottom)
-      targetColIndex = currentCols.findIndex((c) => c.name === targetColName);
-      if (targetColIndex === -1) return;
-      targetCardIndex = currentCols[targetColIndex].cards.length;
-    } else {
-      // Over another card
-      const overPos = findColumnForCard(currentCols, overId);
-      if (!overPos) return;
-      targetColIndex = overPos.colIndex;
-      targetCardIndex = overPos.cardIndex;
-    }
+    // Cross-column move
+    setLocalColumns((prev) => {
+      const current = prev || board.columns;
+      const srcCol = current.find((c) => c.name === activeContainer);
+      const dstCol = current.find((c) => c.name === overContainer);
+      if (!srcCol || !dstCol) return current;
 
-    // If same column, don't do cross-column move here (handled in dragEnd)
-    if (activePos.colIndex === targetColIndex) return;
+      const srcCards = [...srcCol.cards];
+      const dstCards = [...dstCol.cards];
+      const activeIndex = srcCards.findIndex((c) => c.id === String(active.id));
+      if (activeIndex === -1) return current;
 
-    // Optimistic cross-column move
-    const newCols = currentCols.map((col) => ({
-      ...col,
-      cards: [...col.cards],
-    }));
+      // Determine insert position
+      const overId = String(over.id);
+      const overCardIndex = dstCards.findIndex((c) => c.id === overId);
+      const insertIndex = overCardIndex >= 0 ? overCardIndex : dstCards.length;
 
-    const [movedCard] = newCols[activePos.colIndex].cards.splice(activePos.cardIndex, 1);
-    const updatedCard = { ...movedCard, column_name: newCols[targetColIndex].name };
-    newCols[targetColIndex].cards.splice(targetCardIndex, 0, updatedCard);
+      const [movedCard] = srcCards.splice(activeIndex, 1);
+      const updatedCard = { ...movedCard, column_name: overContainer };
+      dstCards.splice(insertIndex, 0, updatedCard);
 
-    setLocalColumns(newCols);
+      return current.map((col) => {
+        if (col.name === activeContainer) return { ...col, cards: srcCards };
+        if (col.name === overContainer) return { ...col, cards: dstCards };
+        return col;
+      });
+    });
   };
 
+  // ---- Drag End ----
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    const activeData = active.data.current;
+
+    // ---- Column reorder ----
+    if (activeData?.type === 'column') {
+      setActiveColName(null);
+      if (!over) return;
+      const overData = over.data.current;
+      if (overData?.type !== 'column') return;
+      if (active.id === over.id) return;
+
+      const currentCols = localColumns || board.columns;
+      const oldIndex = currentCols.findIndex((c) => toColId(c.name) === String(active.id));
+      const newIndex = currentCols.findIndex((c) => toColId(c.name) === String(over.id));
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+
+      const reordered = arrayMove(currentCols, oldIndex, newIndex);
+      setLocalColumns(reordered);
+
+      try {
+        await reorderColumns(board.id, reordered.map((c) => c.name));
+        await onCardMove();
+      } catch {
+        setLocalColumns(null);
+      }
+      return;
+    }
+
+    // ---- Card move ----
     const origin = dragOriginRef.current;
     setActiveCard(null);
     dragOriginRef.current = null;
 
-    if (!over || !origin) {
-      setLocalColumns(null);
-      return;
-    }
-
-    const activeId = String(active.id);
-    const overId = String(over.id);
+    if (!over || !origin) { setLocalColumns(null); return; }
 
     const currentCols = localColumns || board.columns;
-    const activePos = findColumnForCard(currentCols, activeId);
-    if (!activePos) {
-      setLocalColumns(null);
-      return;
-    }
 
-    const currentColName = currentCols[activePos.colIndex].name;
+    // Find where the card IS NOW (after optimistic dragOver moves)
+    const currentContainer = findContainer(active.id);
+    if (!currentContainer) { setLocalColumns(null); return; }
 
-    // Determine final target column and position
-    const targetColName = getColumnName(overId);
-    let finalColName: string;
-    let finalPosition: number;
-
-    if (targetColName) {
-      // Dropped on column container (empty area or bottom of column)
-      finalColName = targetColName;
-      const targetCol = currentCols.find((c) => c.name === targetColName);
-      if (!targetCol) { setLocalColumns(null); return; }
-      // If card is already in this column (from dragOver), position is its current spot
-      const cardInTarget = targetCol.cards.findIndex((c) => c.id === activeId);
-      finalPosition = cardInTarget !== -1 ? cardInTarget : targetCol.cards.length;
-    } else {
-      // Dropped on a card
-      const overPos = findColumnForCard(currentCols, overId);
-      if (!overPos) { setLocalColumns(null); return; }
-      finalColName = currentCols[overPos.colIndex].name;
-      finalPosition = overPos.cardIndex;
-    }
-
-    // Check if this is actually a cross-column move (compare to ORIGINAL position, not current)
-    const isCrossColumn = origin.columnName !== finalColName;
+    // Compare with ORIGINAL column to detect cross-column move
+    const isCrossColumn = origin.columnName !== currentContainer;
 
     if (!isCrossColumn) {
       // Same column reorder
-      const colIndex = currentCols.findIndex((c) => c.name === finalColName);
-      const col = currentCols[colIndex];
+      const col = currentCols.find((c) => c.name === currentContainer);
       if (!col) { setLocalColumns(null); return; }
 
-      const oldIndex = col.cards.findIndex((c) => c.id === activeId);
-      let newIndex: number;
+      const oldIndex = col.cards.findIndex((c) => c.id === String(active.id));
+      const overId = String(over.id);
+      const newIndex = fromDropId(overId) !== null || fromColId(overId) !== null
+        ? col.cards.length - 1
+        : col.cards.findIndex((c) => c.id === overId);
 
-      if (targetColName) {
-        // Dropped on column container — move to end
-        newIndex = col.cards.length - 1;
+      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+        const reordered = currentCols.map((c) =>
+          c.name !== currentContainer ? c : { ...c, cards: arrayMove(c.cards, oldIndex, newIndex) },
+        );
+        setLocalColumns(reordered);
+
+        try {
+          await moveCard(String(active.id), { column: currentContainer, position: newIndex });
+          await onCardMove();
+        } catch {
+          setLocalColumns(null);
+        }
       } else {
-        newIndex = col.cards.findIndex((c) => c.id === overId);
-      }
-
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
-        setLocalColumns(null);
-        return;
-      }
-
-      // Optimistic reorder
-      const newCols = currentCols.map((c, i) => {
-        if (i !== colIndex) return c;
-        return { ...c, cards: arrayMove(c.cards, oldIndex, newIndex) };
-      });
-      setLocalColumns(newCols);
-
-      try {
-        await moveCard(activeId, { column: finalColName, position: newIndex });
-        await onCardMove();
-      } catch (err) {
-        console.error('Move failed:', err);
         setLocalColumns(null);
       }
       return;
     }
 
-    // Cross-column move (already moved optimistically in dragOver)
+    // Cross-column move (card already moved optimistically in dragOver)
+    const dstCol = currentCols.find((c) => c.name === currentContainer);
+    const finalPosition = dstCol?.cards.findIndex((c) => c.id === String(active.id)) ?? 0;
+
     try {
-      await moveCard(activeId, { column: finalColName, position: finalPosition });
+      await moveCard(String(active.id), { column: currentContainer, position: Math.max(0, finalPosition) });
       await onCardMove();
-    } catch (err) {
-      console.error('Cross-column move failed:', err);
+    } catch {
       setLocalColumns(null);
     }
   };
 
   const handleDragCancel = () => {
     setActiveCard(null);
+    setActiveColName(null);
     dragOriginRef.current = null;
     setLocalColumns(null);
   };
@@ -258,31 +279,40 @@ export function Board({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={kanbanCollision}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
       <div className="flex gap-4 h-full min-h-[calc(100vh-120px)]">
-        {columns.map((col) => (
-          <Column
-            key={col.name}
-            name={col.name}
-            cards={filterCards(col.cards)}
-            boardId={board.id}
-            onCardClick={onCardClick}
-            onCardAdd={onCardAdd}
-            onColumnRename={onColumnRename}
-            onColumnDelete={onColumnDelete}
-          />
-        ))}
+        <SortableContext items={columnSortableIds} strategy={horizontalListSortingStrategy}>
+          {columns.map((col, i) => (
+            <Column
+              key={col.name}
+              name={col.name}
+              index={i}
+              sortableId={toColId(col.name)}
+              cards={filterCards(col.cards)}
+              boardId={board.id}
+              onCardClick={onCardClick}
+              onCardAdd={onCardAdd}
+              onColumnRename={onColumnRename}
+              onColumnDelete={onColumnDelete}
+            />
+          ))}
+        </SortableContext>
         <AddColumnButton onAdd={onColumnAdd} />
       </div>
       <DragOverlay dropAnimation={null}>
         {activeCard ? (
           <div className="rotate-2 opacity-80 w-80">
             <KanbanCard card={activeCard} onClick={() => {}} />
+          </div>
+        ) : null}
+        {activeColName ? (
+          <div className="opacity-70 w-80 min-w-[320px] bg-board-column rounded-lg border-2 border-dashed border-blue-400 p-6 text-center text-board-text font-medium shadow-lg">
+            📋 {activeColName}
           </div>
         ) : null}
       </DragOverlay>

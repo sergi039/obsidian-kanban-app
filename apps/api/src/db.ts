@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS cards (
   sub_items TEXT DEFAULT '[]',
   description TEXT DEFAULT '',
   source_fingerprint TEXT,
+  seq_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -96,6 +97,8 @@ const INDEXES = [
 ];
 
 const MIGRATIONS = [
+  // Add seq_id column — sequential number per board (like GitHub #1, #2, #3)
+  `ALTER TABLE cards ADD COLUMN seq_id INTEGER`,
   // Add description column if missing (for existing DBs)
   `ALTER TABLE cards ADD COLUMN description TEXT DEFAULT ''`,
   // Create views table if missing

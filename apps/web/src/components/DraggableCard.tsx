@@ -21,11 +21,11 @@ export function DraggableCard({ card, onClick }: Props) {
     data: { type: 'card', card },
   });
 
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.3 : 1,
-    touchAction: 'none' as const,
+    touchAction: 'none',
   };
 
   return (

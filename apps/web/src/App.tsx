@@ -3,6 +3,7 @@ import { fetchBoards, fetchBoard, reloadSync, createCard, addColumn, renameColum
 import type { BoardSummary, BoardDetail, Field } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
 import { Board } from './components/Board';
+import { DndTest } from './components/DndTest';
 import { TableView } from './components/TableView';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import { Filters } from './components/Filters';
@@ -25,6 +26,7 @@ export default function App() {
   const [boardFields, setBoardFields] = useState<Field[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [showAutomations, setShowAutomations] = useState(false);
+  const [showDndTest, setShowDndTest] = useState(false);
   const { theme, cycleTheme } = useTheme();
 
   // Load boards list
@@ -251,23 +253,39 @@ export default function App() {
       <header className="border-b border-board-border px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-semibold text-board-text flex items-center gap-2">
-            📋 Kanban
+            <span className="flex items-center gap-1.5">
+              <span className="text-purple-500">◆</span> Obsidian Kanban
+            </span>
           </h1>
+          <a
+            href="/about"
+            className="text-xs text-board-text-muted hover:text-board-text transition-colors"
+            title="About this project"
+          >
+            ?
+          </a>
           <BoardSwitcher
             boards={boards}
             activeBoardId={activeBoardId}
             onSelect={handleBoardChange}
           />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Filters
             filterQuery={filterQuery}
             onFilterChange={setFilterQuery}
           />
           <ViewSwitcher layout={layout} onLayoutChange={setLayout} />
           <button
+            onClick={() => setShowDndTest((v) => !v)}
+            className="px-3 h-8 text-sm bg-yellow-100 dark:bg-yellow-900 hover:bg-yellow-200 border border-yellow-400 rounded-md text-yellow-800 dark:text-yellow-200 transition-colors"
+            title="DnD Test"
+          >
+            🧪 Test
+          </button>
+          <button
             onClick={() => setShowAutomations(true)}
-            className="px-3 py-1.5 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors"
+            className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors"
             title="Automations"
           >
             ⚡ Auto
@@ -275,7 +293,7 @@ export default function App() {
           <button
             onClick={handleReload}
             disabled={syncing}
-            className="px-3 py-1.5 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
+            className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
             title="Reload from files"
           >
             {syncing ? '⏳ Syncing…' : '↻ Sync'}
@@ -299,7 +317,9 @@ export default function App() {
 
       {/* Board */}
       <main className="flex-1 overflow-x-auto p-6">
-        {boardDetail ? (
+        {showDndTest ? (
+          <DndTest />
+        ) : boardDetail ? (
           layout === 'board' ? (
             <Board
               board={boardDetail}
@@ -314,7 +334,11 @@ export default function App() {
           ) : (
             <TableView
               cards={filterCards(boardDetail.columns.flatMap((col) => col.cards))}
+              columns={boardDetail.columns.map((c) => c.name)}
+              boardId={boardDetail.id}
               onCardClick={setSelectedCard}
+              onCardAdd={handleCardAdd}
+              onRefresh={loadBoard}
             />
           )
         ) : (

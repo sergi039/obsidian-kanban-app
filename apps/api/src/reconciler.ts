@@ -72,9 +72,13 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
   );
 
   const insertStmt = db.prepare(`
-    INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, sub_items, source_fingerprint)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, sub_items, source_fingerprint, seq_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+
+  // Get next seq_id for this board
+  const maxSeqRow = db.prepare('SELECT COALESCE(MAX(seq_id), 0) as max_seq FROM cards WHERE board_id = ?').get(board.id) as { max_seq: number };
+  let nextSeqId = maxSeqRow.max_seq;
 
   const updateStmt = db.prepare(`
     UPDATE cards SET
@@ -165,7 +169,9 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         );
         updated++;
       } else {
-        const col = task.isDone ? 'Done' : 'Backlog';
+        // Use kb:col from .md marker if available, otherwise default by done state
+        const col = task.kbCol || (task.isDone ? 'Done' : 'Backlog');
+        nextSeqId++;
         insertStmt.run(
           id,
           board.id,
@@ -178,6 +184,7 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
           task.priority,
           JSON.stringify(task.subItems),
           srcFp,
+          nextSeqId,
         );
         added++;
       }

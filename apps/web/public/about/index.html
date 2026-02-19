@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About — Obsidian Kanban</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #7c3aed;
+      --accent-subtle: rgba(124, 58, 237, 0.1);
+      --green: #22c55e;
+      --blue: #3b82f6;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #ffffff;
+        --card: #f6f8fa;
+        --border: #d1d9e0;
+        --text: #1f2328;
+        --muted: #656d76;
+        --accent: #7c3aed;
+        --accent-subtle: rgba(124, 58, 237, 0.08);
+      }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 0;
+    }
+    .hero {
+      text-align: center;
+      padding: 80px 24px 60px;
+      border-bottom: 1px solid var(--border);
+    }
+    .hero h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .hero h1 .diamond { color: var(--accent); }
+    .hero p {
+      font-size: 1.1rem;
+      color: var(--muted);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .back {
+      display: inline-block;
+      margin-top: 24px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.9rem;
+      border: 1px solid var(--accent);
+      padding: 8px 20px;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+    .back:hover { background: var(--accent-subtle); }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 48px 24px;
+    }
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 48px 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h2:first-child { margin-top: 0; }
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 24px 0 8px;
+      color: var(--accent);
+    }
+    p, li { color: var(--text); font-size: 0.95rem; }
+    p { margin-bottom: 12px; }
+    ul { padding-left: 20px; margin-bottom: 16px; }
+    li { margin-bottom: 6px; }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card .icon { font-size: 1.5rem; margin-bottom: 8px; display: block; }
+    .card .title { font-weight: 600; font-size: 0.95rem; margin-bottom: 6px; }
+    .card .desc { color: var(--muted); font-size: 0.85rem; line-height: 1.5; }
+    .flow {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 24px 0;
+      text-align: center;
+    }
+    .flow-steps {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .flow-step {
+      background: var(--accent-subtle);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .flow-arrow { color: var(--muted); font-size: 1.2rem; }
+    code {
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+    .tech-stack {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 16px 0;
+    }
+    .tech-badge {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .separator {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 48px 0;
+    }
+    footer {
+      text-align: center;
+      padding: 32px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <h1><span class="diamond">◆</span> Obsidian Kanban</h1>
+  <p>A GitHub Projects-style Kanban board powered by your Obsidian vault. Your markdown files are the single source of truth.</p>
+  <a href="/" class="back">← Back to Board</a>
+</div>
+
+<div class="container">
+
+  <h2>🧠 How It Works</h2>
+  <p>
+    Obsidian Kanban turns your existing Obsidian markdown task files into a fully interactive Kanban board.
+    There's no separate database to maintain — your <code>.md</code> files in the vault <strong>are</strong> the data.
+  </p>
+
+  <div class="flow">
+    <strong>Bidirectional Sync Flow</strong>
+    <div class="flow-steps">
+      <div class="flow-step">📝 Obsidian .md</div>
+      <span class="flow-arrow">⇄</span>
+      <div class="flow-step">🔄 Reconciler</div>
+      <span class="flow-arrow">⇄</span>
+      <div class="flow-step">🗄️ SQLite</div>
+      <span class="flow-arrow">⇄</span>
+      <div class="flow-step">🌐 Web UI</div>
+    </div>
+  </div>
+
+  <h3>The Reconciler</h3>
+  <p>
+    On startup, the reconciler parses each board's <code>.md</code> file and syncs tasks into a local SQLite database.
+    Each task is identified by a stable <code>&lt;!-- kb:id=xxxxxxxx --&gt;</code> marker injected into the markdown,
+    ensuring tasks survive reordering and editing in Obsidian.
+  </p>
+
+  <h3>File Watcher</h3>
+  <p>
+    A filesystem watcher monitors your vault files. When you edit a task in Obsidian, the watcher detects the change,
+    re-runs the reconciler for that file, and pushes updates to all connected browsers via WebSocket — in real-time.
+  </p>
+
+  <h3>Write-Back</h3>
+  <p>
+    When you make changes in the web UI (move a card to Done, change priority, etc.),
+    those changes are written back to the <code>.md</code> file atomically.
+    Priority uses emoji markers (<code>🔺</code> = urgent, <code>⏫</code> = high),
+    and Done status toggles the checkbox (<code>[ ]</code> ↔ <code>[x]</code>).
+  </p>
+
+  <hr class="separator">
+
+  <h2>✨ Features</h2>
+
+  <div class="card-grid">
+    <div class="card">
+      <span class="icon">📋</span>
+      <div class="title">Board View</div>
+      <div class="desc">Drag-and-drop cards between columns. Reorder columns. Visual Kanban workflow.</div>
+    </div>
+    <div class="card">
+      <span class="icon">📊</span>
+      <div class="title">Table View</div>
+      <div class="desc">Sortable spreadsheet view with inline editing for status, priority, and due dates.</div>
+    </div>
+    <div class="card">
+      <span class="icon">🔄</span>
+      <div class="title">Bidirectional Sync</div>
+      <div class="desc">Edit in Obsidian or the web — changes sync both ways via stable kb:id markers.</div>
+    </div>
+    <div class="card">
+      <span class="icon">🎯</span>
+      <div class="title">Priority Management</div>
+      <div class="desc">Set urgent/high priority from the UI. Emoji markers (🔺⏫) written to your .md files.</div>
+    </div>
+    <div class="card">
+      <span class="icon">🔍</span>
+      <div class="title">Filter Engine</div>
+      <div class="desc">Query syntax: <code>status:Done priority:high label:bug due:overdue</code> and more.</div>
+    </div>
+    <div class="card">
+      <span class="icon">📅</span>
+      <div class="title">Due Dates</div>
+      <div class="desc">Inline date picker. Filter by overdue, today, this-week. Track deadlines.</div>
+    </div>
+    <div class="card">
+      <span class="icon">💬</span>
+      <div class="title">Comments</div>
+      <div class="desc">Add comments to any card. Discussion threads per task, stored in SQLite.</div>
+    </div>
+    <div class="card">
+      <span class="icon">🏷️</span>
+      <div class="title">Custom Fields</div>
+      <div class="desc">5 field types: Text, Number, Date, Single Select, Iteration. Per-board configuration.</div>
+    </div>
+    <div class="card">
+      <span class="icon">⚡</span>
+      <div class="title">Automations</div>
+      <div class="desc">Rules engine: triggers (card.moved, card.created) → actions (set field, add comment, set due).</div>
+    </div>
+    <div class="card">
+      <span class="icon">📦</span>
+      <div class="title">Done Archive</div>
+      <div class="desc">Auto-hide completed tasks after configurable days. Paginated archive view.</div>
+    </div>
+    <div class="card">
+      <span class="icon">🌗</span>
+      <div class="title">Themes</div>
+      <div class="desc">Light, dark, and system-auto themes. Respects your OS preference.</div>
+    </div>
+    <div class="card">
+      <span class="icon">📡</span>
+      <div class="title">Real-Time Updates</div>
+      <div class="desc">WebSocket push: file changes in Obsidian appear instantly in the browser.</div>
+    </div>
+  </div>
+
+  <hr class="separator">
+
+  <h2>🏗️ Architecture</h2>
+
+  <h3>Data Model</h3>
+  <ul>
+    <li><strong>Source of truth:</strong> Obsidian <code>.md</code> files with Kanban-plugin-style task lists</li>
+    <li><strong>SQLite cache:</strong> 7 tables — cards, comments, fields, field_values, views, automations, sync_state</li>
+    <li><strong>Stable IDs:</strong> <code>&lt;!-- kb:id=xxxxxxxx --&gt;</code> HTML comments injected per task</li>
+    <li><strong>Sequential IDs:</strong> Each board has <code>#1, #2, #3...</code> numbering (like GitHub issues)</li>
+  </ul>
+
+  <h3>API</h3>
+  <ul>
+    <li><code>GET /api/boards</code> — list all boards with card counts</li>
+    <li><code>GET /api/boards/:id</code> — full board with columns and cards</li>
+    <li><code>POST /api/cards</code> — create card (appends to .md + DB)</li>
+    <li><code>POST /api/cards/:id/move</code> — move card between columns (atomic transaction)</li>
+    <li><code>PATCH /api/cards/:id</code> — update priority, due date, labels, description</li>
+    <li><code>POST /api/boards/sync/reload</code> — force re-sync from files</li>
+    <li>Views, Fields, Automations, Comments — full CRUD</li>
+  </ul>
+
+  <h3>Tech Stack</h3>
+  <div class="tech-stack">
+    <span class="tech-badge">Hono</span>
+    <span class="tech-badge">React 19</span>
+    <span class="tech-badge">TypeScript</span>
+    <span class="tech-badge">SQLite (better-sqlite3)</span>
+    <span class="tech-badge">@dnd-kit/sortable</span>
+    <span class="tech-badge">Vite</span>
+    <span class="tech-badge">TailwindCSS 4</span>
+    <span class="tech-badge">Zod</span>
+    <span class="tech-badge">WebSocket</span>
+  </div>
+
+  <hr class="separator">
+
+  <h2>📂 Board Configuration</h2>
+  <p>Boards are defined in <code>config.boards.json</code>:</p>
+  <ul>
+    <li>Each board points to a <code>.md</code> file in your Obsidian vault</li>
+    <li>Columns are configurable per board</li>
+    <li>The vault root path is set once at the top level</li>
+    <li>Column colors are automatic: known names (Backlog, In Progress, Done, etc.) get semantic colors; custom names get palette colors by position</li>
+  </ul>
+
+  <h3>Markdown Format</h3>
+  <p>Your <code>.md</code> files use standard Obsidian Kanban plugin format:</p>
+  <pre style="background:var(--card); border:1px solid var(--border); border-radius:8px; padding:16px; overflow-x:auto; font-size:0.85rem; line-height:1.6; margin:12px 0;">
+## Backlog
+
+- [ ] Task one &lt;!-- kb:id=a1b2c3d4 --&gt;
+- [ ] 🔺 Urgent task &lt;!-- kb:id=e5f6g7h8 --&gt;
+- [ ] ⏫ High priority task &lt;!-- kb:id=i9j0k1l2 --&gt;
+
+## In Progress
+
+- [ ] Working on this &lt;!-- kb:id=m3n4o5p6 --&gt;
+
+## Done
+
+- [x] Completed task &lt;!-- kb:id=q7r8s9t0 --&gt;
+  </pre>
+
+</div>
+
+<footer>
+  Obsidian Kanban — Markdown-first project management
+</footer>
+
+</body>
+</html>

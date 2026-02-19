@@ -15,7 +15,7 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect }: Props) {
           <button
             key={board.id}
             onClick={() => onSelect(board.id)}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors border ${
+            className={`px-3 h-8 text-sm rounded-md transition-colors border ${
               isActive
                 ? 'text-board-accent border-board-accent font-medium'
                 : 'text-board-text-muted hover:text-board-text hover:bg-board-column border-transparent'

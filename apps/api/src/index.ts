@@ -10,6 +10,7 @@ import { loadConfig } from './config.js';
 import { getDb } from './db.js';
 import { reconcileAll } from './reconciler.js';
 import { startWatcher } from './watcher.js';
+import { stampAllColumns } from './writeback.js';
 import { createWsServer } from './ws.js';
 import boardRoutes from './routes/boards.js';
 import cardRoutes from './routes/cards.js';
@@ -39,11 +40,23 @@ if (process.env.NODE_ENV === 'production' || process.env.SERVE_STATIC) {
   const { existsSync, readFileSync: readFs } = await import('node:fs');
 
   if (existsSync(staticRoot)) {
-    // Serve static assets
+    // Serve static assets (including /about/index.html etc.)
     app.use('/*', serveStatic({ root: staticRoot }));
 
     // SPA fallback: serve index.html for non-API, non-asset routes
+    // Skip paths that have their own index.html (like /about/)
     app.get('*', (c) => {
+      const url = new URL(c.req.url);
+      const pathname = url.pathname.replace(/\/$/, '') || '';
+
+      // Check if there's a specific index.html for this path
+      const subIndex = path.join(staticRoot, pathname, 'index.html');
+      if (pathname && existsSync(subIndex)) {
+        const html = readFs(subIndex, 'utf-8');
+        return c.html(html);
+      }
+
+      // Default SPA fallback
       const indexPath = path.join(staticRoot, 'index.html');
       if (existsSync(indexPath)) {
         const html = readFs(indexPath, 'utf-8');
@@ -69,6 +82,12 @@ console.log(`[boot] Vault root: ${config.vaultRoot}`);
 const results = reconcileAll(config.vaultRoot, config.boards);
 for (const r of results) {
   console.log(`[boot] ${r.boardId}: +${r.added} ~${r.updated} -${r.removed}${r.migrated ? ` 🔑${r.migrated} migrated` : ''}`);
+}
+
+// Stamp column assignments into .md files (recovery markers)
+const stamped = stampAllColumns();
+if (stamped > 0) {
+  console.log(`[boot] Stamped kb:col markers on ${stamped} cards`);
 }
 
 // File watcher

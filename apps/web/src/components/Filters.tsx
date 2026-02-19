@@ -62,7 +62,7 @@ export function Filters({ filterQuery, onFilterChange }: Props) {
             onChange={(e) => onFilterChange(e.target.value)}
             onFocus={() => setShowHelp(true)}
             onKeyDown={handleKeyDown}
-            className="px-3 py-1.5 text-sm bg-board-column border border-board-border rounded-md text-board-text placeholder:text-board-text-muted/40 focus:outline-none focus:ring-2 focus:ring-board-accent/50 focus:border-board-accent/50 w-80"
+            className="px-3 h-8 text-sm bg-board-column border border-board-border rounded-md text-board-text placeholder:text-board-text-muted/40 focus:outline-none focus:ring-2 focus:ring-board-accent/50 focus:border-board-accent/50 w-80"
           />
           {filterQuery && (
             <button
@@ -76,7 +76,7 @@ export function Filters({ filterQuery, onFilterChange }: Props) {
         </div>
         <button
           onClick={() => setShowHelp(!showHelp)}
-          className="text-board-text-muted hover:text-board-text text-sm px-1.5 py-1 rounded hover:bg-board-column transition-colors"
+          className="text-board-text-muted hover:text-board-text text-sm px-1.5 h-8 rounded hover:bg-board-column transition-colors"
           title="Filter help"
         >
           ?
