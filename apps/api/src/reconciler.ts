@@ -190,11 +190,20 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
       }
     }
 
-    // Remove cards no longer in file
+    // Remove cards no longer in file — with safety guard
     const toRemove = existingCards.filter((c) => !seenIds.has(c.id)).map((c) => c.id);
     if (toRemove.length > 0) {
-      const ph = toRemove.map(() => '?').join(',');
-      db.prepare(`DELETE FROM cards WHERE id IN (${ph})`).run(...toRemove);
+      // Safety: if ALL existing cards would be deleted and we found 0 tasks,
+      // something is wrong (empty/truncated file read). Abort deletion.
+      if (toRemove.length === existingCards.length && tasks.length === 0) {
+        console.error(`[reconciler] 🛡️ SAFETY: Refusing to delete all ${toRemove.length} cards from ${board.id} — file appears empty/corrupt`);
+      } else if (toRemove.length >= existingCards.length * 0.8 && existingCards.length >= 5) {
+        // Also guard against losing >80% of cards at once (likely a bug, not intentional)
+        console.warn(`[reconciler] ⚠️ SAFETY: Would delete ${toRemove.length}/${existingCards.length} cards from ${board.id} — skipping bulk delete. Manual reconcile needed.`);
+      } else {
+        const ph = toRemove.map(() => '?').join(',');
+        db.prepare(`DELETE FROM cards WHERE id IN (${ph})`).run(...toRemove);
+      }
     }
   });
 

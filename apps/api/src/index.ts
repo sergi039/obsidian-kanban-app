@@ -75,6 +75,32 @@ if (process.env.NODE_ENV === 'production' || process.env.SERVE_STATIC) {
 const config = loadConfig();
 const db = getDb();
 
+// Backup DB on startup (keeps last 3 backups)
+import { copyFileSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { PROJECT_ROOT } from './config.js';
+const DB_PATH = path.join(PROJECT_ROOT, 'data', 'kanban.db');
+try {
+  if (existsSync(DB_PATH)) {
+    const backupDir = path.dirname(DB_PATH);
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const backupPath = path.join(backupDir, `kanban.backup-${ts}.db`);
+    // Checkpoint WAL before backup
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    copyFileSync(DB_PATH, backupPath);
+    console.log(`[boot] DB backup: ${path.basename(backupPath)}`);
+    // Keep only last 3 backups
+    const backups = readdirSync(backupDir)
+      .filter(f => f.startsWith('kanban.backup-') && f.endsWith('.db'))
+      .sort()
+      .reverse();
+    for (const old of backups.slice(3)) {
+      unlinkSync(path.join(backupDir, old));
+    }
+  }
+} catch (err) {
+  console.warn(`[boot] DB backup failed:`, err);
+}
+
 console.log(`[boot] Loaded ${config.boards.length} boards from config`);
 console.log(`[boot] Vault root: ${config.vaultRoot}`);
 
