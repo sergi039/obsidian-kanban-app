@@ -10,6 +10,7 @@
 import { createHash } from 'node:crypto';
 import { getDb } from './db.js';
 import { broadcast } from './ws.js';
+import { safeJsonParse } from './utils.js';
 
 // --- Types ---
 
@@ -87,10 +88,6 @@ function generateId(): string {
     .slice(0, 12);
 }
 
-function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
-}
 
 function formatRule(row: Record<string, unknown>): AutomationRule {
   return {

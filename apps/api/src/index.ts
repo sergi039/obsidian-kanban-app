@@ -12,6 +12,7 @@ import { reconcileAll } from './reconciler.js';
 import { startWatcher } from './watcher.js';
 import { stampAllColumns } from './writeback.js';
 import { createWsServer } from './ws.js';
+import { apiTokenAuth, bodyLimit, getCorsOrigins } from './middleware/security.js';
 import boardRoutes from './routes/boards.js';
 import cardRoutes from './routes/cards.js';
 import exportRoutes from './routes/export.js';
@@ -21,8 +22,16 @@ import automationRoutes from './routes/automations.js';
 
 const app = new Hono();
 
-app.use('*', cors());
+// Security middleware
+const corsOrigins = getCorsOrigins();
+app.use('*', cors({
+  origin: corsOrigins,
+  allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use('*', logger());
+app.use('/api/*', bodyLimit());
+app.use('/api/*', apiTokenAuth());
 
 app.route('/api/boards', boardRoutes);
 app.route('/api/cards', cardRoutes);
@@ -135,10 +144,21 @@ const server = createServer(async (req, res) => {
       ),
       body: ['GET', 'HEAD'].includes(req.method || 'GET')
         ? undefined
-        : await new Promise<string>((resolve) => {
+        : await new Promise<string>((resolve, reject) => {
+            const maxSize = Number(process.env.MAX_BODY_SIZE) || 1_048_576;
             let body = '';
-            req.on('data', (chunk) => (body += chunk));
+            let size = 0;
+            req.on('data', (chunk: Buffer | string) => {
+              size += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
+              if (size > maxSize) {
+                req.destroy();
+                reject(new Error('Body too large'));
+                return;
+              }
+              body += chunk;
+            });
             req.on('end', () => resolve(body));
+            req.on('error', reject);
           }),
     }),
   );
@@ -156,3 +176,20 @@ server.listen(PORT, HOST, () => {
   console.log(`[boot] Server listening on http://${HOST}:${PORT}`);
   console.log(`[boot] WebSocket available at ws://${HOST}:${PORT}/ws`);
 });
+
+// Graceful shutdown
+import { stopWatcher } from './watcher.js';
+function shutdown(signal: string) {
+  console.log(`\n[shutdown] ${signal} received, closing…`);
+  stopWatcher();
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* ok */ }
+  try { db.close(); } catch { /* ok */ }
+  server.close(() => {
+    console.log('[shutdown] Clean exit');
+    process.exit(0);
+  });
+  // Force exit after 5s if server.close hangs
+  setTimeout(() => { process.exit(1); }, 5000).unref();
+}
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

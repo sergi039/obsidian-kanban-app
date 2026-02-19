@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { patchCard, fetchComments, addComment, updateComment, deleteComment, fetchFieldValues, setFieldValue } from '../api/client';
-import type { Card, Comment, FieldValue, Field } from '../types';
+import type { Card, Comment, FieldValue, Field, PatchCardRequest } from '../types';
 
 interface Props {
   card: Card;
@@ -179,8 +179,6 @@ export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) 
   const closeRef = useRef<HTMLButtonElement>(null);
 
   // Editable fields
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(cleanTitle(card.title));
   const [priority, setPriority] = useState<string>(card.priority || '');
   const [dueDate, setDueDate] = useState(card.due_date || '');
   const [columnName, setColumnName] = useState(card.column_name);
@@ -250,10 +248,10 @@ export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) 
     }
   }, [editingDesc]);
 
-  const saveField = useCallback(async (patch: Record<string, unknown>) => {
+  const saveField = useCallback(async (patch: PatchCardRequest) => {
     setSaving(true);
     try {
-      await patchCard(card.id, patch as any);
+      await patchCard(card.id, patch);
       await onUpdate();
     } catch (err) {
       console.error('Save failed:', err);
@@ -262,14 +260,9 @@ export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) 
     }
   }, [card.id, onUpdate]);
 
-  const handleTitleSave = () => {
-    setEditingTitle(false);
-    // Title editing needs write-back to .md — not supported yet
-  };
-
   const handlePriorityChange = (val: string) => {
     setPriority(val);
-    saveField({ priority: val || null });
+    saveField({ priority: (val as 'high' | 'urgent') || null });
   };
 
   const handleDueDateChange = (val: string) => {
@@ -373,25 +366,9 @@ export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) 
           {/* Header */}
           <div className="flex items-start justify-between p-6 pb-0">
             <div className="flex-1 pr-4">
-              {editingTitle ? (
-                <input
-                  autoFocus
-                  value={titleDraft}
-                  onChange={(e) => setTitleDraft(e.target.value)}
-                  onBlur={handleTitleSave}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleTitleSave(); if (e.key === 'Escape') { setTitleDraft(cleanTitle(card.title)); setEditingTitle(false); } }}
-                  className="w-full text-xl font-semibold text-board-text bg-transparent border-b-2 focus:outline-none pb-1"
-                  style={{ borderColor: 'var(--board-accent)' }}
-                />
-              ) : (
-                <h2
-                  className="text-xl font-semibold text-board-text leading-snug cursor-text hover:underline decoration-board-text-muted/30"
-                  onClick={() => setEditingTitle(true)}
-                  title="Click to edit"
-                >
-                  {cleanTitle(card.title)}
-                </h2>
-              )}
+              <h2 className="text-xl font-semibold text-board-text leading-snug">
+                {cleanTitle(card.title)}
+              </h2>
               <p className="text-xs text-board-text-muted mt-1">
                 {card.board_id} · Line {card.line_number}
               </p>

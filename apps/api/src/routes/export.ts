@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { getDb } from '../db.js';
+import { safeJsonParse } from '../utils.js';
 
 const exportRoutes = new Hono();
 
@@ -16,14 +17,6 @@ interface CardRow {
   due_date: string | null;
 }
 
-function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
 
 function cleanTitle(title: string): string {
   let cleaned = title.replace(/\[([^\]]*)\]\([^)]+\)/g, '$1');

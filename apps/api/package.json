@@ -14,10 +14,12 @@
     "@hono/node-server": "^1.13.0",
     "better-sqlite3": "^11.7.0",
     "chokidar": "^4.0.0",
+    "ws": "^8.19.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
+    "@types/ws": "^8.18.1",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",

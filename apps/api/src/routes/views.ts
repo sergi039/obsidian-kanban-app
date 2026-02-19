@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { getDb } from '../db.js';
 import { loadConfig } from '../config.js';
 import { parseFilterQuery, compileFilter } from '../filter-engine.js';
+import { formatCard } from '../utils.js';
 
 const views = new Hono();
 
@@ -41,19 +42,6 @@ function generateId(): string {
     .slice(0, 10);
 }
 
-function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
-}
-
-function formatCard(card: Record<string, unknown>) {
-  return {
-    ...card,
-    is_done: Boolean(card.is_done),
-    labels: safeJsonParse<string[]>(card.labels as string, []),
-    sub_items: safeJsonParse<string[]>(card.sub_items as string, []),
-  };
-}
 
 // GET /api/views — list views for a board
 views.get('/', (c) => {

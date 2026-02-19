@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { parseMarkdownTasks, computeFingerprint, allocateUniqueKbId, injectKbId } from './parser.js';
+import { parseMarkdownTasks, computeFingerprint, allocateUniqueKbId, injectKbId, isDoneColumn } from './parser.js';
 import { getDb } from './db.js';
 import type { BoardConfig } from './config.js';
 import { suppressWatcher, unsuppressWatcher } from './watcher.js';
@@ -152,7 +152,7 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         let col = existing.column_name;
         if (task.isDone && !existing.is_done) {
           col = 'Done';
-        } else if (!task.isDone && existing.is_done && existing.column_name === 'Done') {
+        } else if (!task.isDone && existing.is_done && isDoneColumn(existing.column_name, board)) {
           col = 'Backlog';
         }
 
@@ -170,7 +170,9 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         updated++;
       } else {
         // Use kb:col from .md marker if available, otherwise default by done state
-        const col = task.kbCol || (task.isDone ? 'Done' : 'Backlog');
+        // Validate kb:col is a known column; fall back to Done/Backlog if not
+        let col = task.kbCol && board.columns.includes(task.kbCol) ? task.kbCol : null;
+        if (!col) col = task.isDone ? 'Done' : 'Backlog';
         nextSeqId++;
         insertStmt.run(
           id,
@@ -237,7 +239,10 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
 
       if (stamped === 0) {
         console.warn(`[reconciler] No lines stamped in ${board.id}, skipping file write`);
-        // sync state updated below in finally-adjacent block
+        // Still record sync state so we don't re-reconcile
+        db.prepare(
+          `INSERT OR REPLACE INTO sync_state (file_path, file_hash, last_synced) VALUES (?, ?, datetime('now'))`,
+        ).run(filePath, fileHash);
       } else {
         const updatedContent = lines.join('\n');
         const updatedHash = createHash('sha256').update(updatedContent).digest('hex');

@@ -202,6 +202,16 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
 }
 
 /**
+ * Check if a column is a "done" column.
+ * Centralizes the hardcoded 'Done' check. Supports optional board-level doneColumns list.
+ */
+export function isDoneColumn(col: string, board?: { doneColumns?: string[] }): boolean {
+  if (col === 'Done') return true;
+  if (board?.doneColumns?.includes(col)) return true;
+  return false;
+}
+
+/**
  * Compute a legacy fingerprint for a task (used as fallback when no kb:id exists).
  * Uses title + boardId. For duplicate titles, a collision suffix is appended.
  */

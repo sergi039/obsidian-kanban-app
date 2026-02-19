@@ -3,7 +3,7 @@ import { fetchBoards, fetchBoard, reloadSync, createCard, addColumn, renameColum
 import type { BoardSummary, BoardDetail, Field } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
 import { Board } from './components/Board';
-import { DndTest } from './components/DndTest';
+
 import { TableView } from './components/TableView';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import { Filters } from './components/Filters';
@@ -12,6 +12,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useTheme } from './hooks/useTheme';
 import { ThemeToggle } from './components/ThemeToggle';
 import { AutomationsPanel } from './components/AutomationsPanel';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import type { Card } from './types';
 
 export default function App() {
@@ -26,7 +27,6 @@ export default function App() {
   const [boardFields, setBoardFields] = useState<Field[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [showAutomations, setShowAutomations] = useState(false);
-  const [showDndTest, setShowDndTest] = useState(false);
   const { theme, cycleTheme } = useTheme();
 
   // Load boards list
@@ -248,6 +248,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen bg-board-bg flex flex-col">
       {/* Header */}
       <header className="border-b border-board-border px-6 py-3 flex items-center justify-between">
@@ -284,13 +285,6 @@ export default function App() {
           />
           <ViewSwitcher layout={layout} onLayoutChange={setLayout} />
           <button
-            onClick={() => setShowDndTest((v) => !v)}
-            className="px-3 h-8 text-sm bg-yellow-100 dark:bg-yellow-900 hover:bg-yellow-200 border border-yellow-400 rounded-md text-yellow-800 dark:text-yellow-200 transition-colors"
-            title="DnD Test"
-          >
-            🧪 Test
-          </button>
-          <button
             onClick={() => setShowAutomations(true)}
             className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors"
             title="Automations"
@@ -324,9 +318,7 @@ export default function App() {
 
       {/* Board */}
       <main className="flex-1 overflow-x-auto p-6">
-        {showDndTest ? (
-          <DndTest />
-        ) : boardDetail ? (
+        {boardDetail ? (
           layout === 'board' ? (
             <Board
               board={boardDetail}
@@ -378,5 +370,6 @@ export default function App() {
         />
       )}
     </div>
+    </ErrorBoundary>
   );
 }

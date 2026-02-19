@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { getDb } from '../db.js';
 import { loadConfig } from '../config.js';
+import { safeJsonParse } from '../utils.js';
 
 const fields = new Hono();
 
@@ -39,10 +40,6 @@ function generateId(): string {
     .slice(0, 10);
 }
 
-function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
-}
 
 function formatField(row: Record<string, unknown>) {
   return {

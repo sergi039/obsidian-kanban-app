@@ -12,6 +12,7 @@ const BoardSchema = z.object({
   file: z.string(),
   columns: z.array(z.string()),
   archived: z.boolean().optional(),
+  doneColumns: z.array(z.string()).optional(),
 });
 
 const ConfigSchema = z.object({
@@ -24,6 +25,24 @@ export type BoardConfig = z.infer<typeof BoardSchema>;
 export type AppConfig = z.infer<typeof ConfigSchema>;
 
 let cached: AppConfig | null = null;
+
+/**
+ * Simple synchronous config write guard.
+ * Prevents re-entrant writes to config.boards.json.
+ */
+let configWriteLock = false;
+
+function withConfigWrite<T>(fn: () => T): T {
+  if (configWriteLock) {
+    throw new Error('Concurrent config write detected — retry');
+  }
+  configWriteLock = true;
+  try {
+    return fn();
+  } finally {
+    configWriteLock = false;
+  }
+}
 
 export function loadConfig(configPath?: string): AppConfig {
   if (cached) return cached;
@@ -46,52 +65,60 @@ export function resetConfigCache(): void {
 
 /** Update a board's columns in config file and reset cache */
 export function updateBoardColumns(boardId: string, columns: string[]): boolean {
-  resetConfigCache();
-  const p = path.join(PROJECT_ROOT, 'config.boards.json');
-  const raw = JSON.parse(readFileSync(p, 'utf-8'));
-  const board = raw.boards?.find((b: { id: string }) => b.id === boardId);
-  if (!board) return false;
-  board.columns = columns;
-  writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
-  resetConfigCache();
-  return true;
+  return withConfigWrite(() => {
+    resetConfigCache();
+    const p = path.join(PROJECT_ROOT, 'config.boards.json');
+    const raw = JSON.parse(readFileSync(p, 'utf-8'));
+    const board = raw.boards?.find((b: { id: string }) => b.id === boardId);
+    if (!board) return false;
+    board.columns = columns;
+    writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
+    resetConfigCache();
+    return true;
+  });
 }
 
 /** Add a new board to config file */
 export function addBoardToConfig(board: { id: string; name: string; file: string; columns: string[] }): boolean {
-  resetConfigCache();
-  const p = path.join(PROJECT_ROOT, 'config.boards.json');
-  const raw = JSON.parse(readFileSync(p, 'utf-8'));
-  if (raw.boards?.find((b: { id: string }) => b.id === board.id)) return false; // already exists
-  raw.boards.push(board);
-  writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
-  resetConfigCache();
-  return true;
+  return withConfigWrite(() => {
+    resetConfigCache();
+    const p = path.join(PROJECT_ROOT, 'config.boards.json');
+    const raw = JSON.parse(readFileSync(p, 'utf-8'));
+    if (raw.boards?.find((b: { id: string }) => b.id === board.id)) return false; // already exists
+    raw.boards.push(board);
+    writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
+    resetConfigCache();
+    return true;
+  });
 }
 
 /** Update a board's properties in config file */
 export function updateBoardInConfig(boardId: string, patch: Partial<{ name: string; archived: boolean }>): boolean {
-  resetConfigCache();
-  const p = path.join(PROJECT_ROOT, 'config.boards.json');
-  const raw = JSON.parse(readFileSync(p, 'utf-8'));
-  const board = raw.boards?.find((b: { id: string }) => b.id === boardId);
-  if (!board) return false;
-  if (patch.name !== undefined) board.name = patch.name;
-  if (patch.archived !== undefined) board.archived = patch.archived;
-  writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
-  resetConfigCache();
-  return true;
+  return withConfigWrite(() => {
+    resetConfigCache();
+    const p = path.join(PROJECT_ROOT, 'config.boards.json');
+    const raw = JSON.parse(readFileSync(p, 'utf-8'));
+    const board = raw.boards?.find((b: { id: string }) => b.id === boardId);
+    if (!board) return false;
+    if (patch.name !== undefined) board.name = patch.name;
+    if (patch.archived !== undefined) board.archived = patch.archived;
+    writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
+    resetConfigCache();
+    return true;
+  });
 }
 
 /** Delete a board from config (does NOT delete .md file) */
 export function deleteBoardFromConfig(boardId: string): boolean {
-  resetConfigCache();
-  const p = path.join(PROJECT_ROOT, 'config.boards.json');
-  const raw = JSON.parse(readFileSync(p, 'utf-8'));
-  const idx = raw.boards?.findIndex((b: { id: string }) => b.id === boardId);
-  if (idx === undefined || idx === -1) return false;
-  raw.boards.splice(idx, 1);
-  writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
-  resetConfigCache();
-  return true;
+  return withConfigWrite(() => {
+    resetConfigCache();
+    const p = path.join(PROJECT_ROOT, 'config.boards.json');
+    const raw = JSON.parse(readFileSync(p, 'utf-8'));
+    const idx = raw.boards?.findIndex((b: { id: string }) => b.id === boardId);
+    if (idx === undefined || idx === -1) return false;
+    raw.boards.splice(idx, 1);
+    writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
+    resetConfigCache();
+    return true;
+  });
 }

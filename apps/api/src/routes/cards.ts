@@ -8,8 +8,10 @@ import { loadConfig } from '../config.js';
 import { writeBackDoneState, writeBackPriority, writeBackColumn } from '../writeback.js';
 import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
-import { allocateUniqueKbId, injectKbId } from '../parser.js';
+import { allocateUniqueKbId, injectKbId, isDoneColumn } from '../parser.js';
 import { fireEvent } from '../automations.js';
+import { formatCard } from '../utils.js';
+import type Database from 'better-sqlite3';
 
 const cards = new Hono();
 
@@ -42,23 +44,6 @@ const MoveCardSchema = z.object({
   position: z.number().int(),
 });
 
-function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function formatCard(row: Record<string, unknown>) {
-  return {
-    ...row,
-    is_done: Boolean(row.is_done),
-    labels: safeJsonParse<string[]>(row.labels as string, []),
-    sub_items: safeJsonParse<string[]>(row.sub_items as string, []),
-  };
-}
 
 async function safeParseJson(c: { req: { json: () => Promise<unknown> } }): Promise<unknown | null> {
   try {
@@ -66,6 +51,77 @@ async function safeParseJson(c: { req: { json: () => Promise<unknown> } }): Prom
   } catch {
     return null;
   }
+}
+
+/**
+ * Normalize positions in a column to 0,1,2,...,N-1.
+ * Called after moves to ensure no gaps.
+ */
+function normalizePositions(db: Database.Database, boardId: string, column: string): void {
+  const rows = db.prepare('SELECT id FROM cards WHERE board_id = ? AND column_name = ? ORDER BY position').all(boardId, column) as Array<{ id: string }>;
+  const stmt = db.prepare('UPDATE cards SET position = ? WHERE id = ?');
+  for (let i = 0; i < rows.length; i++) {
+    stmt.run(i, rows[i].id);
+  }
+}
+
+/**
+ * Execute a card move (same-column or cross-column) inside a transaction.
+ * Handles gap closing, room making, done-state toggling, and position normalization.
+ */
+function executeMoveTransaction(
+  db: Database.Database,
+  cardId: string,
+  boardId: string,
+  fromColumn: string,
+  fromPosition: number,
+  toColumn: string,
+  toPosition: number,
+  board: { doneColumns?: string[] },
+): { movingToDone: boolean; movingFromDone: boolean } {
+  const moveTransaction = db.transaction(() => {
+    if (fromColumn === toColumn) {
+      if (fromPosition < toPosition) {
+        db.prepare(
+          'UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ? AND position <= ? AND id != ?',
+        ).run(boardId, toColumn, fromPosition, toPosition, cardId);
+      } else if (fromPosition > toPosition) {
+        db.prepare(
+          'UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ? AND position < ? AND id != ?',
+        ).run(boardId, toColumn, toPosition, fromPosition, cardId);
+      }
+    } else {
+      db.prepare(
+        'UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ?',
+      ).run(boardId, fromColumn, fromPosition);
+      db.prepare(
+        'UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ?',
+      ).run(boardId, toColumn, toPosition);
+    }
+
+    db.prepare(
+      "UPDATE cards SET column_name = ?, position = ?, updated_at = datetime('now') WHERE id = ?",
+    ).run(toColumn, toPosition, cardId);
+
+    const movingToDone = isDoneColumn(toColumn, board) && !isDoneColumn(fromColumn, board);
+    const movingFromDone = !isDoneColumn(toColumn, board) && isDoneColumn(fromColumn, board);
+
+    if (movingToDone) {
+      db.prepare('UPDATE cards SET is_done = 1 WHERE id = ?').run(cardId);
+    } else if (movingFromDone) {
+      db.prepare('UPDATE cards SET is_done = 0 WHERE id = ?').run(cardId);
+    }
+
+    // Normalize positions in affected columns
+    normalizePositions(db, boardId, fromColumn);
+    if (fromColumn !== toColumn) {
+      normalizePositions(db, boardId, toColumn);
+    }
+
+    return { movingToDone, movingFromDone };
+  });
+
+  return moveTransaction();
 }
 
 // POST /api/cards — create a new card (appends to .md file + DB)
@@ -82,6 +138,11 @@ cards.post('/', async (c) => {
 
   const filePath = path.join(config.vaultRoot, board.file);
   const colName = column || 'Backlog';
+
+  // Column validation
+  if (!board.columns.includes(colName)) {
+    return c.json({ error: `Column "${colName}" not in board` }, 400);
+  }
 
   // Append task to .md file with stable kb:id
   suppressWatcher();
@@ -134,7 +195,7 @@ cards.post('/', async (c) => {
   }
 });
 
-// PATCH /api/cards/:id — update card metadata
+// PATCH /api/cards/:id — update card metadata (unified move path for column/position changes)
 cards.patch('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await safeParseJson(c);
@@ -147,21 +208,57 @@ cards.patch('/:id', async (c) => {
   }
 
   const db = getDb();
-  const existing = db.prepare('SELECT id FROM cards WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!existing) return c.json({ error: 'Card not found' }, 404);
 
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === existing.board_id);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+
   const fields = parsed.data;
+
+  // Column validation
+  if (fields.column_name !== undefined && !board.columns.includes(fields.column_name)) {
+    return c.json({ error: `Column "${fields.column_name}" not in board` }, 400);
+  }
+
+  const columnChanging = fields.column_name !== undefined && fields.column_name !== existing.column_name;
+  const positionChanging = fields.position !== undefined;
+  const hasMetadataChanges = fields.labels !== undefined || fields.priority !== undefined ||
+    fields.due_date !== undefined || fields.description !== undefined;
+
+  if (!columnChanging && !positionChanging && !hasMetadataChanges) {
+    return c.json({ error: 'No fields to update' }, 400);
+  }
+
+  // Unified move path: column or position change goes through executeMoveTransaction
+  let movingToDone = false;
+  let movingFromDone = false;
+  const oldColumn = existing.column_name as string;
+
+  if (columnChanging || positionChanging) {
+    const fromColumn = oldColumn;
+    const fromPosition = existing.position as number;
+    const toColumn = fields.column_name ?? fromColumn;
+
+    let toPosition: number;
+    if (positionChanging) {
+      toPosition = fields.position!;
+    } else {
+      // Append to end of target column
+      const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ?').get(existing.board_id, toColumn) as { mp: number | null }).mp;
+      toPosition = (maxPos ?? -1) + 1;
+    }
+
+    const result = executeMoveTransaction(db, id, existing.board_id as string, fromColumn, fromPosition, toColumn, toPosition, board);
+    movingToDone = result.movingToDone;
+    movingFromDone = result.movingFromDone;
+  }
+
+  // Apply remaining metadata updates
   const sets: string[] = [];
   const params: unknown[] = [];
 
-  if (fields.column_name !== undefined) {
-    sets.push('column_name = ?');
-    params.push(fields.column_name);
-  }
-  if (fields.position !== undefined) {
-    sets.push('position = ?');
-    params.push(fields.position);
-  }
   if (fields.labels !== undefined) {
     sets.push('labels = ?');
     params.push(JSON.stringify(fields.labels));
@@ -170,9 +267,6 @@ cards.patch('/:id', async (c) => {
     sets.push('priority = ?');
     params.push(fields.priority);
   }
-
-  // Track if priority changed for writeback
-  const priorityChanged = fields.priority !== undefined;
   if (fields.due_date !== undefined) {
     sets.push('due_date = ?');
     params.push(fields.due_date);
@@ -182,17 +276,14 @@ cards.patch('/:id', async (c) => {
     params.push(fields.description);
   }
 
-  if (sets.length === 0) {
-    return c.json({ error: 'No fields to update' }, 400);
+  if (sets.length > 0) {
+    sets.push("updated_at = datetime('now')");
+    params.push(id);
+    db.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   }
 
-  sets.push("updated_at = datetime('now')");
-  params.push(id);
-
-  db.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).run(...params);
-
   // Write back priority to .md file
-  if (priorityChanged) {
+  if (fields.priority !== undefined) {
     suppressWatcher();
     try {
       const result = writeBackPriority(id, fields.priority ?? null);
@@ -204,11 +295,22 @@ cards.patch('/:id', async (c) => {
     }
   }
 
-  // Write back column to .md file (for recovery)
-  if (fields.column_name !== undefined) {
+  // Write back done state and column to .md file
+  if (columnChanging) {
+    if (movingToDone || movingFromDone) {
+      suppressWatcher();
+      try {
+        const result = writeBackDoneState(id, movingToDone);
+        if (!result.success) {
+          console.warn(`[writeback] Done state failed for card ${id}: ${result.error}`);
+        }
+      } finally {
+        unsuppressWatcher();
+      }
+    }
     suppressWatcher();
     try {
-      const result = writeBackColumn(id, fields.column_name);
+      const result = writeBackColumn(id, fields.column_name!);
       if (!result.success) {
         console.warn(`[writeback] Column failed for card ${id}: ${result.error}`);
       }
@@ -225,6 +327,15 @@ cards.patch('/:id', async (c) => {
     boardId: updated.board_id as string,
     timestamp: new Date().toISOString(),
   });
+
+  // Fire automations for card.moved (only if column actually changed)
+  if (columnChanging) {
+    try {
+      fireEvent({ type: 'card.moved', cardId: id, boardId: existing.board_id as string, fromColumn: oldColumn, toColumn: fields.column_name! });
+    } catch (err) {
+      console.warn('[automations] Error on card.moved:', err);
+    }
+  }
 
   return c.json(formatCard(updated));
 });
@@ -245,58 +356,26 @@ cards.post('/:id/move', async (c) => {
   const existing = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   if (!existing) return c.json({ error: 'Card not found' }, 404);
 
+  const config = loadConfig();
+  const boardId = existing.board_id as string;
+  const board = config.boards.find((b) => b.id === boardId);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+
   const { column, position } = parsed.data;
+
+  // Column validation
+  if (!board.columns.includes(column)) {
+    return c.json({ error: `Column "${column}" not in board` }, 400);
+  }
+
   const oldColumn = existing.column_name as string;
   const oldPosition = existing.position as number;
-  const boardId = existing.board_id as string;
 
-  // Atomic move transaction: handles same-column and cross-column moves correctly
-  const moveTransaction = db.transaction(() => {
-    if (oldColumn === column) {
-      // Same column: shift cards between old and new position
-      if (oldPosition < position) {
-        // Moving down: shift cards in [old+1, new] up by 1
-        db.prepare(
-          `UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ? AND position <= ? AND id != ?`,
-        ).run(boardId, column, oldPosition, position, id);
-      } else if (oldPosition > position) {
-        // Moving up: shift cards in [new, old-1] down by 1
-        db.prepare(
-          `UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ? AND position < ? AND id != ?`,
-        ).run(boardId, column, position, oldPosition, id);
-      }
-    } else {
-      // Cross-column: close gap in source, make room in target
-      db.prepare(
-        `UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ?`,
-      ).run(boardId, oldColumn, oldPosition);
+  const { movingToDone, movingFromDone } = executeMoveTransaction(
+    db, id, boardId, oldColumn, oldPosition, column, position, board,
+  );
 
-      db.prepare(
-        `UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ?`,
-      ).run(boardId, column, position);
-    }
-
-    // Set the card's new column and position
-    db.prepare(
-      `UPDATE cards SET column_name = ?, position = ?, updated_at = datetime('now') WHERE id = ?`,
-    ).run(column, position, id);
-
-    // Update is_done based on column
-    const movingToDone = column === 'Done' && oldColumn !== 'Done';
-    const movingFromDone = column !== 'Done' && oldColumn === 'Done';
-
-    if (movingToDone) {
-      db.prepare('UPDATE cards SET is_done = 1 WHERE id = ?').run(id);
-    } else if (movingFromDone) {
-      db.prepare('UPDATE cards SET is_done = 0 WHERE id = ?').run(id);
-    }
-
-    return { movingToDone, movingFromDone };
-  });
-
-  const { movingToDone, movingFromDone } = moveTransaction();
-
-  // Write-back to .md file if moving to/from Done (outside transaction)
+  // Write-back to .md file if moving to/from Done
   let writeBackError: string | undefined;
   if (movingToDone || movingFromDone) {
     suppressWatcher();

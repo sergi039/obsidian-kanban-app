@@ -7,27 +7,11 @@ import { loadConfig, updateBoardColumns, resetConfigCache, addBoardToConfig, upd
 import { parseFilterQuery, compileFilter } from '../filter-engine.js';
 import { reconcileBoard } from '../reconciler.js';
 import { broadcast } from '../ws.js';
-import { startWatcher } from '../watcher.js';
+import { writeBackColumn } from '../writeback.js';
+import { suppressWatcher, unsuppressWatcher, rebindWatcher } from '../watcher.js';
+import { formatCard } from '../utils.js';
 
 const boards = new Hono();
-
-function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function formatCard(card: Record<string, unknown>) {
-  return {
-    ...card,
-    is_done: Boolean(card.is_done),
-    labels: safeJsonParse<string[]>(card.labels as string, []),
-    sub_items: safeJsonParse<string[]>(card.sub_items as string, []),
-  };
-}
 
 // GET /api/boards — list boards with task counts
 // ?archived=true to include archived, ?archived=only for archived only
@@ -190,8 +174,14 @@ boards.post('/', async (c) => {
 
   // File path relative to vault root
   const relFile = fileOverride || `Tasks/${name}.md`;
-  const absFile = path.join(config.vaultRoot, relFile);
+  const absFile = path.resolve(config.vaultRoot, relFile);
   const columns = colOverride || config.defaultColumns || ['Backlog', 'In Progress', 'Done'];
+
+  // Path traversal protection: resolved path must stay inside vaultRoot
+  const normalizedVault = path.resolve(config.vaultRoot);
+  if (!absFile.startsWith(normalizedVault + path.sep) && absFile !== normalizedVault) {
+    return c.json({ error: 'File path must be within vault root' }, 400);
+  }
 
   // Create .md file if it doesn't exist
   if (!existsSync(absFile)) {
@@ -211,6 +201,9 @@ boards.post('/', async (c) => {
     const result = reconcileBoard(board, freshConfig.vaultRoot);
     console.log(`[boards] Created "${name}": +${result.added} cards`);
   }
+
+  // Rebind watcher to include new board's file
+  rebindWatcher(freshConfig);
 
   broadcast({ type: 'boards-changed', timestamp: new Date().toISOString() });
 
@@ -247,13 +240,29 @@ boards.delete('/:id', async (c) => {
   const board = config.boards.find((b) => b.id === boardId);
   if (!board) return c.json({ error: 'Board not found' }, 404);
 
-  // Remove cards from DB
+  // Full cleanup: remove all related data from DB
   const db = getDb();
   const cardCount = (db.prepare('SELECT COUNT(*) as c FROM cards WHERE board_id = ?').get(boardId) as { c: number }).c;
+
+  // Cards (cascades to comments and field_values via FK)
   db.prepare('DELETE FROM cards WHERE board_id = ?').run(boardId);
+  // Fields (cascades to any remaining field_values)
+  db.prepare('DELETE FROM fields WHERE board_id = ?').run(boardId);
+  // Views
+  db.prepare('DELETE FROM views WHERE board_id = ?').run(boardId);
+  // Automations
+  db.prepare('DELETE FROM automations WHERE board_id = ?').run(boardId);
+  // Sync state
+  const absFile = path.resolve(config.vaultRoot, board.file);
+  db.prepare('DELETE FROM sync_state WHERE file_path = ?').run(absFile);
 
   const deleted = deleteBoardFromConfig(boardId);
   if (!deleted) return c.json({ error: 'Failed to delete board' }, 500);
+
+  // Rebind watcher to exclude deleted board's file
+  resetConfigCache();
+  const freshConfig = loadConfig();
+  rebindWatcher(freshConfig);
 
   console.log(`[boards] Deleted "${boardId}" (${cardCount} cards removed, .md file kept)`);
 
@@ -330,6 +339,19 @@ boards.patch('/:id/columns/rename', async (c) => {
   const db = getDb();
   db.prepare('UPDATE cards SET column_name = ? WHERE board_id = ? AND column_name = ?').run(newName, boardId, oldName);
 
+  // Sync kb:col markers in .md file
+  const affectedCards = db.prepare('SELECT id FROM cards WHERE board_id = ? AND column_name = ?').all(boardId, newName) as Array<{ id: string }>;
+  if (affectedCards.length > 0) {
+    suppressWatcher();
+    try {
+      for (const card of affectedCards) {
+        writeBackColumn(card.id, newName);
+      }
+    } finally {
+      unsuppressWatcher();
+    }
+  }
+
   return c.json({ ok: true, columns: newColumns });
 });
 
@@ -357,6 +379,19 @@ boards.delete('/:id/columns', async (c) => {
   // Move cards from deleted column
   const db = getDb();
   db.prepare('UPDATE cards SET column_name = ? WHERE board_id = ? AND column_name = ?').run(target, boardId, name);
+
+  // Sync kb:col markers in .md file for moved cards
+  const movedCards = db.prepare('SELECT id FROM cards WHERE board_id = ? AND column_name = ?').all(boardId, target) as Array<{ id: string }>;
+  if (movedCards.length > 0) {
+    suppressWatcher();
+    try {
+      for (const card of movedCards) {
+        writeBackColumn(card.id, target);
+      }
+    } finally {
+      unsuppressWatcher();
+    }
+  }
 
   return c.json({ ok: true, columns: newColumns, movedTo: target });
 });

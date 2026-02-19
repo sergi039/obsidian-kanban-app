@@ -106,3 +106,14 @@ export function stopWatcher(): void {
     watcher = null;
   }
 }
+
+/**
+ * Rebind watcher to reflect changes in board config (board created/deleted).
+ * Stops old watcher, clears stale mappings, starts fresh.
+ */
+export function rebindWatcher(config: AppConfig): void {
+  stopWatcher();
+  fileToBoardMapGlobal.clear();
+  pendingChanges.clear();
+  startWatcher(config);
+}
