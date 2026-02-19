@@ -1,4 +1,18 @@
-import type { BoardSummary, BoardDetail, Card, Comment, View, Field, FieldValue, MoveCardRequest, PatchCardRequest, AutomationRule, Trigger, AutomationAction } from '../types';
+import type {
+  BoardSummary,
+  BoardDetail,
+  Card,
+  Comment,
+  View,
+  Field,
+  FieldValue,
+  MoveCardRequest,
+  PatchCardRequest,
+  AutomationRule,
+  Trigger,
+  AutomationAction,
+  PriorityDef,
+} from '../types';
 
 const BASE = '/api';
 
@@ -40,6 +54,16 @@ export async function unarchiveBoard(id: string): Promise<{ ok: boolean }> {
 
 export async function renameBoard(id: string, name: string): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>(`/boards/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+}
+
+export async function updateBoardPriorities(
+  id: string,
+  priorities: PriorityDef[],
+): Promise<{ ok: boolean; priorities: PriorityDef[] }> {
+  return request<{ ok: boolean; priorities: PriorityDef[] }>(
+    `/boards/${id}`,
+    { method: 'PATCH', body: JSON.stringify({ priorities }) },
+  );
 }
 
 export async function deleteBoard(id: string): Promise<{ ok: boolean; cardsRemoved: number }> {

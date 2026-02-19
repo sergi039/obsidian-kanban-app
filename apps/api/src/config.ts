@@ -6,6 +6,13 @@ import { z } from 'zod';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 
+export const PriorityDefSchema = z.object({
+  id: z.string().min(1),
+  emoji: z.string().min(1),
+  label: z.string().min(1),
+  color: z.string().min(1),
+});
+
 const BoardSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -13,6 +20,7 @@ const BoardSchema = z.object({
   columns: z.array(z.string()),
   archived: z.boolean().optional(),
   doneColumns: z.array(z.string()).optional(),
+  priorities: z.array(PriorityDefSchema).optional(),
 });
 
 const ConfigSchema = z.object({
@@ -23,6 +31,12 @@ const ConfigSchema = z.object({
 
 export type BoardConfig = z.infer<typeof BoardSchema>;
 export type AppConfig = z.infer<typeof ConfigSchema>;
+export type PriorityDef = z.infer<typeof PriorityDefSchema>;
+
+export const DEFAULT_PRIORITIES: PriorityDef[] = [
+  { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
+  { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
+];
 
 let cached: AppConfig | null = null;
 
@@ -79,7 +93,13 @@ export function updateBoardColumns(boardId: string, columns: string[]): boolean 
 }
 
 /** Add a new board to config file */
-export function addBoardToConfig(board: { id: string; name: string; file: string; columns: string[] }): boolean {
+export function addBoardToConfig(board: {
+  id: string;
+  name: string;
+  file: string;
+  columns: string[];
+  priorities?: PriorityDef[];
+}): boolean {
   return withConfigWrite(() => {
     resetConfigCache();
     const p = path.join(PROJECT_ROOT, 'config.boards.json');
@@ -93,7 +113,10 @@ export function addBoardToConfig(board: { id: string; name: string; file: string
 }
 
 /** Update a board's properties in config file */
-export function updateBoardInConfig(boardId: string, patch: Partial<{ name: string; archived: boolean }>): boolean {
+export function updateBoardInConfig(
+  boardId: string,
+  patch: Partial<{ name: string; archived: boolean; priorities: PriorityDef[] }>,
+): boolean {
   return withConfigWrite(() => {
     resetConfigCache();
     const p = path.join(PROJECT_ROOT, 'config.boards.json');
@@ -102,6 +125,7 @@ export function updateBoardInConfig(boardId: string, patch: Partial<{ name: stri
     if (!board) return false;
     if (patch.name !== undefined) board.name = patch.name;
     if (patch.archived !== undefined) board.archived = patch.archived;
+    if (patch.priorities !== undefined) board.priorities = patch.priorities;
     writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
     resetConfigCache();
     return true;
@@ -117,6 +141,21 @@ export function deleteBoardFromConfig(boardId: string): boolean {
     const idx = raw.boards?.findIndex((b: { id: string }) => b.id === boardId);
     if (idx === undefined || idx === -1) return false;
     raw.boards.splice(idx, 1);
+    writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
+    resetConfigCache();
+    return true;
+  });
+}
+
+/** Update a board's priorities in config file and reset cache */
+export function updateBoardPriorities(boardId: string, priorities: PriorityDef[]): boolean {
+  return withConfigWrite(() => {
+    resetConfigCache();
+    const p = path.join(PROJECT_ROOT, 'config.boards.json');
+    const raw = JSON.parse(readFileSync(p, 'utf-8'));
+    const board = raw.boards?.find((b: { id: string }) => b.id === boardId);
+    if (!board) return false;
+    board.priorities = priorities;
     writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
     resetConfigCache();
     return true;

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import { getDb } from '../db.js';
-import { loadConfig } from '../config.js';
+import { DEFAULT_PRIORITIES, loadConfig } from '../config.js';
 import { writeBackDoneState, writeBackPriority, writeBackColumn } from '../writeback.js';
 import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
@@ -25,7 +25,7 @@ const PatchCardSchema = z.object({
   column_name: z.string().optional(),
   position: z.number().int().optional(),
   labels: z.array(z.string()).optional(),
-  priority: z.enum(['high', 'urgent']).nullable().optional(),
+  priority: z.string().nullable().optional(),
   due_date: z.string().nullable().optional(),
   description: z.string().optional(),
 });
@@ -220,6 +220,12 @@ cards.patch('/:id', async (c) => {
   // Column validation
   if (fields.column_name !== undefined && !board.columns.includes(fields.column_name)) {
     return c.json({ error: `Column "${fields.column_name}" not in board` }, 400);
+  }
+  if (fields.priority !== undefined && fields.priority !== null) {
+    const validPriorityIds = new Set((board.priorities ?? DEFAULT_PRIORITIES).map((p) => p.id));
+    if (!validPriorityIds.has(fields.priority)) {
+      return c.json({ error: `Priority "${fields.priority}" not in board` }, 400);
+    }
   }
 
   const columnChanging = fields.column_name !== undefined && fields.column_name !== existing.column_name;

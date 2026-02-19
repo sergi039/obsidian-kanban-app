@@ -8,19 +8,27 @@ vi.mock('../../src/db.js', () => ({
   getDb: () => testDb,
 }));
 
-vi.mock('../../src/config.js', () => ({
-  loadConfig: () => ({
-    vaultRoot: '/tmp/test-vault',
-    boards: [{ id: 'b1', name: 'Test', file: 'Tasks/Test.md', columns: ['Backlog', 'Done'] }],
-    defaultColumns: ['Backlog', 'Done'],
-  }),
-  PROJECT_ROOT: '/tmp/test',
-  resetConfigCache: vi.fn(),
-  updateBoardColumns: vi.fn(() => true),
-  addBoardToConfig: vi.fn(() => true),
-  updateBoardInConfig: vi.fn(() => true),
-  deleteBoardFromConfig: vi.fn(() => true),
-}));
+vi.mock('../../src/config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/config.js')>();
+  return {
+    PriorityDefSchema: actual.PriorityDefSchema,
+    loadConfig: () => ({
+      vaultRoot: '/tmp/test-vault',
+      boards: [{ id: 'b1', name: 'Test', file: 'Tasks/Test.md', columns: ['Backlog', 'Done'] }],
+      defaultColumns: ['Backlog', 'Done'],
+    }),
+    DEFAULT_PRIORITIES: [
+      { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
+      { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
+    ],
+    PROJECT_ROOT: '/tmp/test',
+    resetConfigCache: vi.fn(),
+    updateBoardColumns: vi.fn(() => true),
+    addBoardToConfig: vi.fn(() => true),
+    updateBoardInConfig: vi.fn(() => true),
+    deleteBoardFromConfig: vi.fn(() => true),
+  };
+});
 
 vi.mock('../../src/ws.js', () => ({
   broadcast: vi.fn(),

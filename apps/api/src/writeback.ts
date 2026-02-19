@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { suppressWatcher, unsuppressWatcher } from './watcher.js';
-import { loadConfig } from './config.js';
+import { DEFAULT_PRIORITIES, loadConfig } from './config.js';
 import { getDb } from './db.js';
 import { extractKbId, injectKbCol } from './parser.js';
 
@@ -20,6 +20,10 @@ export interface WriteBackResult {
 }
 
 const CHECKBOX_RE = /^(\s*- \[)([ xX])(\] .*)$/;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /**
  * Normalize a line for fuzzy matching: strip whitespace, checkbox state, and case.
@@ -156,11 +160,11 @@ export function writeBackDoneState(
 
 /**
  * Write-back priority emoji to .md file.
- * Adds, removes, or changes 🔺 (urgent) / ⏫ (high) in the task line.
+ * Adds, removes, or changes configured priority emoji in the task line.
  */
 export function writeBackPriority(
   cardId: string,
-  priority: 'urgent' | 'high' | null,
+  priority: string | null,
 ): WriteBackResult {
   const db = getDb();
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(cardId) as
@@ -175,6 +179,18 @@ export function writeBackPriority(
   const board = config.boards.find((b) => b.id === card.board_id);
   if (!board) {
     return { success: false, changed: false, lineNumber: card.line_number, error: 'Board config not found' };
+  }
+
+  const priorityDefs = board.priorities ?? DEFAULT_PRIORITIES;
+  const emojiByPriorityId = new Map(priorityDefs.map((p) => [p.id, p.emoji]));
+  const priorityEmojis = Array.from(new Set(priorityDefs.map((p) => p.emoji)));
+  if (priority !== null && !emojiByPriorityId.has(priority)) {
+    return {
+      success: false,
+      changed: false,
+      lineNumber: card.line_number,
+      error: `Unknown priority "${priority}" for board "${board.id}"`,
+    };
   }
 
   const filePath = path.join(config.vaultRoot, board.file);
@@ -204,26 +220,29 @@ export function writeBackPriority(
       return { success: false, changed: false, lineNumber: card.line_number, error: 'Line number out of range' };
     }
 
-    let line = lines[lineIdx];
-
-    // Remove existing priority emoji
-    const hadUrgent = line.includes('🔺');
-    const hadHigh = line.includes('⏫');
-    line = line.replace(/\s*🔺/g, '').replace(/\s*⏫/g, '');
-
-    // Add new priority emoji (after checkbox, before title text)
-    if (priority) {
-      const emoji = priority === 'urgent' ? '🔺' : '⏫';
-      // Insert after "- [ ] " or "- [x] "
-      line = line.replace(/^(\s*- \[[ xX]\]\s*)/, `$1${emoji} `);
+    const originalLine = lines[lineIdx];
+    const checkboxMatch = originalLine.match(/^(\s*- \[[ xX]\]\s*)(.*)$/);
+    if (!checkboxMatch) {
+      return { success: false, changed: false, lineNumber: lineIdx + 1, error: 'Line is not a checkbox task' };
     }
 
-    const alreadyCorrect =
-      (priority === 'urgent' && hadUrgent && !hadHigh) ||
-      (priority === 'high' && hadHigh && !hadUrgent) ||
-      (priority === null && !hadUrgent && !hadHigh);
+    const prefix = checkboxMatch[1];
+    let tail = checkboxMatch[2];
 
-    if (alreadyCorrect) {
+    // Remove all configured priority emojis from task tail
+    for (const emoji of priorityEmojis) {
+      tail = tail.replace(new RegExp(`\\s*${escapeRegExp(emoji)}\\s*`, 'g'), ' ');
+    }
+    tail = tail.replace(/\s+/g, ' ').trim();
+
+    // Add new configured emoji (after checkbox, before title text)
+    if (priority !== null) {
+      const emoji = emojiByPriorityId.get(priority)!;
+      tail = tail.length > 0 ? `${emoji} ${tail}` : emoji;
+    }
+
+    const line = `${prefix}${tail}`;
+    if (line === originalLine) {
       return { success: true, changed: false, lineNumber: lineIdx + 1 };
     }
 

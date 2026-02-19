@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { parseMarkdownTasks, computeFingerprint, allocateUniqueKbId, injectKbId, isDoneColumn } from './parser.js';
 import { getDb } from './db.js';
+import { DEFAULT_PRIORITIES } from './config.js';
 import type { BoardConfig } from './config.js';
 import { suppressWatcher, unsuppressWatcher } from './watcher.js';
 
@@ -44,7 +45,7 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
     return { boardId: board.id, added: 0, removed: 0, updated: 0, migrated: 0 };
   }
 
-  const tasks = parseMarkdownTasks(content);
+  const tasks = parseMarkdownTasks(content, board.priorities ?? DEFAULT_PRIORITIES);
 
   const existingCards = db.prepare('SELECT * FROM cards WHERE board_id = ?').all(board.id) as Array<{
     id: string;

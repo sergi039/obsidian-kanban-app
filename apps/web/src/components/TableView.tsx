@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
-import type { Card } from '../types';
+import type { Card, PriorityDef } from '../types';
 import { moveCard, patchCard } from '../api/client';
 
 interface Props {
   cards: Card[];
   columns: string[];
+  priorities: PriorityDef[];
   boardId: string;
   onCardClick: (card: Card) => void;
   onCardAdd: (title: string, column: string) => Promise<void>;
@@ -14,12 +15,12 @@ interface Props {
 type SortField = 'title' | 'column_name' | 'priority' | 'due_date' | 'is_done' | 'updated_at';
 type SortDir = 'ASC' | 'DESC';
 
-const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1 };
 const ARCHIVE_PAGE_SIZE = 20;
 
-function comparePriority(a: string | null, b: string | null): number {
-  const av = a ? (PRIORITY_ORDER[a] ?? 2) : 3;
-  const bv = b ? (PRIORITY_ORDER[b] ?? 2) : 3;
+function comparePriority(a: string | null, b: string | null, rank: Map<string, number>): number {
+  const fallback = rank.size + 1;
+  const av = a ? (rank.get(a) ?? fallback) : fallback + 1;
+  const bv = b ? (rank.get(b) ?? fallback) : fallback + 1;
   return av - bv;
 }
 
@@ -50,7 +51,7 @@ const KNOWN_COLORS: Record<string, string> = {
   'live test': '#06b6d4',
 };
 
-export function TableView({ cards, columns, boardId, onCardClick, onCardAdd, onRefresh }: Props) {
+export function TableView({ cards, columns, priorities, boardId, onCardClick, onCardAdd, onRefresh }: Props) {
   const [sortField, setSortField] = useState<SortField>('title');
   const [sortDir, setSortDir] = useState<SortDir>('ASC');
   const [newTitle, setNewTitle] = useState('');
@@ -63,6 +64,10 @@ export function TableView({ cards, columns, boardId, onCardClick, onCardAdd, onR
   const [showSettings, setShowSettings] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [archivePage, setArchivePage] = useState(0);
+  const priorityRank = useMemo(
+    () => new Map(priorities.map((p, index) => [p.id, index])),
+    [priorities],
+  );
 
   const updateSetting = (key: string, value: unknown) => {
     const s = loadSettings(boardId);
@@ -120,7 +125,7 @@ export function TableView({ cards, columns, boardId, onCardClick, onCardAdd, onR
   };
 
   const handlePriorityChange = async (card: Card, priority: string) => {
-    const val = priority === 'none' ? null : priority as 'high' | 'urgent';
+    const val = priority === 'none' ? null : priority;
     try {
       await patchCard(card.id, { priority: val });
       await onRefresh();
@@ -155,7 +160,7 @@ export function TableView({ cards, columns, boardId, onCardClick, onCardAdd, onR
         cmp = a.column_name.localeCompare(b.column_name);
         break;
       case 'priority':
-        cmp = comparePriority(a.priority, b.priority);
+        cmp = comparePriority(a.priority, b.priority, priorityRank);
         break;
       case 'due_date':
         cmp = (a.due_date || '9999').localeCompare(b.due_date || '9999');
@@ -245,8 +250,9 @@ export function TableView({ cards, columns, boardId, onCardClick, onCardAdd, onR
           className="text-xs bg-transparent border border-transparent hover:border-board-border rounded px-1.5 py-1 text-board-text cursor-pointer focus:outline-none focus:border-blue-500 transition-colors"
         >
           <option value="none">— None</option>
-          <option value="high">⏫ High</option>
-          <option value="urgent">🔺 Urgent</option>
+          {priorities.map((p) => (
+            <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>
+          ))}
         </select>
       </td>
       {/* Due — inline date picker */}

@@ -16,10 +16,11 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { moveCard, reorderColumns } from '../api/client';
-import type { BoardDetail, Card } from '../types';
+import type { BoardDetail, Card, PriorityDef } from '../types';
 import { Column } from './Column';
 import { KanbanCard } from './Card';
 import { AddColumnButton } from './ColumnManager';
+import { BoardSettingsModal } from './BoardSettings';
 
 interface Props {
   board: BoardDetail;
@@ -30,6 +31,7 @@ interface Props {
   onColumnAdd: (name: string) => Promise<void>;
   onColumnRename: (oldName: string, newName: string) => Promise<void>;
   onColumnDelete: (name: string) => Promise<void>;
+  onPrioritiesChange: (priorities: PriorityDef[]) => Promise<void>;
 }
 
 // ---- Collision detection: same as working test ----
@@ -69,11 +71,14 @@ export function Board({
   onColumnAdd,
   onColumnRename,
   onColumnDelete,
+  onPrioritiesChange,
 }: Props) {
   const [activeCard, setActiveCard] = useState<Card | null>(null);
   const [activeColName, setActiveColName] = useState<string | null>(null);
   const [localColumns, setLocalColumns] = useState<BoardDetail['columns'] | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const dragOriginRef = useRef<{ columnName: string } | null>(null);
+  const priorities = Array.isArray(board.priorities) ? board.priorities : [];
 
   const columns = localColumns || board.columns;
   const columnSortableIds = columns.map((c) => toColId(c.name));
@@ -294,6 +299,7 @@ export function Board({
               index={i}
               sortableId={toColId(col.name)}
               cards={filterCards(col.cards)}
+              priorities={priorities}
               boardId={board.id}
               onCardClick={onCardClick}
               onCardAdd={onCardAdd}
@@ -302,12 +308,21 @@ export function Board({
             />
           ))}
         </SortableContext>
-        <AddColumnButton onAdd={onColumnAdd} />
+        <div className="shrink-0 flex flex-col gap-2">
+          <AddColumnButton onAdd={onColumnAdd} />
+          <button
+            onClick={() => setShowSettings(true)}
+            className="px-4 py-2 text-sm text-board-text-muted hover:text-board-text hover:bg-board-column rounded-lg transition-colors border border-board-border"
+            type="button"
+          >
+            ⚙ Board settings
+          </button>
+        </div>
       </div>
       <DragOverlay dropAnimation={null}>
         {activeCard ? (
           <div className="rotate-2 opacity-80 w-80">
-            <KanbanCard card={activeCard} onClick={() => {}} />
+            <KanbanCard card={activeCard} priorities={priorities} onClick={() => {}} />
           </div>
         ) : null}
         {activeColName ? (
@@ -316,6 +331,17 @@ export function Board({
           </div>
         ) : null}
       </DragOverlay>
+      <BoardSettingsModal
+        open={showSettings}
+        boardName={board.name}
+        columns={board.columns.map((c) => c.name)}
+        priorities={priorities}
+        onClose={() => setShowSettings(false)}
+        onSave={async (priorities) => {
+          await onPrioritiesChange(priorities);
+          setShowSettings(false);
+        }}
+      />
     </DndContext>
   );
 }

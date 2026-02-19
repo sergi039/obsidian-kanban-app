@@ -1,3 +1,10 @@
+export interface PriorityDef {
+  id: string;
+  emoji: string;
+  label: string;
+  color: string;
+}
+
 export interface Card {
   id: string;
   seq_id: number | null;
@@ -8,7 +15,7 @@ export interface Card {
   raw_line: string;
   line_number: number;
   is_done: boolean;
-  priority: 'high' | 'urgent' | null;
+  priority: string | null;
   labels: string[];
   due_date: string | null;
   sub_items: string[];
@@ -37,6 +44,7 @@ export interface BoardSummary {
   name: string;
   file: string;
   columns: string[];
+  priorities: PriorityDef[];
   archived?: boolean;
   totalCards: number;
   columnCounts: Record<string, number>;
@@ -46,6 +54,7 @@ export interface BoardDetail {
   id: string;
   name: string;
   file: string;
+  priorities: PriorityDef[];
   columns: Column[];
 }
 
@@ -138,7 +147,7 @@ export interface PatchCardRequest {
   column_name?: string;
   position?: number;
   labels?: string[];
-  priority?: 'high' | 'urgent' | null;
+  priority?: string | null;
   due_date?: string | null;
   description?: string;
 }

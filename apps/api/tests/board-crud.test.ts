@@ -9,19 +9,27 @@ vi.mock('../src/db.js', () => ({
   getDb: () => testDb,
 }));
 
-vi.mock('../src/config.js', () => ({
-  loadConfig: () => ({
-    vaultRoot: '/tmp/test-vault',
-    boards: [{ id: 'b1', name: 'Test', file: 'Tasks/Test.md', columns: ['Backlog', 'Done'] }],
-    defaultColumns: ['Backlog', 'Done'],
-  }),
-  PROJECT_ROOT: '/tmp/test',
-  resetConfigCache: vi.fn(),
-  updateBoardColumns: vi.fn(() => true),
-  addBoardToConfig: vi.fn(() => true),
-  updateBoardInConfig: vi.fn(() => true),
-  deleteBoardFromConfig: vi.fn(() => true),
-}));
+vi.mock('../src/config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/config.js')>();
+  return {
+    PriorityDefSchema: actual.PriorityDefSchema,
+    loadConfig: () => ({
+      vaultRoot: '/tmp/test-vault',
+      boards: [{ id: 'b1', name: 'Test', file: 'Tasks/Test.md', columns: ['Backlog', 'Done'] }],
+      defaultColumns: ['Backlog', 'Done'],
+    }),
+    DEFAULT_PRIORITIES: [
+      { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
+      { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
+    ],
+    PROJECT_ROOT: '/tmp/test',
+    resetConfigCache: vi.fn(),
+    updateBoardColumns: vi.fn(() => true),
+    addBoardToConfig: vi.fn(() => true),
+    updateBoardInConfig: vi.fn(() => true),
+    deleteBoardFromConfig: vi.fn(() => true),
+  };
+});
 
 vi.mock('../src/ws.js', () => ({
   broadcast: vi.fn(),
@@ -212,5 +220,56 @@ describe('boards-changed WS event', () => {
     expect(broadcast).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'boards-changed' }),
     );
+  });
+});
+
+describe('board priorities API', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    testDb.pragma('foreign_keys = ON');
+    testDb.exec(SCHEMA);
+  });
+
+  afterEach(() => testDb.close());
+
+  it('returns default priorities in board summary response', async () => {
+    const { default: boardRoutes } = await import('../src/routes/boards.js');
+    const app = new Hono();
+    app.route('/api/boards', boardRoutes);
+
+    const res = await app.request('/api/boards');
+    expect(res.status).toBe(200);
+    const body = await res.json() as Array<{ priorities: Array<{ id: string }> }>;
+    expect(body[0].priorities.map((p) => p.id)).toEqual(['urgent', 'high']);
+  });
+
+  it('returns default priorities in board detail response', async () => {
+    const { default: boardRoutes } = await import('../src/routes/boards.js');
+    const app = new Hono();
+    app.route('/api/boards', boardRoutes);
+
+    const res = await app.request('/api/boards/b1');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { priorities: Array<{ id: string }> };
+    expect(body.priorities.map((p) => p.id)).toEqual(['urgent', 'high']);
+  });
+
+  it('accepts PATCH priorities and forwards payload to config update', async () => {
+    const { default: boardRoutes } = await import('../src/routes/boards.js');
+    const config = await import('../src/config.js');
+    const app = new Hono();
+    app.route('/api/boards', boardRoutes);
+
+    const priorities = [
+      { id: 'blocker', emoji: '⚡', label: 'Blocker', color: '#dc2626' },
+      { id: 'normal', emoji: '🟦', label: 'Normal', color: '#2563eb' },
+    ];
+    const res = await app.request('/api/boards/b1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priorities }),
+    });
+    expect(res.status).toBe(200);
+    expect(config.updateBoardInConfig).toHaveBeenCalledWith('b1', { priorities });
   });
 });

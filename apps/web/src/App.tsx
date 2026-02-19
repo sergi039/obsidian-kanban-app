@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchBoards, fetchBoard, reloadSync, createCard, addColumn, renameColumn, deleteColumn, fetchFields } from './api/client';
-import type { BoardSummary, BoardDetail, Field } from './types';
+import {
+  fetchBoards,
+  fetchBoard,
+  reloadSync,
+  createCard,
+  addColumn,
+  renameColumn,
+  deleteColumn,
+  fetchFields,
+  updateBoardPriorities,
+} from './api/client';
+import type { BoardSummary, BoardDetail, Field, PriorityDef } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
 import { Board } from './components/Board';
 
@@ -14,6 +24,11 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { AutomationsPanel } from './components/AutomationsPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import type { Card } from './types';
+
+const FALLBACK_PRIORITIES: PriorityDef[] = [
+  { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
+  { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
+];
 
 export default function App() {
   const [boards, setBoards] = useState<BoardSummary[]>([]);
@@ -135,6 +150,14 @@ export default function App() {
     await loadBoard();
   };
 
+  const handlePrioritiesChange = async (priorities: PriorityDef[]) => {
+    if (!activeBoardId) return;
+    await updateBoardPriorities(activeBoardId, priorities);
+    await loadBoard();
+    const updatedBoards = await fetchBoards();
+    setBoards(updatedBoards);
+  };
+
   const filterCards = useCallback((cards: Card[]) => {
     if (!filterQuery.trim()) return cards;
 
@@ -173,7 +196,7 @@ export default function App() {
               break;
             case 'priority':
               if (vals.includes('none')) match = !card.priority;
-              else match = vals.some((v) => card.priority === v.toLowerCase());
+              else match = vals.some((v) => (card.priority || '').toLowerCase() === v.toLowerCase());
               break;
             case 'label':
               // Mirror backend: non-negated = OR (any label matches), negated = AND (all labels must NOT match)
@@ -238,6 +261,10 @@ export default function App() {
       return true;
     });
   }, [filterQuery]);
+
+  const boardPriorities = boardDetail && Array.isArray(boardDetail.priorities)
+    ? boardDetail.priorities
+    : FALLBACK_PRIORITIES;
 
   if (loading) {
     return (
@@ -321,7 +348,7 @@ export default function App() {
         {boardDetail ? (
           layout === 'board' ? (
             <Board
-              board={boardDetail}
+              board={{ ...boardDetail, priorities: boardPriorities }}
               filterCards={filterCards}
               onCardMove={handleCardMove}
               onCardClick={setSelectedCard}
@@ -329,11 +356,13 @@ export default function App() {
               onColumnAdd={handleColumnAdd}
               onColumnRename={handleColumnRename}
               onColumnDelete={handleColumnDelete}
+              onPrioritiesChange={handlePrioritiesChange}
             />
           ) : (
             <TableView
               cards={filterCards(boardDetail.columns.flatMap((col) => col.cards))}
               columns={boardDetail.columns.map((c) => c.name)}
+              priorities={boardPriorities}
               boardId={boardDetail.id}
               onCardClick={setSelectedCard}
               onCardAdd={handleCardAdd}
@@ -350,6 +379,7 @@ export default function App() {
         <CardDetail
           card={selectedCard}
           columns={boardDetail?.columns.map((c) => c.name) || []}
+          priorities={boardPriorities}
           fields={boardFields}
           onClose={() => setSelectedCard(null)}
           onUpdate={async () => {

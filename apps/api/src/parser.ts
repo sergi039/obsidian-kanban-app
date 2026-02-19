@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
+import { DEFAULT_PRIORITIES } from './config.js';
+import type { PriorityDef } from './config.js';
 
 export interface ParsedTask {
   title: string;
   rawLine: string;
   lineNumber: number;
   isDone: boolean;
-  priority: 'high' | 'urgent' | null;
+  priority: string | null;
   urls: string[];
   subItems: string[];
   /** Stable ID from <!-- kb:id=xxx --> marker, if present */
@@ -111,12 +113,40 @@ export function stripKbIdFromTitle(title: string): string {
   return title.replace(KB_ID_RE, '').trimEnd();
 }
 
-export function parseMarkdownTasks(content: string): ParsedTask[] {
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripPriorityEmoji(title: string, emoji: string): string {
+  return title
+    .replace(new RegExp(`\\s*${escapeRegExp(emoji)}\\s*`, 'g'), ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Detect priority by scanning title text for any configured emoji.
+ * Returns matching priority ID and emoji, or nulls if no match.
+ */
+export function detectPriority(
+  text: string,
+  priorityDefs: PriorityDef[],
+): { priority: string | null; emoji: string | null } {
+  for (const def of priorityDefs) {
+    if (def.emoji && text.includes(def.emoji)) {
+      return { priority: def.id, emoji: def.emoji };
+    }
+  }
+  return { priority: null, emoji: null };
+}
+
+export function parseMarkdownTasks(content: string, priorityDefs?: PriorityDef[]): ParsedTask[] {
   const lines = content.split('\n');
   const tasks: ParsedTask[] = [];
   let currentTask: ParsedTask | null = null;
   let inFrontmatter = false;
   let hasFoundTask = false;
+  const defs = priorityDefs ?? DEFAULT_PRIORITIES;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -155,23 +185,22 @@ export function parseMarkdownTasks(content: string): ParsedTask[] {
       const kbCol = extractKbCol(rawTitleText);
       const titleText = stripKbIdFromTitle(rawTitleText);
 
-      let priority: 'high' | 'urgent' | null = null;
-      if (titleText.includes('🔺')) priority = 'urgent';
-      else if (titleText.includes('⏫')) priority = 'high';
+      const { priority, emoji } = detectPriority(titleText, defs);
+      const displayTitle = emoji ? stripPriorityEmoji(titleText, emoji) : titleText;
 
       const urls: string[] = [];
       const mdRe = new RegExp(MD_LINK_RE.source, 'g');
       let m: RegExpExecArray | null;
-      while ((m = mdRe.exec(titleText)) !== null) {
+      while ((m = mdRe.exec(displayTitle)) !== null) {
         urls.push(m[2]);
       }
       const bareRe = new RegExp(BARE_URL_RE.source, 'g');
-      while ((m = bareRe.exec(titleText)) !== null) {
+      while ((m = bareRe.exec(displayTitle)) !== null) {
         if (!urls.includes(m[0])) urls.push(m[0]);
       }
 
       currentTask = {
-        title: titleText,
+        title: displayTitle,
         rawLine: line,
         lineNumber,
         isDone,

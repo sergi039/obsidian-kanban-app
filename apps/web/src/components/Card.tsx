@@ -1,7 +1,8 @@
-import type { Card } from '../types';
+import type { Card, PriorityDef } from '../types';
 
 interface Props {
   card: Card;
+  priorities: PriorityDef[];
   onClick: () => void;
 }
 
@@ -22,17 +23,25 @@ function extractUrls(title: string): string[] {
   return urls;
 }
 
-function cleanTitle(title: string): string {
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function cleanTitle(title: string, priorities: PriorityDef[]): string {
   let cleaned = title.replace(/\[([^\]]*)\]\([^)]+\)/g, '$1');
   cleaned = cleaned.replace(/https?:\/\/[^\s)\]]+/g, '').trim();
-  cleaned = cleaned.replace(/[⏫🔺]/g, '').trim();
+  for (const p of priorities) {
+    cleaned = cleaned.replace(new RegExp(`\\s*${escapeRegExp(p.emoji)}\\s*`, 'g'), ' ');
+  }
+  cleaned = cleaned.trim();
   cleaned = cleaned.replace(/\s+/g, ' ').replace(/^[-–]\s*/, '');
   return cleaned || title;
 }
 
-export function KanbanCard({ card, onClick }: Props) {
+export function KanbanCard({ card, priorities, onClick }: Props) {
   const urls = extractUrls(card.title);
-  const displayTitle = cleanTitle(card.title);
+  const displayTitle = cleanTitle(card.title, priorities);
+  const priorityDef = card.priority ? priorities.find((p) => p.id === card.priority) : undefined;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -47,18 +56,17 @@ export function KanbanCard({ card, onClick }: Props) {
       tabIndex={0}
       onClick={onClick}
       onKeyDown={handleKeyDown}
-      aria-label={`${card.is_done ? 'Done: ' : ''}${displayTitle}${card.priority ? `, ${card.priority} priority` : ''}`}
+      aria-label={`${card.is_done ? 'Done: ' : ''}${displayTitle}${priorityDef ? `, ${priorityDef.label} priority` : ''}`}
       className={`group relative bg-board-card hover:bg-board-card-hover border border-board-border hover:border-board-border-hover rounded-lg px-3 py-2.5 cursor-pointer transition-all focus:outline-none ${
         card.is_done ? 'opacity-50' : ''
       }`}
       style={{ ['--tw-ring-color' as string]: 'var(--board-accent-ring)' }}
     >
       {/* Priority left border */}
-      {card.priority && (
+      {priorityDef && (
         <div
-          className={`absolute left-0 top-2 bottom-2 w-[3px] rounded-full ${
-            card.priority === 'urgent' ? 'bg-priority-urgent' : 'bg-priority-high'
-          }`}
+          className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full"
+          style={{ backgroundColor: priorityDef.color }}
         />
       )}
 
@@ -80,13 +88,10 @@ export function KanbanCard({ card, onClick }: Props) {
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {card.priority && (
           <span
-            className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${
-              card.priority === 'urgent'
-                ? 'bg-priority-urgent/15 text-priority-urgent'
-                : 'bg-priority-high/15 text-priority-high'
-            }`}
+            className="text-[11px] font-medium px-1.5 py-0.5 rounded"
+            style={{ backgroundColor: `${priorityDef?.color ?? '#9ca3af'}26`, color: priorityDef?.color ?? '#9ca3af' }}
           >
-            {card.priority === 'urgent' ? '🔺 Urgent' : '⏫ High'}
+            {priorityDef ? `${priorityDef.emoji} ${priorityDef.label}` : card.priority}
           </span>
         )}
         {urls.length > 0 && (

@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Card } from '../types';
+import type { Card, PriorityDef } from '../types';
 import { DraggableCard } from './DraggableCard';
 import { AddCard } from './AddCard';
 import { ColumnMenu } from './ColumnManager';
@@ -10,6 +10,7 @@ interface Props {
   name: string;
   index: number;
   cards: Card[];
+  priorities: PriorityDef[];
   boardId: string;
   sortableId: string;
   onCardClick: (card: Card) => void;
@@ -45,7 +46,18 @@ function getColumnColor(name: string, index: number): string {
   return COLOR_PALETTE[index % COLOR_PALETTE.length];
 }
 
-export function Column({ name, index, cards, boardId, sortableId, onCardClick, onCardAdd, onColumnRename, onColumnDelete }: Props) {
+export function Column({
+  name,
+  index,
+  cards,
+  priorities,
+  boardId,
+  sortableId,
+  onCardClick,
+  onCardAdd,
+  onColumnRename,
+  onColumnDelete,
+}: Props) {
   // Column sortable (for reordering columns via drag)
   const {
     attributes: colAttrs,
@@ -103,7 +115,7 @@ export function Column({ name, index, cards, boardId, sortableId, onCardClick, o
       >
         <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
           {cards.map((card) => (
-            <DraggableCard key={card.id} card={card} onClick={() => onCardClick(card)} />
+            <DraggableCard key={card.id} card={card} priorities={priorities} onClick={() => onCardClick(card)} />
           ))}
         </SortableContext>
         {cards.length === 0 && !isOver && (

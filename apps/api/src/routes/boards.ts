@@ -3,7 +3,16 @@ import { z } from 'zod';
 import path from 'node:path';
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { getDb } from '../db.js';
-import { loadConfig, updateBoardColumns, resetConfigCache, addBoardToConfig, updateBoardInConfig, deleteBoardFromConfig } from '../config.js';
+import {
+  DEFAULT_PRIORITIES,
+  PriorityDefSchema,
+  loadConfig,
+  updateBoardColumns,
+  resetConfigCache,
+  addBoardToConfig,
+  updateBoardInConfig,
+  deleteBoardFromConfig,
+} from '../config.js';
 import { parseFilterQuery, compileFilter } from '../filter-engine.js';
 import { reconcileBoard } from '../reconciler.js';
 import { broadcast } from '../ws.js';
@@ -47,6 +56,7 @@ boards.get('/', (c) => {
       name: board.name,
       file: board.file,
       columns: board.columns,
+      priorities: board.priorities ?? DEFAULT_PRIORITIES,
       archived: board.archived || false,
       totalCards: total,
       columnCounts,
@@ -77,6 +87,7 @@ boards.get('/:id', (c) => {
     id: board.id,
     name: board.name,
     file: board.file,
+    priorities: board.priorities ?? DEFAULT_PRIORITIES,
     columns,
   });
 });
@@ -155,6 +166,7 @@ const CreateBoardSchema = z.object({
 const PatchBoardSchema = z.object({
   name: z.string().min(1).optional(),
   archived: z.boolean().optional(),
+  priorities: z.array(PriorityDefSchema).optional(),
 });
 
 // POST /api/boards — create a new board
@@ -207,7 +219,15 @@ boards.post('/', async (c) => {
 
   broadcast({ type: 'boards-changed', timestamp: new Date().toISOString() });
 
-  return c.json({ id, name, file: relFile, columns, archived: false, totalCards: 0 }, 201);
+  return c.json({
+    id,
+    name,
+    file: relFile,
+    columns,
+    priorities: DEFAULT_PRIORITIES,
+    archived: false,
+    totalCards: 0,
+  }, 201);
 });
 
 // PATCH /api/boards/:id — rename or archive a board
@@ -221,6 +241,12 @@ boards.patch('/:id', async (c) => {
   const config = loadConfig();
   const board = config.boards.find((b) => b.id === boardId);
   if (!board) return c.json({ error: 'Board not found' }, 404);
+  if (parsed.data.priorities) {
+    const ids = parsed.data.priorities.map((p) => p.id);
+    if (new Set(ids).size !== ids.length) {
+      return c.json({ error: 'Priority IDs must be unique' }, 400);
+    }
+  }
 
   const updated = updateBoardInConfig(boardId, parsed.data);
   if (!updated) return c.json({ error: 'Failed to update board' }, 500);

@@ -31,9 +31,23 @@ vi.mock('../src/db.js', () => ({
 vi.mock('../src/config.js', () => ({
   loadConfig: () => ({
     vaultRoot: '/tmp/test-vault',
-    boards: [{ id: 'b1', name: 'Test', file: 'Tasks/Test.md', columns: ['Backlog', 'In Progress', 'Done'] }],
+    boards: [{
+      id: 'b1',
+      name: 'Test',
+      file: 'Tasks/Test.md',
+      columns: ['Backlog', 'In Progress', 'Done'],
+      priorities: [
+        { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
+        { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
+        { id: 'blocker', emoji: '⚡', label: 'Blocker', color: '#dc2626' },
+      ],
+    }],
     defaultColumns: ['Backlog', 'In Progress', 'Done'],
   }),
+  DEFAULT_PRIORITIES: [
+    { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
+    { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
+  ],
   PROJECT_ROOT: '/tmp/test',
   resetConfigCache: vi.fn(),
   updateBoardColumns: vi.fn(() => true),
@@ -216,6 +230,37 @@ describe('column validation on card PATCH', () => {
       body: JSON.stringify({ column_name: 'Done' }),
     });
     expect(res.status).toBe(200);
+  });
+
+  it('rejects PATCH with unknown priority id', async () => {
+    const { default: cardRoutes } = await import('../src/routes/cards.js');
+    const app = new Hono();
+    app.route('/api/cards', cardRoutes);
+
+    const res = await app.request('/api/cards/c1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority: 'critical' }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/priority/i);
+  });
+
+  it('accepts PATCH with board-defined custom priority id', async () => {
+    const { default: cardRoutes } = await import('../src/routes/cards.js');
+    const app = new Hono();
+    app.route('/api/cards', cardRoutes);
+
+    const res = await app.request('/api/cards/c1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority: 'blocker' }),
+    });
+    expect(res.status).toBe(200);
+
+    const card = testDb.prepare('SELECT priority FROM cards WHERE id = ?').get('c1') as { priority: string | null };
+    expect(card.priority).toBe('blocker');
   });
 });
 

@@ -33,8 +33,13 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_cards_board_column ON cards(board_id, column_name);
 `;
 
-function makeBoard(id = 'b1', file = 'Tasks/Board.md', columns = ['Backlog', 'In Progress', 'Done']) {
-  return { id, name: 'Test Board', file, columns };
+function makeBoard(
+  id = 'b1',
+  file = 'Tasks/Board.md',
+  columns = ['Backlog', 'In Progress', 'Done'],
+  priorities?: Array<{ id: string; emoji: string; label: string; color: string }>,
+) {
+  return { id, name: 'Test Board', file, columns, priorities };
 }
 
 function writeMd(relPath: string, content: string) {
@@ -321,6 +326,22 @@ describe('reconciler', () => {
     expect(urgent!.priority).toBe('urgent');
     expect(high!.priority).toBe('high');
     expect(normal!.priority).toBeNull();
+  });
+
+  it('parses custom board priority definitions', async () => {
+    const board = makeBoard('b1', 'Tasks/Board.md', ['Backlog', 'In Progress', 'Done'], [
+      { id: 'blocker', emoji: '⚡', label: 'Blocker', color: '#dc2626' },
+      { id: 'low', emoji: '🟦', label: 'Low', color: '#2563eb' },
+    ]);
+    writeMd('Tasks/Board.md', '- [ ] ⚡ Incident response\n');
+
+    const { reconcileBoard } = await import('../src/reconciler.js');
+    reconcileBoard(board, vaultRoot);
+
+    const cards = getCards();
+    expect(cards).toHaveLength(1);
+    expect(cards[0].priority).toBe('blocker');
+    expect(cards[0].title).toBe('Incident response');
   });
 
   it('handles frontmatter correctly', async () => {

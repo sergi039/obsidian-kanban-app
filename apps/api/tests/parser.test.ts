@@ -340,6 +340,16 @@ describe('parseMarkdownTasks', () => {
       expect(tasks[1].title).toBe('Task B');
     });
 
+    it('supports custom priority defs and strips emoji from title', () => {
+      const content = '- [ ] ⚡ Fix prod issue now';
+      const tasks = parseMarkdownTasks(content, [
+        { id: 'blocker', emoji: '⚡', label: 'Blocker', color: '#dc2626' },
+      ]);
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].priority).toBe('blocker');
+      expect(tasks[0].title).toBe('Fix prod issue now');
+    });
+
     it('preserves correct line numbers', () => {
       const content = `---\ntags: x\n---\n\n\n- [ ] Task on line 6`;
       const tasks = parseMarkdownTasks(content);

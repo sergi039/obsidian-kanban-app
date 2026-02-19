@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { patchCard, fetchComments, addComment, updateComment, deleteComment, fetchFieldValues, setFieldValue } from '../api/client';
-import type { Card, Comment, FieldValue, Field, PatchCardRequest } from '../types';
+import type { Card, Comment, FieldValue, Field, PatchCardRequest, PriorityDef } from '../types';
 
 interface Props {
   card: Card;
   columns: string[];
+  priorities: PriorityDef[];
   fields: Field[];
   onClose: () => void;
   onUpdate: () => Promise<void>;
@@ -32,8 +33,16 @@ function extractLinks(title: string): { text: string; url: string }[] {
   return links;
 }
 
-function cleanTitle(t: string): string {
-  return t.replace(/\[([^\]]*)\]\([^)]+\)/g, '$1').replace(/https?:\/\/[^\s)\]]+/g, '').replace(/[⏫🔺]/g, '').replace(/\s+/g, ' ').trim();
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function cleanTitle(t: string, priorities: PriorityDef[]): string {
+  let value = t.replace(/\[([^\]]*)\]\([^)]+\)/g, '$1').replace(/https?:\/\/[^\s)\]]+/g, '');
+  for (const p of priorities) {
+    value = value.replace(new RegExp(`\\s*${escapeRegExp(p.emoji)}\\s*`, 'g'), ' ');
+  }
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 function timeAgo(dateStr: string): string {
@@ -173,7 +182,7 @@ function CustomFieldInput({ field, value, cardId, onSaved, onLocalChange }: {
   );
 }
 
-export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) {
+export function CardDetail({ card, columns, priorities, fields, onClose, onUpdate }: Props) {
   const links = extractLinks(card.title);
   const modalRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -262,7 +271,7 @@ export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) 
 
   const handlePriorityChange = (val: string) => {
     setPriority(val);
-    saveField({ priority: (val as 'high' | 'urgent') || null });
+    saveField({ priority: val || null });
   };
 
   const handleDueDateChange = (val: string) => {
@@ -359,7 +368,7 @@ export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) 
           ref={modalRef}
           role="dialog"
           aria-modal="true"
-          aria-label={`Card: ${cleanTitle(card.title)}`}
+          aria-label={`Card: ${cleanTitle(card.title, priorities)}`}
           onClick={(e) => e.stopPropagation()}
           className="bg-board-bg border border-board-border rounded-xl shadow-2xl w-full max-w-3xl my-auto"
         >
@@ -367,7 +376,7 @@ export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) 
           <div className="flex items-start justify-between p-6 pb-0">
             <div className="flex-1 pr-4">
               <h2 className="text-xl font-semibold text-board-text leading-snug">
-                {cleanTitle(card.title)}
+                {cleanTitle(card.title, priorities)}
               </h2>
               <p className="text-xs text-board-text-muted mt-1">
                 {card.board_id} · Line {card.line_number}
@@ -647,8 +656,9 @@ export function CardDetail({ card, columns, fields, onClose, onUpdate }: Props) 
                   className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1.5 text-board-text focus:outline-none cursor-pointer"
                 >
                   <option value="">None</option>
-                  <option value="high">⏫ High</option>
-                  <option value="urgent">🔺 Urgent</option>
+                  {priorities.map((p) => (
+                    <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>
+                  ))}
                 </select>
               </div>
 
