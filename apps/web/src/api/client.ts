@@ -17,8 +17,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export async function fetchBoards(): Promise<BoardSummary[]> {
-  return request<BoardSummary[]>('/boards');
+export async function fetchBoards(includeArchived?: boolean): Promise<BoardSummary[]> {
+  const qs = includeArchived ? '?archived=true' : '';
+  return request<BoardSummary[]>(`/boards${qs}`);
+}
+
+export async function fetchArchivedBoards(): Promise<BoardSummary[]> {
+  return request<BoardSummary[]>('/boards?archived=only');
+}
+
+export async function createBoard(data: { name: string; file?: string; columns?: string[] }): Promise<BoardSummary> {
+  return request<BoardSummary>('/boards', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function archiveBoard(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/boards/${id}`, { method: 'PATCH', body: JSON.stringify({ archived: true }) });
+}
+
+export async function unarchiveBoard(id: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/boards/${id}`, { method: 'PATCH', body: JSON.stringify({ archived: false }) });
+}
+
+export async function renameBoard(id: string, name: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/boards/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+}
+
+export async function deleteBoard(id: string): Promise<{ ok: boolean; cardsRemoved: number }> {
+  return request<{ ok: boolean; cardsRemoved: number }>(`/boards/${id}`, { method: 'DELETE' });
 }
 
 export async function fetchBoard(id: string): Promise<BoardDetail> {

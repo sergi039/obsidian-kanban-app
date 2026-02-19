@@ -37,6 +37,7 @@ export interface BoardSummary {
   name: string;
   file: string;
   columns: string[];
+  archived?: boolean;
   totalCards: number;
   columnCounts: Record<string, number>;
 }

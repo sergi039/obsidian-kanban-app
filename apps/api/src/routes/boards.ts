@@ -1,8 +1,13 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import path from 'node:path';
+import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { getDb } from '../db.js';
-import { loadConfig, updateBoardColumns, resetConfigCache } from '../config.js';
+import { loadConfig, updateBoardColumns, resetConfigCache, addBoardToConfig, updateBoardInConfig, deleteBoardFromConfig } from '../config.js';
 import { parseFilterQuery, compileFilter } from '../filter-engine.js';
+import { reconcileBoard } from '../reconciler.js';
+import { broadcast } from '../ws.js';
+import { startWatcher } from '../watcher.js';
 
 const boards = new Hono();
 
@@ -24,16 +29,28 @@ function formatCard(card: Record<string, unknown>) {
   };
 }
 
-// GET /api/boards — list all boards with task counts
+// GET /api/boards — list boards with task counts
+// ?archived=true to include archived, ?archived=only for archived only
 boards.get('/', (c) => {
   const config = loadConfig();
   const db = getDb();
+  const archivedParam = c.req.query('archived');
+
+  let filteredBoards = config.boards;
+  if (archivedParam === 'only') {
+    filteredBoards = config.boards.filter((b) => b.archived);
+  } else if (archivedParam === 'true') {
+    // show all
+  } else {
+    // default: hide archived
+    filteredBoards = config.boards.filter((b) => !b.archived);
+  }
 
   const countStmt = db.prepare(
     'SELECT column_name, COUNT(*) as count FROM cards WHERE board_id = ? GROUP BY column_name',
   );
 
-  const list = config.boards.map((board) => {
+  const list = filteredBoards.map((board) => {
     const rows = countStmt.all(board.id) as Array<{ column_name: string; count: number }>;
     const columnCounts: Record<string, number> = {};
     let total = 0;
@@ -46,6 +63,7 @@ boards.get('/', (c) => {
       name: board.name,
       file: board.file,
       columns: board.columns,
+      archived: board.archived || false,
       totalCards: total,
       columnCounts,
     };
@@ -140,6 +158,108 @@ boards.post('/sync/reload', async (c) => {
     console.error('[sync/reload] Error:', err);
     return c.json({ ok: false, error: String(err) }, 500);
   }
+});
+
+// --- Board management ---
+
+const CreateBoardSchema = z.object({
+  name: z.string().min(1),
+  file: z.string().min(1).optional(),
+  columns: z.array(z.string()).optional(),
+});
+
+const PatchBoardSchema = z.object({
+  name: z.string().min(1).optional(),
+  archived: z.boolean().optional(),
+});
+
+// POST /api/boards — create a new board
+boards.post('/', async (c) => {
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+  const parsed = CreateBoardSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const config = loadConfig();
+  const { name, file: fileOverride, columns: colOverride } = parsed.data;
+
+  // Generate ID from name
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  if (!id) return c.json({ error: 'Cannot generate ID from name' }, 400);
+  if (config.boards.find((b) => b.id === id)) return c.json({ error: `Board "${id}" already exists` }, 409);
+
+  // File path relative to vault root
+  const relFile = fileOverride || `Tasks/${name}.md`;
+  const absFile = path.join(config.vaultRoot, relFile);
+  const columns = colOverride || config.defaultColumns || ['Backlog', 'In Progress', 'Done'];
+
+  // Create .md file if it doesn't exist
+  if (!existsSync(absFile)) {
+    mkdirSync(path.dirname(absFile), { recursive: true });
+    writeFileSync(absFile, `---\ntags:\n  - ${id}\n---\n`, 'utf-8');
+  }
+
+  // Add to config
+  const added = addBoardToConfig({ id, name, file: relFile, columns });
+  if (!added) return c.json({ error: 'Failed to add board to config' }, 500);
+
+  // Reconcile the new board
+  resetConfigCache();
+  const freshConfig = loadConfig();
+  const board = freshConfig.boards.find((b) => b.id === id);
+  if (board) {
+    const result = reconcileBoard(board, freshConfig.vaultRoot);
+    console.log(`[boards] Created "${name}": +${result.added} cards`);
+  }
+
+  broadcast({ type: 'boards-changed', timestamp: new Date().toISOString() });
+
+  return c.json({ id, name, file: relFile, columns, archived: false, totalCards: 0 }, 201);
+});
+
+// PATCH /api/boards/:id — rename or archive a board
+boards.patch('/:id', async (c) => {
+  const boardId = c.req.param('id');
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+  const parsed = PatchBoardSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === boardId);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+
+  const updated = updateBoardInConfig(boardId, parsed.data);
+  if (!updated) return c.json({ error: 'Failed to update board' }, 500);
+
+  const action = parsed.data.archived === true ? 'archived' : parsed.data.archived === false ? 'unarchived' : 'updated';
+  console.log(`[boards] Board "${boardId}" ${action}`);
+
+  broadcast({ type: 'boards-changed', timestamp: new Date().toISOString() });
+
+  return c.json({ ok: true, ...parsed.data });
+});
+
+// DELETE /api/boards/:id — remove board from config (keeps .md file)
+boards.delete('/:id', async (c) => {
+  const boardId = c.req.param('id');
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === boardId);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+
+  // Remove cards from DB
+  const db = getDb();
+  const cardCount = (db.prepare('SELECT COUNT(*) as c FROM cards WHERE board_id = ?').get(boardId) as { c: number }).c;
+  db.prepare('DELETE FROM cards WHERE board_id = ?').run(boardId);
+
+  const deleted = deleteBoardFromConfig(boardId);
+  if (!deleted) return c.json({ error: 'Failed to delete board' }, 500);
+
+  console.log(`[boards] Deleted "${boardId}" (${cardCount} cards removed, .md file kept)`);
+
+  broadcast({ type: 'boards-changed', timestamp: new Date().toISOString() });
+
+  return c.json({ ok: true, cardsRemoved: cardCount });
 });
 
 // --- Column management ---

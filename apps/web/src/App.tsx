@@ -268,6 +268,13 @@ export default function App() {
             boards={boards}
             activeBoardId={activeBoardId}
             onSelect={handleBoardChange}
+            onBoardsChanged={async () => {
+              const updated = await fetchBoards();
+              setBoards(updated);
+              if (updated.length > 0 && !updated.find((b) => b.id === activeBoardId)) {
+                setActiveBoardId(updated[0].id);
+              }
+            }}
           />
         </div>
         <div className="flex items-center gap-2">

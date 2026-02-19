@@ -9,7 +9,7 @@ let wss: WebSocketServer | null = null;
 let pingInterval: ReturnType<typeof setInterval> | null = null;
 
 export interface WsEvent {
-  type: 'board-updated' | 'card-moved' | 'card-updated' | 'sync-complete';
+  type: 'board-updated' | 'card-moved' | 'card-updated' | 'sync-complete' | 'boards-changed';
   boardId?: string;
   cardId?: string;
   timestamp: string;
