@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Card, PriorityDef } from '../types';
+import type { Card, PriorityDef, CategoryDef } from '../types';
 import { DraggableCard } from './DraggableCard';
 import { AddCard } from './AddCard';
 import { ColumnMenu } from './ColumnManager';
@@ -11,6 +11,7 @@ interface Props {
   index: number;
   cards: Card[];
   priorities: PriorityDef[];
+  categories?: CategoryDef[];
   boardId: string;
   sortableId: string;
   onCardClick: (card: Card) => void;
@@ -51,6 +52,7 @@ export function Column({
   index,
   cards,
   priorities,
+  categories,
   boardId,
   sortableId,
   onCardClick,
@@ -115,7 +117,7 @@ export function Column({
       >
         <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
           {cards.map((card) => (
-            <DraggableCard key={card.id} card={card} priorities={priorities} onClick={() => onCardClick(card)} />
+            <DraggableCard key={card.id} card={card} priorities={priorities} categories={categories} onClick={() => onCardClick(card)} />
           ))}
         </SortableContext>
         {cards.length === 0 && !isOver && (

@@ -1,15 +1,16 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Card, PriorityDef } from '../types';
+import type { Card, PriorityDef, CategoryDef } from '../types';
 import { KanbanCard } from './Card';
 
 interface Props {
   card: Card;
   priorities: PriorityDef[];
+  categories?: CategoryDef[];
   onClick: () => void;
 }
 
-export function DraggableCard({ card, priorities, onClick }: Props) {
+export function DraggableCard({ card, priorities, categories, onClick }: Props) {
   const {
     attributes,
     listeners,
@@ -31,7 +32,7 @@ export function DraggableCard({ card, priorities, onClick }: Props) {
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <KanbanCard card={card} priorities={priorities} onClick={onClick} />
+      <KanbanCard card={card} priorities={priorities} categories={categories} onClick={onClick} />
     </div>
   );
 }

@@ -227,6 +227,13 @@ cards.patch('/:id', async (c) => {
       return c.json({ error: `Priority "${fields.priority}" not in board` }, 400);
     }
   }
+  if (fields.labels !== undefined && board.categories && board.categories.length > 0) {
+    const validCategoryIds = new Set(board.categories.map((c) => c.id));
+    const unknown = fields.labels.filter((l) => !validCategoryIds.has(l));
+    if (unknown.length > 0) {
+      return c.json({ error: `Unknown category IDs: ${unknown.join(', ')}` }, 400);
+    }
+  }
 
   const columnChanging = fields.column_name !== undefined && fields.column_name !== existing.column_name;
   const positionChanging = fields.position !== undefined;

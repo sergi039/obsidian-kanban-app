@@ -1,8 +1,9 @@
-import type { Card, PriorityDef } from '../types';
+import type { Card, PriorityDef, CategoryDef } from '../types';
 
 interface Props {
   card: Card;
   priorities: PriorityDef[];
+  categories?: CategoryDef[];
   onClick: () => void;
 }
 
@@ -34,14 +35,23 @@ function cleanTitle(title: string, priorities: PriorityDef[]): string {
     cleaned = cleaned.replace(new RegExp(`\\s*${escapeRegExp(p.emoji)}\\s*`, 'g'), ' ');
   }
   cleaned = cleaned.trim();
-  cleaned = cleaned.replace(/\s+/g, ' ').replace(/^[-–]\s*/, '');
+  cleaned = cleaned.replace(/\s+/g, ' ').replace(/^[-\u2013]\s*/, '');
   return cleaned || title;
 }
 
-export function KanbanCard({ card, priorities, onClick }: Props) {
+const MAX_VISIBLE_BADGES = 3;
+
+export function KanbanCard({ card, priorities, categories = [], onClick }: Props) {
   const urls = extractUrls(card.title);
   const displayTitle = cleanTitle(card.title, priorities);
   const priorityDef = card.priority ? priorities.find((p) => p.id === card.priority) : undefined;
+
+  // Resolve visible category badges
+  const visibleCategories = card.labels
+    .map((id) => categories.find((c) => c.id === id))
+    .filter((c): c is CategoryDef => c != null && c.showOnCard);
+  const shownCategories = visibleCategories.slice(0, MAX_VISIBLE_BADGES);
+  const extraCount = visibleCategories.length - MAX_VISIBLE_BADGES;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -83,6 +93,27 @@ export function KanbanCard({ card, priorities, onClick }: Props) {
       >
         {displayTitle}
       </p>
+
+      {/* Category badges */}
+      {shownCategories.length > 0 && (
+        <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+          {shownCategories.map((cat) => (
+            <span
+              key={cat.id}
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded max-w-[120px] truncate"
+              style={{ backgroundColor: `${cat.color}26`, color: cat.color }}
+              title={cat.label}
+            >
+              {cat.label}
+            </span>
+          ))}
+          {extraCount > 0 && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-board-column text-board-text-muted">
+              +{extraCount}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Meta row */}
       <div className="flex items-center gap-2 mt-2 flex-wrap">

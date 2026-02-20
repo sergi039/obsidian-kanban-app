@@ -9,8 +9,9 @@ import {
   deleteColumn,
   fetchFields,
   updateBoardPriorities,
+  updateBoardCategories,
 } from './api/client';
-import type { BoardSummary, BoardDetail, Field, PriorityDef } from './types';
+import type { BoardSummary, BoardDetail, Field, PriorityDef, CategoryDef } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
 import { Board } from './components/Board';
 
@@ -153,6 +154,14 @@ export default function App() {
   const handlePrioritiesChange = async (priorities: PriorityDef[]) => {
     if (!activeBoardId) return;
     await updateBoardPriorities(activeBoardId, priorities);
+    await loadBoard();
+    const updatedBoards = await fetchBoards();
+    setBoards(updatedBoards);
+  };
+
+  const handleCategoriesChange = async (categories: CategoryDef[]) => {
+    if (!activeBoardId) return;
+    await updateBoardCategories(activeBoardId, categories);
     await loadBoard();
     const updatedBoards = await fetchBoards();
     setBoards(updatedBoards);
@@ -357,6 +366,7 @@ export default function App() {
               onColumnRename={handleColumnRename}
               onColumnDelete={handleColumnDelete}
               onPrioritiesChange={handlePrioritiesChange}
+              onCategoriesChange={handleCategoriesChange}
             />
           ) : (
             <TableView
@@ -380,6 +390,7 @@ export default function App() {
           card={selectedCard}
           columns={boardDetail?.columns.map((c) => c.name) || []}
           priorities={boardPriorities}
+          categories={boardDetail?.categories ?? []}
           fields={boardFields}
           onClose={() => setSelectedCard(null)}
           onUpdate={async () => {

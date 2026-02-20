@@ -12,6 +12,7 @@ vi.mock('../../src/config.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/config.js')>();
   return {
     PriorityDefSchema: actual.PriorityDefSchema,
+    CategoryDefSchema: actual.CategoryDefSchema,
     loadConfig: () => ({
       vaultRoot: '/tmp/test-vault',
       boards: [{ id: 'b1', name: 'Test', file: 'Tasks/Test.md', columns: ['Backlog', 'Done'] }],

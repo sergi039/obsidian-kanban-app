@@ -28,7 +28,11 @@ vi.mock('../src/db.js', () => ({
   },
 }));
 
-vi.mock('../src/config.js', () => ({
+vi.mock('../src/config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/config.js')>();
+  return {
+  PriorityDefSchema: actual.PriorityDefSchema,
+  CategoryDefSchema: actual.CategoryDefSchema,
   loadConfig: () => ({
     vaultRoot: '/tmp/test-vault',
     boards: [{
@@ -54,7 +58,8 @@ vi.mock('../src/config.js', () => ({
   addBoardToConfig: vi.fn(() => true),
   updateBoardInConfig: vi.fn(() => true),
   deleteBoardFromConfig: vi.fn(() => true),
-}));
+};
+});
 
 vi.mock('../src/ws.js', () => ({
   broadcast: vi.fn(),

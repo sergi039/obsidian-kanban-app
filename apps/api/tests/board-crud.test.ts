@@ -13,9 +13,19 @@ vi.mock('../src/config.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/config.js')>();
   return {
     PriorityDefSchema: actual.PriorityDefSchema,
+    CategoryDefSchema: actual.CategoryDefSchema,
     loadConfig: () => ({
       vaultRoot: '/tmp/test-vault',
-      boards: [{ id: 'b1', name: 'Test', file: 'Tasks/Test.md', columns: ['Backlog', 'Done'] }],
+      boards: [{
+        id: 'b1',
+        name: 'Test',
+        file: 'Tasks/Test.md',
+        columns: ['Backlog', 'Done'],
+        categories: [
+          { id: 'bug', label: 'Bug', color: '#dc2626', showOnCard: true },
+          { id: 'feature', label: 'Feature', color: '#2563eb', showOnCard: true },
+        ],
+      }],
       defaultColumns: ['Backlog', 'Done'],
     }),
     DEFAULT_PRIORITIES: [
@@ -271,5 +281,40 @@ describe('board priorities API', () => {
     });
     expect(res.status).toBe(200);
     expect(config.updateBoardInConfig).toHaveBeenCalledWith('b1', { priorities });
+  });
+});
+
+describe('board categories cleanup', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    testDb.pragma('foreign_keys = ON');
+    testDb.exec(SCHEMA);
+  });
+
+  afterEach(() => testDb.close());
+
+  it('removes only deleted category IDs from card labels', async () => {
+    testDb
+      .prepare(
+        `INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, labels)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run('c1', 'b1', 'Backlog', 0, 'Task 1', '- [ ] Task 1', 1, JSON.stringify(['bug', 'feature']));
+
+    const { default: boardRoutes } = await import('../src/routes/boards.js');
+    const app = new Hono();
+    app.route('/api/boards', boardRoutes);
+
+    const res = await app.request('/api/boards/b1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        categories: [{ id: 'bug', label: 'Bug', color: '#dc2626', showOnCard: true }],
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    const row = testDb.prepare('SELECT labels FROM cards WHERE id = ?').get('c1') as { labels: string };
+    expect(JSON.parse(row.labels)).toEqual(['bug']);
   });
 });

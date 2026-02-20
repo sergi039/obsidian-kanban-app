@@ -16,7 +16,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { moveCard, reorderColumns } from '../api/client';
-import type { BoardDetail, Card, PriorityDef } from '../types';
+import type { BoardDetail, Card, PriorityDef, CategoryDef } from '../types';
 import { Column } from './Column';
 import { KanbanCard } from './Card';
 import { AddColumnButton } from './ColumnManager';
@@ -32,6 +32,7 @@ interface Props {
   onColumnRename: (oldName: string, newName: string) => Promise<void>;
   onColumnDelete: (name: string) => Promise<void>;
   onPrioritiesChange: (priorities: PriorityDef[]) => Promise<void>;
+  onCategoriesChange: (categories: CategoryDef[]) => Promise<void>;
 }
 
 // ---- Collision detection: same as working test ----
@@ -72,6 +73,7 @@ export function Board({
   onColumnRename,
   onColumnDelete,
   onPrioritiesChange,
+  onCategoriesChange,
 }: Props) {
   const [activeCard, setActiveCard] = useState<Card | null>(null);
   const [activeColName, setActiveColName] = useState<string | null>(null);
@@ -79,6 +81,7 @@ export function Board({
   const [showSettings, setShowSettings] = useState(false);
   const dragOriginRef = useRef<{ columnName: string } | null>(null);
   const priorities = Array.isArray(board.priorities) ? board.priorities : [];
+  const boardCategories = Array.isArray(board.categories) ? board.categories : [];
 
   const columns = localColumns || board.columns;
   const columnSortableIds = columns.map((c) => toColId(c.name));
@@ -300,6 +303,7 @@ export function Board({
               sortableId={toColId(col.name)}
               cards={filterCards(col.cards)}
               priorities={priorities}
+              categories={boardCategories}
               boardId={board.id}
               onCardClick={onCardClick}
               onCardAdd={onCardAdd}
@@ -322,7 +326,7 @@ export function Board({
       <DragOverlay dropAnimation={null}>
         {activeCard ? (
           <div className="rotate-2 opacity-80 w-80">
-            <KanbanCard card={activeCard} priorities={priorities} onClick={() => {}} />
+            <KanbanCard card={activeCard} priorities={priorities} categories={boardCategories} onClick={() => {}} />
           </div>
         ) : null}
         {activeColName ? (
@@ -336,9 +340,14 @@ export function Board({
         boardName={board.name}
         columns={board.columns.map((c) => c.name)}
         priorities={priorities}
+        categories={boardCategories}
         onClose={() => setShowSettings(false)}
-        onSave={async (priorities) => {
+        onSavePriorities={async (priorities) => {
           await onPrioritiesChange(priorities);
+          setShowSettings(false);
+        }}
+        onSaveCategories={async (categories) => {
+          await onCategoriesChange(categories);
           setShowSettings(false);
         }}
       />

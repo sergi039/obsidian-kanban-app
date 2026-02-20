@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { patchCard, fetchComments, addComment, updateComment, deleteComment, fetchFieldValues, setFieldValue } from '../api/client';
-import type { Card, Comment, FieldValue, Field, PatchCardRequest, PriorityDef } from '../types';
+import type { Card, Comment, FieldValue, Field, PatchCardRequest, PriorityDef, CategoryDef } from '../types';
 
 interface Props {
   card: Card;
   columns: string[];
   priorities: PriorityDef[];
+  categories: CategoryDef[];
   fields: Field[];
   onClose: () => void;
   onUpdate: () => Promise<void>;
@@ -182,7 +183,7 @@ function CustomFieldInput({ field, value, cardId, onSaved, onLocalChange }: {
   );
 }
 
-export function CardDetail({ card, columns, priorities, fields, onClose, onUpdate }: Props) {
+export function CardDetail({ card, columns, priorities, categories, fields, onClose, onUpdate }: Props) {
   const links = extractLinks(card.title);
   const modalRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -673,8 +674,41 @@ export function CardDetail({ card, columns, priorities, fields, onClose, onUpdat
                 />
               </div>
 
-              {/* Labels */}
-              {card.labels.length > 0 && (
+              {/* Categories */}
+              {categories.length > 0 && (
+                <div>
+                  <label className="text-xs font-medium text-board-text-muted uppercase tracking-wider block mb-1">Categories</label>
+                  <div className="flex flex-wrap gap-1">
+                    {categories.map((cat) => {
+                      const isActive = card.labels.includes(cat.id);
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => {
+                            const updatedLabels = isActive
+                              ? card.labels.filter((l) => l !== cat.id)
+                              : [...card.labels, cat.id];
+                            saveField({ labels: updatedLabels });
+                          }}
+                          className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
+                            isActive ? 'border-transparent' : 'border-board-border opacity-40 hover:opacity-70'
+                          }`}
+                          style={isActive
+                            ? { backgroundColor: `${cat.color}26`, color: cat.color, borderColor: `${cat.color}40` }
+                            : undefined
+                          }
+                          title={isActive ? `Remove "${cat.label}"` : `Add "${cat.label}"`}
+                        >
+                          {cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {/* Labels (legacy, if no categories defined) */}
+              {categories.length === 0 && card.labels.length > 0 && (
                 <div>
                   <label className="text-xs font-medium text-board-text-muted uppercase tracking-wider block mb-1">Labels</label>
                   <div className="flex flex-wrap gap-1">

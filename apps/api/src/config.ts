@@ -13,6 +13,13 @@ export const PriorityDefSchema = z.object({
   color: z.string().min(1),
 });
 
+export const CategoryDefSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Color must be #RRGGBB'),
+  showOnCard: z.boolean(),
+});
+
 const BoardSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -21,6 +28,7 @@ const BoardSchema = z.object({
   archived: z.boolean().optional(),
   doneColumns: z.array(z.string()).optional(),
   priorities: z.array(PriorityDefSchema).optional(),
+  categories: z.array(CategoryDefSchema).optional(),
 });
 
 const ConfigSchema = z.object({
@@ -32,6 +40,7 @@ const ConfigSchema = z.object({
 export type BoardConfig = z.infer<typeof BoardSchema>;
 export type AppConfig = z.infer<typeof ConfigSchema>;
 export type PriorityDef = z.infer<typeof PriorityDefSchema>;
+export type CategoryDef = z.infer<typeof CategoryDefSchema>;
 
 export const DEFAULT_PRIORITIES: PriorityDef[] = [
   { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
@@ -115,7 +124,7 @@ export function addBoardToConfig(board: {
 /** Update a board's properties in config file */
 export function updateBoardInConfig(
   boardId: string,
-  patch: Partial<{ name: string; archived: boolean; priorities: PriorityDef[] }>,
+  patch: Partial<{ name: string; archived: boolean; priorities: PriorityDef[]; categories: CategoryDef[] }>,
 ): boolean {
   return withConfigWrite(() => {
     resetConfigCache();
@@ -126,6 +135,7 @@ export function updateBoardInConfig(
     if (patch.name !== undefined) board.name = patch.name;
     if (patch.archived !== undefined) board.archived = patch.archived;
     if (patch.priorities !== undefined) board.priorities = patch.priorities;
+    if (patch.categories !== undefined) board.categories = patch.categories;
     writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
     resetConfigCache();
     return true;

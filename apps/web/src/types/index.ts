@@ -5,6 +5,13 @@ export interface PriorityDef {
   color: string;
 }
 
+export interface CategoryDef {
+  id: string;
+  label: string;
+  color: string;
+  showOnCard: boolean;
+}
+
 export interface Card {
   id: string;
   seq_id: number | null;
@@ -45,6 +52,7 @@ export interface BoardSummary {
   file: string;
   columns: string[];
   priorities: PriorityDef[];
+  categories: CategoryDef[];
   archived?: boolean;
   totalCards: number;
   columnCounts: Record<string, number>;
@@ -55,6 +63,7 @@ export interface BoardDetail {
   name: string;
   file: string;
   priorities: PriorityDef[];
+  categories: CategoryDef[];
   columns: Column[];
 }
 

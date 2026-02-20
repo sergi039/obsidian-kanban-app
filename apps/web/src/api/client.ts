@@ -12,6 +12,7 @@ import type {
   Trigger,
   AutomationAction,
   PriorityDef,
+  CategoryDef,
 } from '../types';
 
 const BASE = '/api';
@@ -63,6 +64,16 @@ export async function updateBoardPriorities(
   return request<{ ok: boolean; priorities: PriorityDef[] }>(
     `/boards/${id}`,
     { method: 'PATCH', body: JSON.stringify({ priorities }) },
+  );
+}
+
+export async function updateBoardCategories(
+  id: string,
+  categories: CategoryDef[],
+): Promise<{ ok: boolean; categories: CategoryDef[] }> {
+  return request<{ ok: boolean; categories: CategoryDef[] }>(
+    `/boards/${id}`,
+    { method: 'PATCH', body: JSON.stringify({ categories }) },
   );
 }
 

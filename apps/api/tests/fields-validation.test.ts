@@ -15,11 +15,16 @@ vi.mock('../src/db.js', () => ({
   initDb: () => {},
 }));
 
-vi.mock('../src/config.js', () => ({
-  loadConfig: () => ({
-    boards: [{ id: 'b1', name: 'Test', file: 'test.md', columns: ['Todo', 'Done'] }],
-  }),
-}));
+vi.mock('../src/config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/config.js')>();
+  return {
+    PriorityDefSchema: actual.PriorityDefSchema,
+    CategoryDefSchema: actual.CategoryDefSchema,
+    loadConfig: () => ({
+      boards: [{ id: 'b1', name: 'Test', file: 'test.md', columns: ['Todo', 'Done'] }],
+    }),
+  };
+});
 
 // Dynamic import AFTER mocks registered
 const { default: fields } = await import('../src/routes/fields.js');

@@ -6,6 +6,7 @@ import { getDb } from '../db.js';
 import {
   DEFAULT_PRIORITIES,
   PriorityDefSchema,
+  CategoryDefSchema,
   loadConfig,
   updateBoardColumns,
   resetConfigCache,
@@ -57,6 +58,7 @@ boards.get('/', (c) => {
       file: board.file,
       columns: board.columns,
       priorities: board.priorities ?? DEFAULT_PRIORITIES,
+      categories: board.categories ?? [],
       archived: board.archived || false,
       totalCards: total,
       columnCounts,
@@ -88,6 +90,7 @@ boards.get('/:id', (c) => {
     name: board.name,
     file: board.file,
     priorities: board.priorities ?? DEFAULT_PRIORITIES,
+    categories: board.categories ?? [],
     columns,
   });
 });
@@ -167,6 +170,7 @@ const PatchBoardSchema = z.object({
   name: z.string().min(1).optional(),
   archived: z.boolean().optional(),
   priorities: z.array(PriorityDefSchema).optional(),
+  categories: z.array(CategoryDefSchema).optional(),
 });
 
 // POST /api/boards — create a new board
@@ -225,6 +229,7 @@ boards.post('/', async (c) => {
     file: relFile,
     columns,
     priorities: DEFAULT_PRIORITIES,
+    categories: [],
     archived: false,
     totalCards: 0,
   }, 201);
@@ -248,8 +253,48 @@ boards.patch('/:id', async (c) => {
     }
   }
 
+  if (parsed.data.categories) {
+    const catIds = parsed.data.categories.map((cat) => cat.id);
+    if (new Set(catIds).size !== catIds.length) {
+      return c.json({ error: 'Category IDs must be unique' }, 400);
+    }
+    if (parsed.data.categories.some((cat) => !cat.label.trim())) {
+      return c.json({ error: 'Category label cannot be empty' }, 400);
+    }
+  }
+
+  // Detect removed category IDs for bulk cleanup
+  const oldCategoryIds = new Set((board.categories ?? []).map((c) => c.id));
+  const newCategoryIds = new Set(
+    (parsed.data.categories ?? []).map((category) => category.id),
+  );
+
   const updated = updateBoardInConfig(boardId, parsed.data);
   if (!updated) return c.json({ error: 'Failed to update board' }, 500);
+
+  // Bulk cleanup: remove deleted category IDs from card labels
+  if (parsed.data.categories) {
+    const removedIds = [...oldCategoryIds].filter((id) => !newCategoryIds.has(id));
+    if (removedIds.length > 0) {
+      const db = getDb();
+      const removedSet = new Set(removedIds);
+      const cleanupTransaction = db.transaction(() => {
+        const cards = db.prepare('SELECT id, labels FROM cards WHERE board_id = ?').all(boardId) as Array<{ id: string; labels: string }>;
+        const updateStmt = db.prepare("UPDATE cards SET labels = ?, updated_at = datetime('now') WHERE id = ?");
+        for (const card of cards) {
+          let labels: string[];
+          try { labels = JSON.parse(card.labels); } catch { continue; }
+          if (!Array.isArray(labels)) continue;
+          const filtered = labels.filter((l) => !removedSet.has(l));
+          if (filtered.length !== labels.length) {
+            updateStmt.run(JSON.stringify(filtered), card.id);
+          }
+        }
+      });
+      cleanupTransaction();
+      console.log(`[boards] Cleaned ${removedIds.length} removed category IDs from cards in board "${boardId}"`);
+    }
+  }
 
   const action = parsed.data.archived === true ? 'archived' : parsed.data.archived === false ? 'unarchived' : 'updated';
   console.log(`[boards] Board "${boardId}" ${action}`);

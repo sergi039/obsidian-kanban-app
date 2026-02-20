@@ -1,25 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { PriorityDef } from '../types';
+import type { PriorityDef, CategoryDef } from '../types';
 
 interface Props {
   open: boolean;
   boardName: string;
   columns: string[];
   priorities: PriorityDef[];
+  categories: CategoryDef[];
   onClose: () => void;
-  onSave: (priorities: PriorityDef[]) => Promise<void>;
+  onSavePriorities: (priorities: PriorityDef[]) => Promise<void>;
+  onSaveCategories: (categories: CategoryDef[]) => Promise<void>;
 }
 
-function slugify(input: string): string {
+function slugify(input: string, fallback = 'item'): string {
   const slug = input
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return slug || 'priority';
+  return slug || fallback;
 }
 
-function uniquePriorityId(base: string, existing: Set<string>): string {
+function uniqueId(base: string, existing: Set<string>): string {
   if (!existing.has(base)) return base;
   let idx = 2;
   while (existing.has(`${base}-${idx}`)) idx++;
@@ -35,45 +37,43 @@ function normalizeColor(input: string): string {
   return '#6b7280';
 }
 
-export function BoardSettingsModal({ open, boardName, columns, priorities, onClose, onSave }: Props) {
-  const [draft, setDraft] = useState<PriorityDef[]>([]);
+const CATEGORY_COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#06b6d4', '#f97316'];
+
+export function BoardSettingsModal({ open, boardName, columns, priorities, categories, onClose, onSavePriorities, onSaveCategories }: Props) {
+  const [priDraft, setPriDraft] = useState<PriorityDef[]>([]);
+  const [catDraft, setCatDraft] = useState<CategoryDef[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setDraft(priorities.map((p) => ({ ...p })));
+    setPriDraft(priorities.map((p) => ({ ...p })));
+    setCatDraft(categories.map((c) => ({ ...c })));
     setError(null);
-  }, [open, priorities]);
+  }, [open, priorities, categories]);
 
-  const usedIds = useMemo(() => new Set(draft.map((p) => p.id)), [draft]);
+  const usedPriIds = useMemo(() => new Set(priDraft.map((p) => p.id)), [priDraft]);
+  const usedCatIds = useMemo(() => new Set(catDraft.map((c) => c.id)), [catDraft]);
 
   if (!open) return null;
 
+  // --- Priority helpers ---
   const updatePriority = (index: number, patch: Partial<PriorityDef>) => {
-    setDraft((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+    setPriDraft((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
   };
 
   const addPriority = () => {
-    const base = slugify('New priority');
-    const id = uniquePriorityId(base, usedIds);
-    setDraft((prev) => [
-      ...prev,
-      {
-        id,
-        label: 'New priority',
-        emoji: '⭐',
-        color: '#6b7280',
-      },
-    ]);
+    const base = slugify('New priority', 'priority');
+    const id = uniqueId(base, usedPriIds);
+    setPriDraft((prev) => [...prev, { id, label: 'New priority', emoji: '\u2B50', color: '#6b7280' }]);
   };
 
   const removePriority = (index: number) => {
-    setDraft((prev) => prev.filter((_, i) => i !== index));
+    setPriDraft((prev) => prev.filter((_, i) => i !== index));
   };
 
   const movePriority = (index: number, direction: -1 | 1) => {
-    setDraft((prev) => {
+    setPriDraft((prev) => {
       const next = index + direction;
       if (next < 0 || next >= prev.length) return prev;
       const arr = [...prev];
@@ -83,31 +83,81 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, onClo
     });
   };
 
+  // --- Category helpers ---
+  const updateCategory = (index: number, patch: Partial<CategoryDef>) => {
+    setCatDraft((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+  };
+
+  const addCategory = () => {
+    const base = slugify('New category', 'category');
+    const id = uniqueId(base, usedCatIds);
+    const color = CATEGORY_COLORS[catDraft.length % CATEGORY_COLORS.length];
+    setCatDraft((prev) => [...prev, { id, label: 'New category', color, showOnCard: true }]);
+  };
+
+  const removeCategory = (index: number) => {
+    setCatDraft((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const moveCategory = (index: number, direction: -1 | 1) => {
+    setCatDraft((prev) => {
+      const next = index + direction;
+      if (next < 0 || next >= prev.length) return prev;
+      const arr = [...prev];
+      const [item] = arr.splice(index, 1);
+      arr.splice(next, 0, item);
+      return arr;
+    });
+  };
+
+  // --- Save ---
   const handleSave = async () => {
-    const cleaned = draft.map((p) => ({
+    // Validate priorities
+    const cleanedPri = priDraft.map((p) => ({
       ...p,
       label: p.label.trim(),
       emoji: p.emoji.trim(),
       color: normalizeColor(p.color),
     }));
 
-    if (cleaned.some((p) => p.label.length === 0)) {
+    if (cleanedPri.some((p) => p.label.length === 0)) {
       setError('Priority label cannot be empty.');
       return;
     }
-    if (cleaned.some((p) => p.emoji.length === 0)) {
+    if (cleanedPri.some((p) => p.emoji.length === 0)) {
       setError('Priority emoji cannot be empty.');
       return;
     }
-    if (new Set(cleaned.map((p) => p.id)).size !== cleaned.length) {
+    if (new Set(cleanedPri.map((p) => p.id)).size !== cleanedPri.length) {
       setError('Priority IDs must be unique.');
+      return;
+    }
+
+    // Validate categories
+    const cleanedCat = catDraft.map((c) => ({
+      ...c,
+      label: c.label.trim(),
+      color: normalizeColor(c.color),
+    }));
+
+    if (cleanedCat.some((c) => c.label.length === 0)) {
+      setError('Category label cannot be empty.');
+      return;
+    }
+    if (new Set(cleanedCat.map((c) => c.id)).size !== cleanedCat.length) {
+      setError('Category IDs must be unique.');
       return;
     }
 
     setSaving(true);
     setError(null);
     try {
-      await onSave(cleaned);
+      // Check what changed and save only what's needed
+      const priChanged = JSON.stringify(cleanedPri) !== JSON.stringify(priorities);
+      const catChanged = JSON.stringify(cleanedCat) !== JSON.stringify(categories);
+      if (priChanged) await onSavePriorities(cleanedPri);
+      if (catChanged) await onSaveCategories(cleanedCat);
+      if (!priChanged && !catChanged) onClose();
     } catch (err) {
       setError(String(err));
     } finally {
@@ -133,6 +183,7 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, onClo
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Columns (read-only) */}
           <section>
             <h3 className="text-sm font-medium text-board-text mb-2">Columns</h3>
             <p className="text-xs text-board-text-muted mb-2">
@@ -147,6 +198,7 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, onClo
             </div>
           </section>
 
+          {/* Priorities */}
           <section>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-board-text">Priorities</h3>
@@ -158,13 +210,13 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, onClo
                 + Add priority
               </button>
             </div>
-            {draft.length === 0 ? (
+            {priDraft.length === 0 ? (
               <div className="text-xs text-board-text-muted bg-board-column border border-board-border rounded-md p-3">
                 No priorities configured. Cards can still use "none".
               </div>
             ) : (
               <div className="space-y-2">
-                {draft.map((priority, i) => (
+                {priDraft.map((priority, i) => (
                   <div key={priority.id} className="grid grid-cols-[28px_90px_1fr_120px_120px_auto] gap-2 items-center bg-board-column border border-board-border rounded-md p-2">
                     <div className="text-xs text-board-text-muted text-center">{i + 1}</div>
                     <input
@@ -200,7 +252,7 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, onClo
                       </button>
                       <button
                         onClick={() => movePriority(i, 1)}
-                        disabled={i === draft.length - 1}
+                        disabled={i === priDraft.length - 1}
                         className="w-7 h-7 text-xs rounded border border-board-border text-board-text-muted disabled:opacity-40"
                         title="Move down"
                         type="button"
@@ -211,6 +263,105 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, onClo
                         onClick={() => removePriority(i)}
                         className="w-7 h-7 text-xs rounded border border-red-300 text-red-500 hover:bg-red-50"
                         title="Delete priority"
+                        type="button"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Categories */}
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-board-text">Categories</h3>
+              <button
+                onClick={addCategory}
+                className="px-2.5 py-1.5 text-xs rounded-md border border-board-border text-board-text-muted hover:text-board-text hover:bg-board-column"
+                type="button"
+              >
+                + Add category
+              </button>
+            </div>
+            {catDraft.length === 0 ? (
+              <div className="text-xs text-board-text-muted bg-board-column border border-board-border rounded-md p-3">
+                No categories defined. Add categories to label and organize your cards.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {catDraft.map((cat, i) => (
+                  <div key={cat.id} className="grid grid-cols-[28px_1fr_120px_50px_120px_auto] gap-2 items-center bg-board-column border border-board-border rounded-md p-2">
+                    <div className="text-xs text-board-text-muted text-center">{i + 1}</div>
+                    <input
+                      value={cat.label}
+                      onChange={(e) => {
+                        const newLabel = e.target.value;
+                        const newId = slugify(newLabel, 'category');
+                        // Auto-generate id from label if it was previously auto-generated
+                        const prevAutoId = slugify(catDraft[i].label, 'category');
+                        const shouldAutoId = cat.id === prevAutoId || cat.id === uniqueId(prevAutoId, new Set(catDraft.filter((_, j) => j !== i).map((c) => c.id)));
+                        const patch: Partial<CategoryDef> = { label: newLabel };
+                        if (shouldAutoId) {
+                          patch.id = uniqueId(newId, new Set(catDraft.filter((_, j) => j !== i).map((c) => c.id)));
+                        }
+                        updateCategory(i, patch);
+                      }}
+                      className="w-full text-sm bg-board-bg border border-board-border rounded px-2 py-1 text-board-text"
+                      placeholder="Category label"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="color"
+                        value={normalizeColor(cat.color)}
+                        onChange={(e) => updateCategory(i, { color: e.target.value })}
+                        className="w-7 h-7 rounded border border-board-border cursor-pointer bg-transparent p-0"
+                        title="Pick color"
+                      />
+                      <input
+                        value={cat.color}
+                        onChange={(e) => updateCategory(i, { color: e.target.value })}
+                        className="w-full text-xs bg-board-bg border border-board-border rounded px-1.5 py-1 font-mono text-board-text"
+                        placeholder="#3b82f6"
+                      />
+                    </div>
+                    <label className="flex items-center gap-1 cursor-pointer" title="Show on card">
+                      <input
+                        type="checkbox"
+                        checked={cat.showOnCard}
+                        onChange={(e) => updateCategory(i, { showOnCard: e.target.checked })}
+                        className="rounded border-board-border"
+                      />
+                      <span className="text-[10px] text-board-text-muted">Card</span>
+                    </label>
+                    <div className="text-[11px] text-board-text-muted font-mono px-2 py-1 bg-board-bg border border-board-border rounded truncate" title={cat.id}>
+                      {cat.id}
+                    </div>
+                    <div className="flex items-center gap-1 justify-end">
+                      <button
+                        onClick={() => moveCategory(i, -1)}
+                        disabled={i === 0}
+                        className="w-7 h-7 text-xs rounded border border-board-border text-board-text-muted disabled:opacity-40"
+                        title="Move up"
+                        type="button"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => moveCategory(i, 1)}
+                        disabled={i === catDraft.length - 1}
+                        className="w-7 h-7 text-xs rounded border border-board-border text-board-text-muted disabled:opacity-40"
+                        title="Move down"
+                        type="button"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        onClick={() => removeCategory(i)}
+                        className="w-7 h-7 text-xs rounded border border-red-300 text-red-500 hover:bg-red-50"
+                        title="Delete category"
                         type="button"
                       >
                         ✕
@@ -244,7 +395,7 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, onClo
             style={{ backgroundColor: 'var(--board-accent)' }}
             type="button"
           >
-            {saving ? 'Saving…' : 'Save priorities'}
+            {saving ? 'Saving...' : 'Save settings'}
           </button>
         </div>
       </div>
