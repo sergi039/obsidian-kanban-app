@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   fetchBoards,
   fetchBoard,
@@ -43,6 +43,7 @@ export default function App() {
   const [boardFields, setBoardFields] = useState<Field[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [showAutomations, setShowAutomations] = useState(false);
+  const openSettingsRef = useRef<(() => void) | null>(null);
   const { theme, cycleTheme } = useTheme();
 
   // Load boards list
@@ -367,6 +368,7 @@ export default function App() {
               onColumnDelete={handleColumnDelete}
               onPrioritiesChange={handlePrioritiesChange}
               onCategoriesChange={handleCategoriesChange}
+              openSettingsRef={openSettingsRef}
             />
           ) : (
             <TableView
@@ -397,6 +399,10 @@ export default function App() {
             await loadBoard();
             const updatedBoards = await fetchBoards();
             setBoards(updatedBoards);
+          }}
+          onManageCategories={() => {
+            setSelectedCard(null);
+            setTimeout(() => openSettingsRef.current?.(), 50);
           }}
         />
       )}

@@ -97,13 +97,19 @@ describe('edit priority', () => {
     expect(label).toHaveValue('Critical');
   });
 
-  it('typing in emoji input updates value', async () => {
+  it('clicking emoji picker and selecting emoji updates value', async () => {
     const user = userEvent.setup();
     render(<BoardSettingsModal {...defaults()} />);
-    const emoji = screen.getAllByPlaceholderText('🔺')[0];
-    await user.clear(emoji);
-    await user.type(emoji, '🚨');
-    expect(emoji).toHaveValue('🚨');
+    const emojiButtons = screen.getAllByTitle('Choose icon');
+    // First priority has emoji '🔴'
+    expect(emojiButtons[0]).toHaveTextContent('🔴');
+    // Open the picker
+    await user.click(emojiButtons[0]);
+    // Select a different emoji from the grid
+    const targetEmoji = screen.getByRole('button', { name: '🚨' });
+    await user.click(targetEmoji);
+    // Verify updated
+    expect(screen.getAllByTitle('Choose icon')[0]).toHaveTextContent('🚨');
   });
 
   it('typing in color input updates value', async () => {
@@ -177,15 +183,12 @@ describe('save validation', () => {
     expect(onSavePriorities).not.toHaveBeenCalled();
   });
 
-  it('empty emoji shows error', async () => {
-    const user = userEvent.setup();
-    const onSavePriorities = vi.fn();
-    render(<BoardSettingsModal {...defaults({ onSavePriorities })} />);
-    const emoji = screen.getAllByPlaceholderText('🔺')[0];
-    await user.clear(emoji);
-    await user.click(screen.getByText('Save settings'));
-    expect(screen.getByText('Priority emoji cannot be empty.')).toBeInTheDocument();
-    expect(onSavePriorities).not.toHaveBeenCalled();
+  it('emoji picker always has a value (cannot be emptied)', () => {
+    render(<BoardSettingsModal {...defaults()} />);
+    const emojiButtons = screen.getAllByTitle('Choose icon');
+    // Both priorities should have non-empty emoji values
+    expect(emojiButtons[0].textContent!.trim().length).toBeGreaterThan(0);
+    expect(emojiButtons[1].textContent!.trim().length).toBeGreaterThan(0);
   });
 });
 

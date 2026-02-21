@@ -31,6 +31,7 @@ vi.mock('../src/config.js', async (importOriginal) => {
     DEFAULT_PRIORITIES: [
       { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
       { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
+      { id: 'normal', emoji: '🟦', label: 'Normal', color: '#3b82f6' },
     ],
     PROJECT_ROOT: '/tmp/test',
     resetConfigCache: vi.fn(),
@@ -250,7 +251,7 @@ describe('board priorities API', () => {
     const res = await app.request('/api/boards');
     expect(res.status).toBe(200);
     const body = await res.json() as Array<{ priorities: Array<{ id: string }> }>;
-    expect(body[0].priorities.map((p) => p.id)).toEqual(['urgent', 'high']);
+    expect(body[0].priorities.map((p) => p.id)).toEqual(['urgent', 'high', 'normal']);
   });
 
   it('returns default priorities in board detail response', async () => {
@@ -261,7 +262,7 @@ describe('board priorities API', () => {
     const res = await app.request('/api/boards/b1');
     expect(res.status).toBe(200);
     const body = await res.json() as { priorities: Array<{ id: string }> };
-    expect(body.priorities.map((p) => p.id)).toEqual(['urgent', 'high']);
+    expect(body.priorities.map((p) => p.id)).toEqual(['urgent', 'high', 'normal']);
   });
 
   it('accepts PATCH priorities and forwards payload to config update', async () => {

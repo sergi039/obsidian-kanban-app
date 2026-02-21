@@ -33,6 +33,7 @@ interface Props {
   onColumnDelete: (name: string) => Promise<void>;
   onPrioritiesChange: (priorities: PriorityDef[]) => Promise<void>;
   onCategoriesChange: (categories: CategoryDef[]) => Promise<void>;
+  openSettingsRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 // ---- Collision detection: same as working test ----
@@ -74,11 +75,13 @@ export function Board({
   onColumnDelete,
   onPrioritiesChange,
   onCategoriesChange,
+  openSettingsRef,
 }: Props) {
   const [activeCard, setActiveCard] = useState<Card | null>(null);
   const [activeColName, setActiveColName] = useState<string | null>(null);
   const [localColumns, setLocalColumns] = useState<BoardDetail['columns'] | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  if (openSettingsRef) openSettingsRef.current = () => setShowSettings(true);
   const dragOriginRef = useRef<{ columnName: string } | null>(null);
   const priorities = Array.isArray(board.priorities) ? board.priorities : [];
   const boardCategories = Array.isArray(board.categories) ? board.categories : [];

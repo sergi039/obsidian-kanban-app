@@ -10,6 +10,7 @@ interface Props {
   fields: Field[];
   onClose: () => void;
   onUpdate: () => Promise<void>;
+  onManageCategories?: () => void;
 }
 
 const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
@@ -183,7 +184,7 @@ function CustomFieldInput({ field, value, cardId, onSaved, onLocalChange }: {
   );
 }
 
-export function CardDetail({ card, columns, priorities, categories, fields, onClose, onUpdate }: Props) {
+export function CardDetail({ card, columns, priorities, categories, fields, onClose, onUpdate, onManageCategories }: Props) {
   const links = extractLinks(card.title);
   const modalRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -677,7 +678,14 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               {/* Categories */}
               {categories.length > 0 && (
                 <div>
-                  <label className="text-xs font-medium text-board-text-muted uppercase tracking-wider block mb-1">Categories</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-board-text-muted uppercase tracking-wider">Categories</label>
+                    {onManageCategories && (
+                      <button type="button" onClick={onManageCategories} className="text-[11px] text-blue-500 hover:text-blue-600 hover:underline">
+                        Manage
+                      </button>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-1">
                     {categories.map((cat) => {
                       const isActive = card.labels.includes(cat.id);
@@ -705,6 +713,15 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                       );
                     })}
                   </div>
+                </div>
+              )}
+              {/* Set up categories prompt when none defined */}
+              {categories.length === 0 && onManageCategories && (
+                <div>
+                  <label className="text-xs font-medium text-board-text-muted uppercase tracking-wider block mb-1">Categories</label>
+                  <button type="button" onClick={onManageCategories} className="text-[11px] text-blue-500 hover:text-blue-600 hover:underline">
+                    + Set up categories
+                  </button>
                 </div>
               )}
               {/* Labels (legacy, if no categories defined) */}

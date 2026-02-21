@@ -45,6 +45,7 @@ export type CategoryDef = z.infer<typeof CategoryDefSchema>;
 export const DEFAULT_PRIORITIES: PriorityDef[] = [
   { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
   { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
+  { id: 'normal', emoji: '🟦', label: 'Normal', color: '#3b82f6' },
 ];
 
 let cached: AppConfig | null = null;

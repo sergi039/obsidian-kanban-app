@@ -1,5 +1,52 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PriorityDef, CategoryDef } from '../types';
+
+const PRIORITY_EMOJIS = [
+  '🔺', '⏫', '🟦', '⬇️', '⭐', '🔥', '⚡', '🚨',
+  '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⚪', '⚫',
+  '💎', '🎯', '🏷️', '📌', '🔔', '💡', '🛑', '✅',
+];
+
+function EmojiPicker({ value, onChange }: { value: string; onChange: (emoji: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full text-sm bg-board-bg border border-board-border rounded px-2 py-1 text-center hover:bg-board-column cursor-pointer"
+        title="Choose icon"
+      >
+        {value}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-50 bg-board-bg border border-board-border rounded-lg shadow-xl p-2 grid grid-cols-8 gap-1 w-[240px]">
+          {PRIORITY_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => { onChange(emoji); setOpen(false); }}
+              className={`w-7 h-7 text-sm rounded hover:bg-board-column flex items-center justify-center ${emoji === value ? 'bg-blue-100 ring-1 ring-blue-400' : ''}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   open: boolean;
@@ -65,7 +112,7 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
   const addPriority = () => {
     const base = slugify('New priority', 'priority');
     const id = uniqueId(base, usedPriIds);
-    setPriDraft((prev) => [...prev, { id, label: 'New priority', emoji: '\u2B50', color: '#6b7280' }]);
+    setPriDraft((prev) => [...prev, { id, label: 'New priority', emoji: '⭐', color: '#6b7280' }]);
   };
 
   const removePriority = (index: number) => {
@@ -219,11 +266,9 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
                 {priDraft.map((priority, i) => (
                   <div key={priority.id} className="grid grid-cols-[28px_90px_1fr_120px_120px_auto] gap-2 items-center bg-board-column border border-board-border rounded-md p-2">
                     <div className="text-xs text-board-text-muted text-center">{i + 1}</div>
-                    <input
+                    <EmojiPicker
                       value={priority.emoji}
-                      onChange={(e) => updatePriority(i, { emoji: e.target.value })}
-                      className="w-full text-sm bg-board-bg border border-board-border rounded px-2 py-1 text-center"
-                      placeholder="🔺"
+                      onChange={(emoji) => updatePriority(i, { emoji })}
                     />
                     <input
                       value={priority.label}

@@ -21,6 +21,7 @@ vi.mock('../../src/config.js', async (importOriginal) => {
     DEFAULT_PRIORITIES: [
       { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
       { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
+      { id: 'normal', emoji: '🟦', label: 'Normal', color: '#3b82f6' },
     ],
     PROJECT_ROOT: '/tmp/test',
     resetConfigCache: vi.fn(),

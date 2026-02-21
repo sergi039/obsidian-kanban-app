@@ -11,6 +11,52 @@
         "Live Test",
         "On Hold",
         "Done"
+      ],
+      "categories": [
+        {
+          "id": "bug",
+          "label": "Bug",
+          "color": "#dc2626",
+          "showOnCard": true
+        },
+        {
+          "id": "feature",
+          "label": "Feature",
+          "color": "#2563eb",
+          "showOnCard": true
+        },
+        {
+          "id": "docs",
+          "label": "Documentation",
+          "color": "#16a34a",
+          "showOnCard": true
+        },
+        {
+          "id": "internal",
+          "label": "Internal",
+          "color": "#9333ea",
+          "showOnCard": false
+        }
+      ],
+      "priorities": [
+        {
+          "id": "urgent",
+          "emoji": "🔺",
+          "label": "Urgent",
+          "color": "#ef4444"
+        },
+        {
+          "id": "high",
+          "emoji": "⏫",
+          "label": "High",
+          "color": "#f59e0b"
+        },
+        {
+          "id": "normal",
+          "emoji": "⚪",
+          "label": "Normal",
+          "color": "#3b82f6"
+        }
       ]
     },
     {
@@ -22,6 +68,26 @@
         "In Progress",
         "Blocked",
         "Done"
+      ],
+      "priorities": [
+        {
+          "id": "urgent",
+          "emoji": "🔺",
+          "label": "Urgent",
+          "color": "#ef4444"
+        },
+        {
+          "id": "high",
+          "emoji": "⏫",
+          "label": "High",
+          "color": "#f59e0b"
+        },
+        {
+          "id": "normal",
+          "emoji": "🟦",
+          "label": "Normal",
+          "color": "#3b82f6"
+        }
       ]
     },
     {
