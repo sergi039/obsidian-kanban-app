@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { BoardSummary } from '../types';
-import { createBoard, archiveBoard, unarchiveBoard, renameBoard, deleteBoard, fetchArchivedBoards } from '../api/client';
+import { createBoard, archiveBoard, unarchiveBoard, renameBoard, deleteBoard, fetchArchivedBoards, searchVaultTasks } from '../api/client';
+import type { VaultSearchResult } from '../api/client';
 
 interface Props {
   boards: BoardSummary[];
@@ -18,6 +19,10 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
   const [renameValue, setRenameValue] = useState('');
   const [createName, setCreateName] = useState('');
   const [createFile, setCreateFile] = useState('');
+  const [searchResults, setSearchResults] = useState<VaultSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
   const contextRef = useRef<HTMLDivElement>(null);
   const createRef = useRef<HTMLDivElement>(null);
 
@@ -25,7 +30,10 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (contextRef.current && !contextRef.current.contains(e.target as Node)) setContextMenu(null);
-      if (createRef.current && !createRef.current.contains(e.target as Node)) setShowCreate(false);
+      if (createRef.current && !createRef.current.contains(e.target as Node)) {
+        setShowCreate(false);
+        setShowResults(false);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -87,7 +95,37 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
     setCreateName('');
     setCreateFile('');
     setShowCreate(false);
+    setShowResults(false);
     onBoardsChanged?.();
+  };
+
+  const handleFileSearch = (value: string) => {
+    setCreateFile(value);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (value.trim().length < 2) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+    setSearching(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const results = await searchVaultTasks(value.trim());
+        setSearchResults(results);
+        setShowResults(results.length > 0);
+      } catch {
+        setSearchResults([]);
+        setShowResults(false);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+  };
+
+  const handleSelectResult = (result: VaultSearchResult) => {
+    setCreateFile(result.relativePath);
+    if (!createName.trim()) setCreateName(result.fileName);
+    setShowResults(false);
   };
 
   return (
@@ -151,7 +189,7 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
 
       {/* Create board popover */}
       {showCreate && (
-        <div ref={createRef} className="absolute top-full left-0 mt-2 z-50 bg-board-card border border-board-border rounded-lg shadow-xl p-4 w-72">
+        <div ref={createRef} className="absolute top-full left-0 mt-2 z-50 bg-board-card border border-board-border rounded-lg shadow-xl p-4 w-80">
           <h3 className="text-sm font-medium text-board-text mb-3">New Board</h3>
           <input
             autoFocus
@@ -161,15 +199,57 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             className="w-full px-3 py-1.5 text-sm rounded border border-board-border bg-board-bg text-board-text mb-2 outline-none focus:border-board-accent"
           />
-          <input
-            placeholder="File path (optional, e.g. Projects/Tasks.md)"
-            value={createFile}
-            onChange={(e) => setCreateFile(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-            className="w-full px-3 py-1.5 text-sm rounded border border-board-border bg-board-bg text-board-text mb-3 outline-none focus:border-board-accent"
-          />
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowCreate(false)} className="px-3 py-1 text-xs text-board-text-muted hover:text-board-text">Cancel</button>
+          <div className="relative">
+            <input
+              placeholder="Search vault or enter path..."
+              value={createFile}
+              onChange={(e) => handleFileSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !showResults && handleCreate()}
+              onFocus={() => { if (searchResults.length > 0) setShowResults(true); }}
+              className="w-full px-3 py-1.5 text-sm rounded border border-board-border bg-board-bg text-board-text outline-none focus:border-board-accent"
+            />
+            {searching && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-board-text-muted">...</span>
+            )}
+            {showResults && searchResults.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1 bg-board-card border border-board-border rounded-lg shadow-xl max-h-64 overflow-y-auto z-50">
+                {searchResults.map((r) => (
+                  <button
+                    key={r.relativePath}
+                    onClick={() => handleSelectResult(r)}
+                    className="w-full text-left px-3 py-2 hover:bg-board-column border-b border-board-border last:border-b-0 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-board-text truncate">{r.fileName}</span>
+                      {r.hasChecklist ? (
+                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          {r.openTaskCount} task{r.openTaskCount !== 1 ? 's' : ''}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-board-column text-board-text-muted">
+                          No checklists
+                        </span>
+                      )}
+                    </div>
+                    {r.folder && (
+                      <div className="text-[11px] text-board-text-muted truncate mt-0.5">{r.folder}</div>
+                    )}
+                    {r.sampleTasks.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {r.sampleTasks.map((t, i) => (
+                          <div key={i} className="text-[11px] text-board-text-muted truncate">
+                            {'☐ '}{t}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 justify-end mt-3">
+            <button onClick={() => { setShowCreate(false); setShowResults(false); }} className="px-3 py-1 text-xs text-board-text-muted hover:text-board-text">Cancel</button>
             <button onClick={handleCreate} disabled={!createName.trim()} className="px-3 py-1 text-xs bg-board-accent text-white rounded disabled:opacity-50">Create</button>
           </div>
         </div>

@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import path from 'node:path';
-import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import { getDb } from '../db.js';
+import { parseMarkdownTasks } from '../parser.js';
 import {
   DEFAULT_PRIORITIES,
   PriorityDefSchema,
@@ -65,6 +67,98 @@ boards.get('/', (c) => {
   });
 
   return c.json(list);
+});
+
+// --- Vault search ---
+
+let dirCache: { entries: string[]; ts: number } | null = null;
+const DIR_CACHE_TTL = 30_000;
+
+// GET /api/boards/vault/search?q=<term> — search vault for files with task lists
+// Must be registered BEFORE /:id to avoid "vault" being captured as a board ID
+boards.get('/vault/search', async (c) => {
+  const q = (c.req.query('q') ?? '').trim().toLowerCase();
+  if (q.length < 2) return c.json({ results: [] });
+
+  const config = loadConfig();
+  const vaultRoot = config.vaultRoot;
+
+  // Phase A: path matching (cached directory listing)
+  const now = Date.now();
+  if (!dirCache || now - dirCache.ts > DIR_CACHE_TTL) {
+    const allEntries = await readdir(vaultRoot, { recursive: true });
+    dirCache = { entries: allEntries.filter((e) => e.endsWith('.md')), ts: now };
+  }
+
+  const allMatches = dirCache.entries.filter((p) => {
+    const segments = p.split(path.sep);
+    return segments.some((seg) => seg.toLowerCase().includes(q));
+  });
+
+  if (allMatches.length === 0) return c.json({ results: [] });
+
+  // Score candidates: filename match > folder-only match, then alphabetical
+  // Prioritize files whose own name matches the query
+  const scored = allMatches.map((p) => {
+    const fileName = path.basename(p, '.md').toLowerCase();
+    const nameMatch = fileName.includes(q);
+    return { path: p, nameMatch };
+  });
+  scored.sort((a, b) => {
+    if (a.nameMatch !== b.nameMatch) return a.nameMatch ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+
+  const candidates = scored.slice(0, 50).map((s) => s.path);
+
+  // Phase B: task detection (parallel file reads)
+  const results = await Promise.all(
+    candidates.map(async (relPath) => {
+      const absPath = path.join(vaultRoot, relPath);
+      let content: string;
+      try {
+        content = readFileSync(absPath, 'utf-8');
+      } catch {
+        return null;
+      }
+
+      const hasChecklist = /- \[[ xX]\]/.test(content);
+      let taskCount = 0;
+      let openTaskCount = 0;
+      const sampleTasks: string[] = [];
+
+      if (hasChecklist) {
+        const tasks = parseMarkdownTasks(content);
+        taskCount = tasks.length;
+        openTaskCount = tasks.filter((t) => !t.isDone).length;
+        for (const t of tasks) {
+          if (!t.isDone && sampleTasks.length < 3) sampleTasks.push(t.title);
+        }
+      }
+
+      const fileName = path.basename(relPath, '.md');
+      const folder = path.dirname(relPath);
+
+      return {
+        relativePath: relPath,
+        fileName,
+        folder: folder === '.' ? '' : folder,
+        hasChecklist,
+        taskCount,
+        openTaskCount,
+        sampleTasks,
+      };
+    }),
+  );
+
+  const filtered = results
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .sort((a, b) => {
+      if (a.hasChecklist !== b.hasChecklist) return a.hasChecklist ? -1 : 1;
+      return b.openTaskCount - a.openTaskCount;
+    });
+
+  return c.json({ results: filtered });
 });
 
 // GET /api/boards/:id — board detail with columns and cards

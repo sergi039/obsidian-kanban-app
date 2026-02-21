@@ -122,6 +122,22 @@ export async function reloadSync(): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>('/boards/sync/reload', { method: 'POST' });
 }
 
+export interface VaultSearchResult {
+  relativePath: string;
+  fileName: string;
+  folder: string;
+  hasChecklist: boolean;
+  taskCount: number;
+  openTaskCount: number;
+  sampleTasks: string[];
+}
+
+export async function searchVaultTasks(query: string): Promise<VaultSearchResult[]> {
+  const params = new URLSearchParams({ q: query });
+  const res = await request<{ results: VaultSearchResult[] }>(`/boards/vault/search?${params}`);
+  return res.results;
+}
+
 export async function addColumn(boardId: string, name: string): Promise<{ ok: boolean; columns: string[] }> {
   return request(`/boards/${boardId}/columns`, { method: 'POST', body: JSON.stringify({ name }) });
 }

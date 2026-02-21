@@ -214,6 +214,14 @@ export function Filters({ filterQuery, onFilterChange, columns, priorities, cate
   const updateSuggestions = useCallback(() => {
     const input = inputRef.current;
     if (!input) return;
+
+    // Only show autocomplete when the input is focused
+    if (document.activeElement !== input) {
+      suggestionsRef.current = [];
+      setShowAutocomplete(false);
+      return;
+    }
+
     const cursor = input.selectionStart ?? filterQuery.length;
     const ctx = getTokenAtCursor(filterQuery, cursor);
     tokenContextRef.current = ctx;
