@@ -1,18 +1,19 @@
 import { useState, useMemo } from 'react';
-import type { Card, PriorityDef } from '../types';
+import type { Card, PriorityDef, CategoryDef } from '../types';
 import { moveCard, patchCard } from '../api/client';
 
 interface Props {
   cards: Card[];
   columns: string[];
   priorities: PriorityDef[];
+  categories: CategoryDef[];
   boardId: string;
   onCardClick: (card: Card) => void;
   onCardAdd: (title: string, column: string) => Promise<void>;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => Promise<unknown>;
 }
 
-type SortField = 'title' | 'column_name' | 'priority' | 'due_date' | 'is_done' | 'updated_at';
+type SortField = 'title' | 'column_name' | 'priority' | 'category' | 'due_date' | 'is_done' | 'updated_at';
 type SortDir = 'ASC' | 'DESC';
 
 const ARCHIVE_PAGE_SIZE = 20;
@@ -22,6 +23,15 @@ function comparePriority(a: string | null, b: string | null, rank: Map<string, n
   const av = a ? (rank.get(a) ?? fallback) : fallback + 1;
   const bv = b ? (rank.get(b) ?? fallback) : fallback + 1;
   return av - bv;
+}
+
+function compareCategory(aLabels: string[], bLabels: string[], catMap: Map<string, CategoryDef>): number {
+  const aFirst = aLabels.map(id => catMap.get(id)?.label ?? '').filter(Boolean)[0] ?? '';
+  const bFirst = bLabels.map(id => catMap.get(id)?.label ?? '').filter(Boolean)[0] ?? '';
+  if (!aFirst && !bFirst) return 0;
+  if (!aFirst) return 1;
+  if (!bFirst) return -1;
+  return aFirst.localeCompare(bFirst);
 }
 
 function daysSince(dateStr: string): number {
@@ -51,7 +61,7 @@ const KNOWN_COLORS: Record<string, string> = {
   'live test': '#06b6d4',
 };
 
-export function TableView({ cards, columns, priorities, boardId, onCardClick, onCardAdd, onRefresh }: Props) {
+export function TableView({ cards, columns, priorities, categories, boardId, onCardClick, onCardAdd, onRefresh }: Props) {
   const [sortField, setSortField] = useState<SortField>('title');
   const [sortDir, setSortDir] = useState<SortDir>('ASC');
   const [newTitle, setNewTitle] = useState('');
@@ -67,6 +77,10 @@ export function TableView({ cards, columns, priorities, boardId, onCardClick, on
   const priorityRank = useMemo(
     () => new Map(priorities.map((p, index) => [p.id, index])),
     [priorities],
+  );
+  const categoryMap = useMemo(
+    () => new Map(categories.map(c => [c.id, c])),
+    [categories],
   );
 
   const updateSetting = (key: string, value: unknown) => {
@@ -162,6 +176,9 @@ export function TableView({ cards, columns, priorities, boardId, onCardClick, on
       case 'priority':
         cmp = comparePriority(a.priority, b.priority, priorityRank);
         break;
+      case 'category':
+        cmp = compareCategory(a.labels, b.labels, categoryMap);
+        break;
       case 'due_date':
         cmp = (a.due_date || '9999').localeCompare(b.due_date || '9999');
         break;
@@ -216,15 +233,6 @@ export function TableView({ cards, columns, priorities, boardId, onCardClick, on
           <span className={`text-board-text hover:text-blue-500 transition-colors ${card.is_done ? 'line-through opacity-60' : ''}`}>
             {card.title.length > 80 ? card.title.slice(0, 80) + '…' : card.title}
           </span>
-          {card.labels.length > 0 && (
-            <span className="flex gap-1">
-              {card.labels.slice(0, 3).map((l, i) => (
-                <span key={i} className="text-[10px] px-1.5 py-0.5 rounded-full bg-board-column text-board-text-muted border border-board-border">
-                  {l}
-                </span>
-              ))}
-            </span>
-          )}
           {card.description && <span className="text-board-text-muted text-[10px]">📝</span>}
           {card.sub_items.length > 0 && <span className="text-board-text-muted text-[10px]">☰ {card.sub_items.length}</span>}
         </div>
@@ -254,6 +262,29 @@ export function TableView({ cards, columns, priorities, boardId, onCardClick, on
             <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>
           ))}
         </select>
+      </td>
+      {/* Category */}
+      <td className="px-3 py-2.5">
+        <div className="flex items-center gap-1 flex-wrap">
+          {card.labels.map((id) => {
+            const cat = categoryMap.get(id);
+            if (!cat) return (
+              <span key={id} className="text-[10px] px-1.5 py-0.5 rounded bg-board-column text-board-text-muted border border-board-border">
+                {id}
+              </span>
+            );
+            return (
+              <span
+                key={id}
+                className="text-[10px] font-medium px-1.5 py-0.5 rounded max-w-[120px] truncate border"
+                style={{ backgroundColor: `${cat.color}20`, color: cat.color, borderColor: `${cat.color}40` }}
+                title={cat.label}
+              >
+                {cat.label}
+              </span>
+            );
+          })}
+        </div>
       </td>
       {/* Due — inline date picker */}
       <td className="px-3 py-2.5">
@@ -384,6 +415,7 @@ export function TableView({ cards, columns, priorities, boardId, onCardClick, on
               { field: 'title' as SortField, label: 'Title', width: '' },
               { field: 'column_name' as SortField, label: 'Status', width: 'w-36' },
               { field: 'priority' as SortField, label: 'Priority', width: 'w-32' },
+              { field: 'category' as SortField, label: 'Category', width: 'w-40' },
               { field: 'due_date' as SortField, label: 'Due', width: 'w-32' },
               { field: 'updated_at' as SortField, label: 'Updated', width: 'w-32' },
             ].map((col) => (
@@ -408,7 +440,7 @@ export function TableView({ cards, columns, priorities, boardId, onCardClick, on
           {sorted.map((card) => renderRow(card))}
           {sorted.length === 0 && (
             <tr>
-              <td colSpan={7} className="px-3 py-8 text-center text-board-text-muted text-sm">
+              <td colSpan={8} className="px-3 py-8 text-center text-board-text-muted text-sm">
                 No cards match the current filter
               </td>
             </tr>

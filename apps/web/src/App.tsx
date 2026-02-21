@@ -24,6 +24,8 @@ import { useTheme } from './hooks/useTheme';
 import { ThemeToggle } from './components/ThemeToggle';
 import { AutomationsPanel } from './components/AutomationsPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { BoardSort } from './components/BoardSort';
+import type { BoardSortField } from './components/BoardSort';
 import type { Card } from './types';
 
 const FALLBACK_PRIORITIES: PriorityDef[] = [
@@ -43,6 +45,7 @@ export default function App() {
   const [boardFields, setBoardFields] = useState<Field[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [showAutomations, setShowAutomations] = useState(false);
+  const [boardSortField, setBoardSortField] = useState<BoardSortField>('position');
   const openSettingsRef = useRef<(() => void) | null>(null);
   const { theme, cycleTheme } = useTheme();
 
@@ -321,8 +324,14 @@ export default function App() {
           <Filters
             filterQuery={filterQuery}
             onFilterChange={setFilterQuery}
+            columns={boardDetail?.columns.map(c => c.name) ?? []}
+            priorities={boardPriorities}
+            categories={boardDetail?.categories ?? []}
           />
           <ViewSwitcher layout={layout} onLayoutChange={setLayout} />
+          {layout === 'board' && (
+            <BoardSort value={boardSortField} onChange={setBoardSortField} />
+          )}
           <button
             onClick={() => setShowAutomations(true)}
             className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors"
@@ -361,6 +370,7 @@ export default function App() {
           layout === 'board' ? (
             <Board
               board={{ ...boardDetail, priorities: boardPriorities }}
+              sortField={boardSortField}
               filterCards={filterCards}
               onCardMove={handleCardMove}
               onCardClick={setSelectedCard}
@@ -377,6 +387,7 @@ export default function App() {
               cards={filterCards(boardDetail.columns.flatMap((col) => col.cards))}
               columns={boardDetail.columns.map((c) => c.name)}
               priorities={boardPriorities}
+              categories={boardDetail?.categories ?? []}
               boardId={boardDetail.id}
               onCardClick={setSelectedCard}
               onCardAdd={handleCardAdd}
