@@ -133,6 +133,17 @@
         "In Progress",
         "Done"
       ]
+    },
+    {
+      "id": "arrecife-reconstruction",
+      "name": "Arrecife Reconstruction",
+      "file": "Property/Arrecife 13/Reconstruction 2026/Arrecife to do.md",
+      "columns": [
+        "Backlog",
+        "In Progress",
+        "Blocked",
+        "Done"
+      ]
     }
   ],
   "defaultColumns": [
