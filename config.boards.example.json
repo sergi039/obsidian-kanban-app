@@ -1,0 +1,21 @@
+{
+  "vaultRoot": "/path/to/your/obsidian/vault",
+  "boards": [
+    {
+      "id": "my-board",
+      "name": "My Board",
+      "file": "Tasks/My Tasks.md",
+      "columns": ["Backlog", "In Progress", "Done"],
+      "categories": [
+        { "id": "bug", "label": "Bug", "color": "#dc2626", "showOnCard": true },
+        { "id": "feature", "label": "Feature", "color": "#2563eb", "showOnCard": true }
+      ],
+      "priorities": [
+        { "id": "urgent", "emoji": "\ud83d\udd3a", "label": "Urgent", "color": "#ef4444" },
+        { "id": "high", "emoji": "\u23eb", "label": "High", "color": "#f59e0b" },
+        { "id": "normal", "emoji": "\u26aa", "label": "Normal", "color": "#3b82f6" }
+      ]
+    }
+  ],
+  "defaultColumns": ["Backlog", "In Progress", "Done"]
+}

@@ -12,7 +12,7 @@ import { reconcileAll } from './reconciler.js';
 import { startWatcher } from './watcher.js';
 import { stampAllColumns } from './writeback.js';
 import { createWsServer } from './ws.js';
-import { apiTokenAuth, bodyLimit, getCorsOrigins } from './middleware/security.js';
+import { apiTokenAuth, bodyLimit, getCorsOrigins, securityHeaders } from './middleware/security.js';
 import boardRoutes from './routes/boards.js';
 import cardRoutes from './routes/cards.js';
 import exportRoutes from './routes/export.js';
@@ -30,6 +30,7 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use('*', logger());
+app.use('*', securityHeaders());
 app.use('/api/*', bodyLimit());
 app.use('/api/*', apiTokenAuth());
 

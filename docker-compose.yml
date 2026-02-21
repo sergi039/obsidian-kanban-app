@@ -7,7 +7,7 @@ services:
       - '4000:4000'
     volumes:
       # Mount Obsidian vault (read-write for bidirectional sync)
-      - ${VAULT_PATH:-/Users/ss/Desktop/Private/Obsidian/Notes/Notes}:/vault
+      - ${VAULT_PATH:?Set VAULT_PATH to your Obsidian vault directory}:/vault
       # Persist SQLite database
       - kanban-data:/app/data
       # Config
@@ -15,6 +15,8 @@ services:
     environment:
       PORT: '4000'
       VAULT_ROOT: /vault
+      # Set a secure token for API authentication (required for production)
+      API_TOKEN: ${API_TOKEN:-}
     restart: unless-stopped
 
 volumes:

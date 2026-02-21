@@ -2,7 +2,13 @@
   "name": "obsidian-kanban-app",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "apps/*"
-  ]
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "test:watch": "pnpm -r --parallel run test:watch"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
+  }
 }

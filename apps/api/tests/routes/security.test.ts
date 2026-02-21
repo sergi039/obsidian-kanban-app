@@ -112,7 +112,7 @@ describe('API token authentication', () => {
     }
   });
 
-  it('allows GET requests without token', async () => {
+  it('requires auth for GET requests when API_TOKEN is set', async () => {
     const { apiTokenAuth } = await import('../../src/middleware/security.js');
 
     const originalToken = process.env.API_TOKEN;
@@ -123,8 +123,16 @@ describe('API token authentication', () => {
       app.use('/api/*', apiTokenAuth());
       app.get('/api/test', (c) => c.json({ ok: true }));
 
+      // GET without token -> 401
       const res = await app.request('/api/test', { method: 'GET' });
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(401);
+
+      // GET with valid token -> 200
+      const res2 = await app.request('/api/test', {
+        method: 'GET',
+        headers: { Authorization: 'Bearer test-secret-token' },
+      });
+      expect(res2.status).toBe(200);
     } finally {
       if (originalToken === undefined) delete process.env.API_TOKEN;
       else process.env.API_TOKEN = originalToken;

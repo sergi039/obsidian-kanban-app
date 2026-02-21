@@ -55,7 +55,6 @@ boards.get('/', (c) => {
     return {
       id: board.id,
       name: board.name,
-      file: board.file,
       columns: board.columns,
       priorities: board.priorities ?? DEFAULT_PRIORITIES,
       categories: board.categories ?? [],
@@ -88,7 +87,6 @@ boards.get('/:id', (c) => {
   return c.json({
     id: board.id,
     name: board.name,
-    file: board.file,
     priorities: board.priorities ?? DEFAULT_PRIORITIES,
     categories: board.categories ?? [],
     columns,
