@@ -45,6 +45,7 @@ export function KanbanCard({ card, priorities, categories = [], onClick }: Props
   const urls = extractUrls(card.title);
   const displayTitle = cleanTitle(card.title, priorities);
   const priorityDef = card.priority ? priorities.find((p) => p.id === card.priority) : undefined;
+  const showPriority = priorityDef && priorityDef.showOnCard !== false;
 
   // Resolve visible category badges
   const visibleCategories = card.labels
@@ -73,7 +74,7 @@ export function KanbanCard({ card, priorities, categories = [], onClick }: Props
       style={{ ['--tw-ring-color' as string]: 'var(--board-accent-ring)' }}
     >
       {/* Priority left border */}
-      {priorityDef && (
+      {showPriority && (
         <div
           className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full"
           style={{ backgroundColor: priorityDef.color }}
@@ -100,8 +101,8 @@ export function KanbanCard({ card, priorities, categories = [], onClick }: Props
           {shownCategories.map((cat) => (
             <span
               key={cat.id}
-              className="text-[10px] font-medium px-1.5 py-0.5 rounded max-w-[120px] truncate"
-              style={{ backgroundColor: `${cat.color}26`, color: cat.color }}
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded max-w-[120px] truncate border"
+              style={{ backgroundColor: `${cat.color}20`, color: cat.color, borderColor: `${cat.color}40` }}
               title={cat.label}
             >
               {cat.label}
@@ -117,12 +118,12 @@ export function KanbanCard({ card, priorities, categories = [], onClick }: Props
 
       {/* Meta row */}
       <div className="flex items-center gap-2 mt-2 flex-wrap">
-        {card.priority && (
+        {showPriority && (
           <span
             className="text-[11px] font-medium px-1.5 py-0.5 rounded"
-            style={{ backgroundColor: `${priorityDef?.color ?? '#9ca3af'}26`, color: priorityDef?.color ?? '#9ca3af' }}
+            style={{ backgroundColor: `${priorityDef.color}26`, color: priorityDef.color }}
           >
-            {priorityDef ? `${priorityDef.emoji} ${priorityDef.label}` : card.priority}
+            {priorityDef.emoji} {priorityDef.label}
           </span>
         )}
         {urls.length > 0 && (

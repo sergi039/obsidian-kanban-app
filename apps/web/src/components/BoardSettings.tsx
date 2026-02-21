@@ -112,7 +112,7 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
   const addPriority = () => {
     const base = slugify('New priority', 'priority');
     const id = uniqueId(base, usedPriIds);
-    setPriDraft((prev) => [...prev, { id, label: 'New priority', emoji: '⭐', color: '#6b7280' }]);
+    setPriDraft((prev) => [...prev, { id, label: 'New priority', emoji: '⭐', color: '#6b7280', showOnCard: true }]);
   };
 
   const removePriority = (index: number) => {
@@ -138,7 +138,8 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
   const addCategory = () => {
     const base = slugify('New category', 'category');
     const id = uniqueId(base, usedCatIds);
-    const color = CATEGORY_COLORS[catDraft.length % CATEGORY_COLORS.length];
+    const usedColors = new Set(catDraft.map((c) => c.color));
+    const color = CATEGORY_COLORS.find((c) => !usedColors.has(c)) ?? CATEGORY_COLORS[catDraft.length % CATEGORY_COLORS.length];
     setCatDraft((prev) => [...prev, { id, label: 'New category', color, showOnCard: true }]);
   };
 
@@ -264,7 +265,7 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
             ) : (
               <div className="space-y-2">
                 {priDraft.map((priority, i) => (
-                  <div key={priority.id} className="grid grid-cols-[28px_90px_1fr_120px_120px_auto] gap-2 items-center bg-board-column border border-board-border rounded-md p-2">
+                  <div key={priority.id} className="grid gap-2 items-center bg-board-column border border-board-border rounded-md p-2" style={{ gridTemplateColumns: '28px 90px 1fr 120px 50px 120px auto' }}>
                     <div className="text-xs text-board-text-muted text-center">{i + 1}</div>
                     <EmojiPicker
                       value={priority.emoji}
@@ -282,6 +283,15 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
                       className="w-full text-sm bg-board-bg border border-board-border rounded px-2 py-1 font-mono text-board-text"
                       placeholder="#ef4444"
                     />
+                    <label className="flex items-center gap-1 cursor-pointer" title="Show on card">
+                      <input
+                        type="checkbox"
+                        checked={priority.showOnCard !== false}
+                        onChange={(e) => updatePriority(i, { showOnCard: e.target.checked })}
+                        className="rounded border-board-border"
+                      />
+                      <span className="text-[10px] text-board-text-muted">Card</span>
+                    </label>
                     <div className="text-[11px] text-board-text-muted font-mono px-2 py-1 bg-board-bg border border-board-border rounded">
                       {priority.id}
                     </div>
@@ -338,7 +348,7 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
             ) : (
               <div className="space-y-2">
                 {catDraft.map((cat, i) => (
-                  <div key={cat.id} className="grid grid-cols-[28px_1fr_120px_50px_120px_auto] gap-2 items-center bg-board-column border border-board-border rounded-md p-2">
+                  <div key={i} className="grid grid-cols-[28px_1fr_120px_50px_120px_auto] gap-2 items-center bg-board-column border border-board-border rounded-md p-2">
                     <div className="text-xs text-board-text-muted text-center">{i + 1}</div>
                     <input
                       value={cat.label}

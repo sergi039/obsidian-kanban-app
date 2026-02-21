@@ -64,8 +64,8 @@ export default function App() {
   }, []);
 
   // Load active board detail + fields
-  const loadBoard = useCallback(async () => {
-    if (!activeBoardId) return;
+  const loadBoard = useCallback(async (): Promise<BoardDetail | null> => {
+    if (!activeBoardId) return null;
     try {
       const [detail, fields] = await Promise.all([
         fetchBoard(activeBoardId),
@@ -74,9 +74,11 @@ export default function App() {
       setBoardDetail(detail);
       setBoardFields(fields);
       setError(null);
+      return detail;
     } catch (err) {
       console.error('Failed to fetch board:', err);
       setError(`Failed to load board "${activeBoardId}".`);
+      return null;
     }
   }, [activeBoardId]);
 
@@ -396,9 +398,15 @@ export default function App() {
           fields={boardFields}
           onClose={() => setSelectedCard(null)}
           onUpdate={async () => {
-            await loadBoard();
+            const detail = await loadBoard();
             const updatedBoards = await fetchBoards();
             setBoards(updatedBoards);
+            if (detail) {
+              setSelectedCard((prev) => {
+                if (!prev) return prev;
+                return detail.columns.flatMap((c) => c.cards).find((c) => c.id === prev.id) ?? prev;
+              });
+            }
           }}
           onManageCategories={() => {
             setSelectedCard(null);

@@ -11,6 +11,7 @@ export const PriorityDefSchema = z.object({
   emoji: z.string().min(1),
   label: z.string().min(1),
   color: z.string().min(1),
+  showOnCard: z.boolean().optional().default(true),
 });
 
 export const CategoryDefSchema = z.object({
@@ -43,9 +44,9 @@ export type PriorityDef = z.infer<typeof PriorityDefSchema>;
 export type CategoryDef = z.infer<typeof CategoryDefSchema>;
 
 export const DEFAULT_PRIORITIES: PriorityDef[] = [
-  { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
-  { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
-  { id: 'normal', emoji: '🟦', label: 'Normal', color: '#3b82f6' },
+  { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444', showOnCard: true },
+  { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b', showOnCard: true },
+  { id: 'normal', emoji: '🟦', label: 'Normal', color: '#3b82f6', showOnCard: true },
 ];
 
 let cached: AppConfig | null = null;

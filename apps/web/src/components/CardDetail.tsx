@@ -193,6 +193,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
   const [priority, setPriority] = useState<string>(card.priority || '');
   const [dueDate, setDueDate] = useState(card.due_date || '');
   const [columnName, setColumnName] = useState(card.column_name);
+  const [labels, setLabels] = useState<string[]>(card.labels);
   const [saving, setSaving] = useState(false);
 
   // Description
@@ -266,10 +267,15 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
       await onUpdate();
     } catch (err) {
       console.error('Save failed:', err);
+      // Revert local state to last-known server values
+      setPriority(card.priority || '');
+      setDueDate(card.due_date || '');
+      setColumnName(card.column_name);
+      setLabels(card.labels);
     } finally {
       setSaving(false);
     }
-  }, [card.id, onUpdate]);
+  }, [card.id, card.priority, card.due_date, card.column_name, card.labels, onUpdate]);
 
   const handlePriorityChange = (val: string) => {
     setPriority(val);
@@ -688,15 +694,16 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {categories.map((cat) => {
-                      const isActive = card.labels.includes(cat.id);
+                      const isActive = labels.includes(cat.id);
                       return (
                         <button
                           key={cat.id}
                           type="button"
                           onClick={() => {
                             const updatedLabels = isActive
-                              ? card.labels.filter((l) => l !== cat.id)
-                              : [...card.labels, cat.id];
+                              ? labels.filter((l) => l !== cat.id)
+                              : [...labels, cat.id];
+                            setLabels(updatedLabels);
                             saveField({ labels: updatedLabels });
                           }}
                           className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition-all cursor-pointer ${
@@ -725,11 +732,11 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                 </div>
               )}
               {/* Labels (legacy, if no categories defined) */}
-              {categories.length === 0 && card.labels.length > 0 && (
+              {categories.length === 0 && labels.length > 0 && (
                 <div>
                   <label className="text-xs font-medium text-board-text-muted uppercase tracking-wider block mb-1">Labels</label>
                   <div className="flex flex-wrap gap-1">
-                    {card.labels.map((label, i) => (
+                    {labels.map((label, i) => (
                       <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-board-column text-board-text border border-board-border">
                         {label}
                       </span>

@@ -281,7 +281,9 @@ describe('board priorities API', () => {
       body: JSON.stringify({ priorities }),
     });
     expect(res.status).toBe(200);
-    expect(config.updateBoardInConfig).toHaveBeenCalledWith('b1', { priorities });
+    // Zod adds showOnCard default
+    const expected = priorities.map((p) => ({ ...p, showOnCard: true }));
+    expect(config.updateBoardInConfig).toHaveBeenCalledWith('b1', { priorities: expected });
   });
 });
 

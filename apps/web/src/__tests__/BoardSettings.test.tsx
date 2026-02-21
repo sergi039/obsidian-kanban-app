@@ -325,7 +325,9 @@ describe('categories section', () => {
   it('showOnCard checkbox toggles', async () => {
     const user = userEvent.setup();
     render(<BoardSettingsModal {...defaults({ categories: twoCategories })} />);
-    const checkboxes = screen.getAllByRole('checkbox');
+    // Scope to category section checkboxes (skip priority checkboxes)
+    const catSection = screen.getByText('Categories').closest('section')!;
+    const checkboxes = within(catSection).getAllByRole('checkbox');
     // First category has showOnCard=true
     expect(checkboxes[0]).toBeChecked();
     // Second has showOnCard=false
@@ -339,7 +341,8 @@ describe('categories section', () => {
     const onSaveCategories = vi.fn().mockResolvedValue(undefined);
     render(<BoardSettingsModal {...defaults({ categories: twoCategories, onSaveCategories })} />);
     // Toggle showOnCard on second category to trigger dirty
-    const checkboxes = screen.getAllByRole('checkbox');
+    const catSection = screen.getByText('Categories').closest('section')!;
+    const checkboxes = within(catSection).getAllByRole('checkbox');
     await user.click(checkboxes[1]);
     await user.click(screen.getByText('Save settings'));
     expect(onSaveCategories).toHaveBeenCalledOnce();

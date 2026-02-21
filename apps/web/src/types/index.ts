@@ -3,6 +3,7 @@ export interface PriorityDef {
   emoji: string;
   label: string;
   color: string;
+  showOnCard?: boolean;
 }
 
 export interface CategoryDef {

@@ -35,7 +35,19 @@
           "id": "internal",
           "label": "Internal",
           "color": "#9333ea",
-          "showOnCard": false
+          "showOnCard": true
+        },
+        {
+          "id": "plan",
+          "label": "Plan",
+          "color": "#3fd42b",
+          "showOnCard": true
+        },
+        {
+          "id": "marketing",
+          "label": "Marketing",
+          "color": "#f1097d",
+          "showOnCard": true
         }
       ],
       "priorities": [
@@ -43,19 +55,29 @@
           "id": "urgent",
           "emoji": "🔺",
           "label": "Urgent",
-          "color": "#ef4444"
+          "color": "#ef4444",
+          "showOnCard": true
         },
         {
           "id": "high",
           "emoji": "⏫",
           "label": "High",
-          "color": "#f59e0b"
+          "color": "#f59e0b",
+          "showOnCard": true
         },
         {
           "id": "normal",
-          "emoji": "⚪",
+          "emoji": "🟦",
           "label": "Normal",
-          "color": "#3b82f6"
+          "color": "#3b82f6",
+          "showOnCard": false
+        },
+        {
+          "id": "new-priority",
+          "emoji": "⭐",
+          "label": "New priority",
+          "color": "#6b7280",
+          "showOnCard": true
         }
       ]
     },
