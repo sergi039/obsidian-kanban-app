@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -17,6 +17,7 @@ import {
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { moveCard, reorderColumns } from '../api/client';
 import type { BoardDetail, Card, PriorityDef, CategoryDef } from '../types';
+import type { BoardSortField } from './BoardSort';
 import { Column } from './Column';
 import { KanbanCard } from './Card';
 import { AddColumnButton } from './ColumnManager';
@@ -24,6 +25,7 @@ import { BoardSettingsModal } from './BoardSettings';
 
 interface Props {
   board: BoardDetail;
+  sortField: BoardSortField;
   filterCards: (cards: Card[]) => Card[];
   onCardMove: () => Promise<void>;
   onCardClick: (card: Card) => void;
@@ -64,8 +66,25 @@ const toColId = (name: string) => `${COL_PREFIX}${name}`;
 const fromColId = (id: string) => id.startsWith(COL_PREFIX) ? id.slice(COL_PREFIX.length) : null;
 const fromDropId = (id: string) => id.startsWith(DROP_PREFIX) ? id.slice(DROP_PREFIX.length) : null;
 
+function comparePrioritySort(a: string | null, b: string | null, rank: Map<string, number>): number {
+  const fallback = rank.size + 1;
+  const av = a ? (rank.get(a) ?? fallback) : fallback + 1;
+  const bv = b ? (rank.get(b) ?? fallback) : fallback + 1;
+  return av - bv;
+}
+
+function compareCategorySort(aLabels: string[], bLabels: string[], catMap: Map<string, CategoryDef>): number {
+  const aFirst = aLabels.map(id => catMap.get(id)?.label ?? '').filter(Boolean)[0] ?? '';
+  const bFirst = bLabels.map(id => catMap.get(id)?.label ?? '').filter(Boolean)[0] ?? '';
+  if (!aFirst && !bFirst) return 0;
+  if (!aFirst) return 1;
+  if (!bFirst) return -1;
+  return aFirst.localeCompare(bFirst);
+}
+
 export function Board({
   board,
+  sortField,
   filterCards,
   onCardMove,
   onCardClick,
@@ -86,6 +105,29 @@ export function Board({
   const priorities = Array.isArray(board.priorities) ? board.priorities : [];
   const boardCategories = Array.isArray(board.categories) ? board.categories : [];
 
+  const isSorted = sortField !== 'position';
+  const priorityRank = useMemo(
+    () => new Map(priorities.map((p, i) => [p.id, i])),
+    [priorities],
+  );
+  const categoryMap = useMemo(
+    () => new Map(boardCategories.map(c => [c.id, c])),
+    [boardCategories],
+  );
+  const sortCards = useCallback((cards: Card[]) => {
+    if (sortField === 'position') return cards;
+    return [...cards].sort((a, b) => {
+      switch (sortField) {
+        case 'priority': return comparePrioritySort(a.priority, b.priority, priorityRank);
+        case 'category': return compareCategorySort(a.labels, b.labels, categoryMap);
+        case 'due_date': return (a.due_date || '9999').localeCompare(b.due_date || '9999');
+        case 'title': return a.title.localeCompare(b.title);
+        case 'updated_at': return b.updated_at.localeCompare(a.updated_at);
+        default: return 0;
+      }
+    });
+  }, [sortField, priorityRank, categoryMap]);
+
   const columns = localColumns || board.columns;
   const columnSortableIds = columns.map((c) => toColId(c.name));
 
@@ -98,7 +140,7 @@ export function Board({
   }, [board]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: isSorted ? Infinity : 5 } }),
   );
 
   // ---- Find which column contains a card or is the ID itself ----
@@ -304,10 +346,11 @@ export function Board({
               name={col.name}
               index={i}
               sortableId={toColId(col.name)}
-              cards={filterCards(col.cards)}
+              cards={sortCards(filterCards(col.cards))}
               priorities={priorities}
               categories={boardCategories}
               boardId={board.id}
+              isSorted={isSorted}
               onCardClick={onCardClick}
               onCardAdd={onCardAdd}
               onColumnRename={onColumnRename}

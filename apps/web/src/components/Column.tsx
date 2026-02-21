@@ -14,6 +14,7 @@ interface Props {
   categories?: CategoryDef[];
   boardId: string;
   sortableId: string;
+  isSorted?: boolean;
   onCardClick: (card: Card) => void;
   onCardAdd: (title: string, column: string) => Promise<void>;
   onColumnRename: (oldName: string, newName: string) => Promise<void>;
@@ -55,6 +56,7 @@ export function Column({
   categories,
   boardId,
   sortableId,
+  isSorted,
   onCardClick,
   onCardAdd,
   onColumnRename,
@@ -96,8 +98,8 @@ export function Column({
       {/* Column header — drag handle for column reorder */}
       <div
         {...colAttrs}
-        {...colListeners}
-        className="flex items-center justify-center gap-2 px-3 py-2.5 mb-2 group relative cursor-grab active:cursor-grabbing select-none rounded-md hover:bg-board-column/50 transition-colors"
+        {...(isSorted ? {} : colListeners)}
+        className={`flex items-center justify-center gap-2 px-3 py-2.5 mb-2 group relative select-none rounded-md hover:bg-board-column/50 transition-colors ${isSorted ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
       >
         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getColumnColor(name, index) }} />
         <h3 className="text-sm font-medium text-board-text">{name}</h3>
