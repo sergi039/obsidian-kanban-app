@@ -73,8 +73,8 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
   );
 
   const insertStmt = db.prepare(`
-    INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, sub_items, source_fingerprint, seq_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, sub_items, source_fingerprint, seq_id, links)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Get next seq_id for this board
@@ -175,6 +175,9 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         let col = task.kbCol && board.columns.includes(task.kbCol) ? task.kbCol : null;
         if (!col) col = task.isDone ? 'Done' : 'Backlog';
         nextSeqId++;
+        const links = task.urls.map((u) => {
+          try { return { url: u, title: new URL(u).hostname }; } catch { return { url: u, title: u }; }
+        });
         insertStmt.run(
           id,
           board.id,
@@ -188,6 +191,7 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
           JSON.stringify(task.subItems),
           srcFp,
           nextSeqId,
+          JSON.stringify(links),
         );
         added++;
       }

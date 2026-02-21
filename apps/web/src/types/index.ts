@@ -13,6 +13,17 @@ export interface CategoryDef {
   showOnCard: boolean;
 }
 
+export interface ChecklistItem {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+export interface LinkItem {
+  url: string;
+  title: string;
+}
+
 export interface Card {
   id: string;
   seq_id: number | null;
@@ -28,6 +39,8 @@ export interface Card {
   due_date: string | null;
   sub_items: string[];
   description: string;
+  checklist: ChecklistItem[];
+  links: LinkItem[];
   source_fingerprint: string | null;
   created_at: string;
   updated_at: string;
@@ -160,4 +173,6 @@ export interface PatchCardRequest {
   priority?: string | null;
   due_date?: string | null;
   description?: string;
+  checklist?: ChecklistItem[];
+  links?: LinkItem[];
 }

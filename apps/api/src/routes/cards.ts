@@ -28,6 +28,12 @@ const PatchCardSchema = z.object({
   priority: z.string().nullable().optional(),
   due_date: z.string().nullable().optional(),
   description: z.string().optional(),
+  checklist: z.array(z.object({
+    id: z.string(), title: z.string(), done: z.boolean(),
+  })).optional(),
+  links: z.array(z.object({
+    url: z.string(), title: z.string(),
+  })).optional(),
 });
 
 const CreateCommentSchema = z.object({
@@ -238,7 +244,8 @@ cards.patch('/:id', async (c) => {
   const columnChanging = fields.column_name !== undefined && fields.column_name !== existing.column_name;
   const positionChanging = fields.position !== undefined;
   const hasMetadataChanges = fields.labels !== undefined || fields.priority !== undefined ||
-    fields.due_date !== undefined || fields.description !== undefined;
+    fields.due_date !== undefined || fields.description !== undefined || fields.checklist !== undefined ||
+    fields.links !== undefined;
 
   if (!columnChanging && !positionChanging && !hasMetadataChanges) {
     return c.json({ error: 'No fields to update' }, 400);
@@ -287,6 +294,14 @@ cards.patch('/:id', async (c) => {
   if (fields.description !== undefined) {
     sets.push('description = ?');
     params.push(fields.description);
+  }
+  if (fields.checklist !== undefined) {
+    sets.push('checklist = ?');
+    params.push(JSON.stringify(fields.checklist));
+  }
+  if (fields.links !== undefined) {
+    sets.push('links = ?');
+    params.push(JSON.stringify(fields.links));
   }
 
   if (sets.length > 0) {

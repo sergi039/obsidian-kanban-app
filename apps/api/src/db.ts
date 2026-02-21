@@ -151,6 +151,10 @@ const MIGRATIONS = [
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
   )`,
+  // Add checklist column for GitHub-style checklists
+  `ALTER TABLE cards ADD COLUMN checklist TEXT DEFAULT '[]'`,
+  // Add links column for managed link storage
+  `ALTER TABLE cards ADD COLUMN links TEXT DEFAULT '[]'`,
 ];
 
 /**

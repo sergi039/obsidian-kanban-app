@@ -1,27 +1,11 @@
 import type { Card, PriorityDef, CategoryDef } from '../types';
+import { extractLinks } from '../lib/link-utils';
 
 interface Props {
   card: Card;
   priorities: PriorityDef[];
   categories?: CategoryDef[];
   onClick: () => void;
-}
-
-const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
-const BARE_URL_RE = /https?:\/\/[^\s)\]]+/g;
-
-function extractUrls(title: string): string[] {
-  const urls: string[] = [];
-  const mdRe = new RegExp(MD_LINK_RE.source, 'g');
-  let m: RegExpExecArray | null;
-  while ((m = mdRe.exec(title)) !== null) {
-    urls.push(m[2]);
-  }
-  const bareRe = new RegExp(BARE_URL_RE.source, 'g');
-  while ((m = bareRe.exec(title)) !== null) {
-    if (!urls.includes(m[0])) urls.push(m[0]);
-  }
-  return urls;
 }
 
 function escapeRegExp(text: string): string {
@@ -42,7 +26,7 @@ function cleanTitle(title: string, priorities: PriorityDef[]): string {
 const MAX_VISIBLE_BADGES = 3;
 
 export function KanbanCard({ card, priorities, categories = [], onClick }: Props) {
-  const urls = extractUrls(card.title);
+  const linkCount = card.links.length > 0 ? card.links.length : extractLinks(card.title).length;
   const displayTitle = cleanTitle(card.title, priorities);
   const priorityDef = card.priority ? priorities.find((p) => p.id === card.priority) : undefined;
   const showPriority = priorityDef && priorityDef.showOnCard !== false;
@@ -126,9 +110,9 @@ export function KanbanCard({ card, priorities, categories = [], onClick }: Props
             {priorityDef.emoji} {priorityDef.label}
           </span>
         )}
-        {urls.length > 0 && (
+        {linkCount > 0 && (
           <span className="text-[11px] text-board-text-muted flex items-center gap-0.5">
-            🔗 {urls.length}
+            🔗 {linkCount}
           </span>
         )}
         {card.sub_items.length > 0 && (
@@ -136,6 +120,16 @@ export function KanbanCard({ card, priorities, categories = [], onClick }: Props
             ☰ {card.sub_items.length}
           </span>
         )}
+        {card.checklist.length > 0 && (() => {
+          const done = card.checklist.filter((i) => i.done).length;
+          const total = card.checklist.length;
+          const allDone = done === total;
+          return (
+            <span className={`text-[11px] flex items-center gap-0.5 ${allDone ? 'text-green-500' : 'text-board-text-muted'}`}>
+              ☑ {done}/{total}
+            </span>
+          );
+        })()}
         {card.description && (
           <span className="text-[11px] text-board-text-muted flex items-center gap-0.5" title="Has description">
             📝

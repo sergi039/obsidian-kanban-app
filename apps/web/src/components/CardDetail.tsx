@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { patchCard, fetchComments, addComment, updateComment, deleteComment, fetchFieldValues, setFieldValue } from '../api/client';
-import type { Card, Comment, FieldValue, Field, PatchCardRequest, PriorityDef, CategoryDef } from '../types';
+import type { Card, ChecklistItem, LinkItem, Comment, FieldValue, Field, PatchCardRequest, PriorityDef, CategoryDef } from '../types';
+import { extractLinks, linkifyText, safeHostname } from '../lib/link-utils';
 
 interface Props {
   card: Card;
@@ -11,28 +12,6 @@ interface Props {
   onClose: () => void;
   onUpdate: () => Promise<void>;
   onManageCategories?: () => void;
-}
-
-const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
-const BARE_URL_RE = /https?:\/\/[^\s)\]]+/g;
-
-function safeHostname(raw: string): string {
-  try { return new URL(raw).hostname; } catch { return raw; }
-}
-
-function extractLinks(title: string): { text: string; url: string }[] {
-  const links: { text: string; url: string }[] = [];
-  const seen = new Set<string>();
-  const mdRe = new RegExp(MD_LINK_RE.source, 'g');
-  let m: RegExpExecArray | null;
-  while ((m = mdRe.exec(title)) !== null) {
-    if (!seen.has(m[2])) { links.push({ text: m[1] || m[2], url: m[2] }); seen.add(m[2]); }
-  }
-  const bareRe = new RegExp(BARE_URL_RE.source, 'g');
-  while ((m = bareRe.exec(title)) !== null) {
-    if (!seen.has(m[0])) { links.push({ text: safeHostname(m[0]), url: m[0] }); seen.add(m[0]); }
-  }
-  return links;
 }
 
 function escapeRegExp(text: string): string {
@@ -185,7 +164,12 @@ function CustomFieldInput({ field, value, cardId, onSaved, onLocalChange }: {
 }
 
 export function CardDetail({ card, columns, priorities, categories, fields, onClose, onUpdate, onManageCategories }: Props) {
-  const links = extractLinks(card.title);
+  // Managed links — prefer card.links from DB, fall back to title extraction for transitional cards
+  const initialLinks: LinkItem[] = card.links.length > 0
+    ? card.links
+    : extractLinks(card.title).map((l) => ({ url: l.url, title: l.text }));
+  const [links, setLinks] = useState<LinkItem[]>(initialLinks);
+  const [newLinkUrl, setNewLinkUrl] = useState('');
   const modalRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -213,6 +197,10 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentDraft, setEditCommentDraft] = useState('');
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Checklist
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(card.checklist || []);
+  const [newChecklistItem, setNewChecklistItem] = useState('');
 
   // Focus trap + Escape
   useEffect(() => {
@@ -314,6 +302,29 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
       e.preventDefault();
       handleDescCancel();
     }
+  };
+
+  // Checklist handlers
+  const handleChecklistToggle = (itemId: string) => {
+    const updated = checklist.map((i) => i.id === itemId ? { ...i, done: !i.done } : i);
+    setChecklist(updated);
+    saveField({ checklist: updated });
+  };
+
+  const handleChecklistDelete = (itemId: string) => {
+    const updated = checklist.filter((i) => i.id !== itemId);
+    setChecklist(updated);
+    saveField({ checklist: updated });
+  };
+
+  const handleChecklistAdd = () => {
+    const title = newChecklistItem.trim();
+    if (!title) return;
+    const id = Math.random().toString(16).slice(2, 10);
+    const updated = [...checklist, { id, title, done: false }];
+    setChecklist(updated);
+    setNewChecklistItem('');
+    saveField({ checklist: updated });
   };
 
   // Comment handlers
@@ -467,29 +478,152 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                 )}
               </div>
 
-              {/* Links */}
-              {links.length > 0 && (
-                <div>
-                  <h3 className="text-xs font-medium text-board-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    🔗 Links
+              {/* Checklist */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-medium text-board-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                    ☑ Checklist {checklist.length > 0 && `(${checklist.filter((i) => i.done).length}/${checklist.length})`}
                   </h3>
-                  <div className="space-y-1.5">
-                    {links.map((link, i) => (
-                      <a
-                        key={i}
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm hover:underline px-2 py-1 rounded hover:bg-board-column transition-colors"
-                        style={{ color: 'var(--board-accent)' }}
-                      >
-                        🔗 <span className="truncate">{link.text}</span>
-                        <span className="text-board-text-muted text-[10px] ml-auto">↗</span>
-                      </a>
+                </div>
+                {/* Progress bar */}
+                {checklist.length > 0 && (() => {
+                  const done = checklist.filter((i) => i.done).length;
+                  const total = checklist.length;
+                  const pct = Math.round((done / total) * 100);
+                  return (
+                    <div className="mb-2">
+                      <div className="flex items-center justify-between text-[10px] text-board-text-muted mb-1">
+                        <span>{done} of {total}</span>
+                        <span>{pct}%</span>
+                      </div>
+                      <div className="h-1.5 bg-board-column rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${pct}%`, backgroundColor: done === total ? '#22c55e' : 'var(--board-accent)' }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+                {/* Items */}
+                {checklist.length > 0 && (
+                  <div className="space-y-0.5 mb-2">
+                    {checklist.map((item) => (
+                      <div key={item.id} className="group/cli flex items-center gap-2 py-1 px-1 rounded hover:bg-board-column transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={item.done}
+                          onChange={() => handleChecklistToggle(item.id)}
+                          className="w-4 h-4 rounded border-board-border cursor-pointer accent-[var(--board-accent)]"
+                        />
+                        <span className={`text-sm flex-1 ${item.done ? 'line-through text-board-text-muted' : 'text-board-text'}`}>
+                          {item.title}
+                        </span>
+                        <button
+                          onClick={() => handleChecklistDelete(item.id)}
+                          className="text-board-text-muted hover:text-red-400 text-xs opacity-0 group-hover/cli:opacity-100 transition-opacity px-1"
+                          title="Delete item"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     ))}
                   </div>
+                )}
+                {/* Add item */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newChecklistItem}
+                    onChange={(e) => setNewChecklistItem(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleChecklistAdd(); } }}
+                    placeholder="Add an item…"
+                    className="flex-1 text-sm text-board-text bg-board-column border border-board-border rounded-md px-2.5 py-1.5 focus:outline-none placeholder:text-board-text-muted/50"
+                  />
+                  {newChecklistItem.trim() && (
+                    <button
+                      onClick={handleChecklistAdd}
+                      className="px-3 py-1.5 text-xs font-medium text-white rounded-md transition-colors"
+                      style={{ backgroundColor: 'var(--board-accent)' }}
+                    >
+                      Add
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
+
+              {/* Links */}
+              <div>
+                <h3 className="text-xs font-medium text-board-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  🔗 Links {links.length > 0 && `(${links.length})`}
+                </h3>
+                {links.length > 0 && (
+                  <div className="space-y-0.5 mb-2">
+                    {links.map((link, i) => (
+                      <div key={i} className="group/link flex items-center gap-2 py-1 px-2 rounded hover:bg-board-column transition-colors">
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-sm hover:underline flex-1 min-w-0"
+                          style={{ color: 'var(--board-accent)' }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          🔗 <span className="truncate">{link.title}</span>
+                          <span className="text-board-text-muted text-[10px] ml-auto flex-shrink-0">↗</span>
+                        </a>
+                        <button
+                          onClick={() => {
+                            const updated = links.filter((_, idx) => idx !== i);
+                            setLinks(updated);
+                            saveField({ links: updated });
+                          }}
+                          className="text-board-text-muted hover:text-red-400 text-xs opacity-0 group-hover/link:opacity-100 transition-opacity px-1 flex-shrink-0"
+                          title="Remove link"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newLinkUrl}
+                    onChange={(e) => setNewLinkUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const url = newLinkUrl.trim();
+                        if (!url) return;
+                        const updated = [...links, { url, title: safeHostname(url) }];
+                        setLinks(updated);
+                        setNewLinkUrl('');
+                        saveField({ links: updated });
+                      }
+                    }}
+                    placeholder="Add a link…"
+                    className="flex-1 text-sm text-board-text bg-board-column border border-board-border rounded-md px-2.5 py-1.5 focus:outline-none placeholder:text-board-text-muted/50"
+                  />
+                  {newLinkUrl.trim() && (
+                    <button
+                      onClick={() => {
+                        const url = newLinkUrl.trim();
+                        if (!url) return;
+                        const updated = [...links, { url, title: safeHostname(url) }];
+                        setLinks(updated);
+                        setNewLinkUrl('');
+                        saveField({ links: updated });
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-white rounded-md transition-colors"
+                      style={{ backgroundColor: 'var(--board-accent)' }}
+                    >
+                      Add
+                    </button>
+                  )}
+                </div>
+              </div>
 
               {/* Sub-items */}
               {card.sub_items.length > 0 && (
@@ -585,7 +719,20 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                             </div>
                           ) : (
                             <div className="text-sm text-board-text whitespace-pre-wrap break-words">
-                              {comment.text}
+                              {linkifyText(comment.text).map((seg, i) =>
+                                typeof seg === 'string' ? seg : (
+                                  <a
+                                    key={i}
+                                    href={seg.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="underline"
+                                    style={{ color: 'var(--board-accent)' }}
+                                  >
+                                    {seg.text}
+                                  </a>
+                                )
+                              )}
                             </div>
                           )}
                         </div>

@@ -19,5 +19,7 @@ export function formatCard(row: Record<string, unknown>) {
     is_done: Boolean(row.is_done),
     labels: safeJsonParse<string[]>(row.labels as string, []),
     sub_items: safeJsonParse<string[]>(row.sub_items as string, []),
+    checklist: safeJsonParse<{id:string;title:string;done:boolean}[]>(row.checklist as string, []),
+    links: safeJsonParse<{url:string;title:string}[]>(row.links as string, []),
   };
 }
