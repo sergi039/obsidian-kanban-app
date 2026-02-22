@@ -1,8 +1,14 @@
 export const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
 export const BARE_URL_RE = /https?:\/\/[^\s)\]<]+/g;
 
+export function normalizeUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 export function safeHostname(raw: string): string {
-  try { return new URL(raw).hostname; } catch { return raw; }
+  try { return new URL(normalizeUrl(raw)).hostname; } catch { return raw; }
 }
 
 export function extractLinks(text: string): { text: string; url: string }[] {

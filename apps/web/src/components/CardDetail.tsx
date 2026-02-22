@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { patchCard, fetchComments, addComment, updateComment, deleteComment, fetchFieldValues, setFieldValue } from '../api/client';
 import type { Card, ChecklistItem, LinkItem, Comment, FieldValue, Field, PatchCardRequest, PriorityDef, CategoryDef } from '../types';
-import { extractLinks, linkifyText, safeHostname } from '../lib/link-utils';
+import { extractLinks, linkifyText, safeHostname, normalizeUrl } from '../lib/link-utils';
 
 interface Props {
   card: Card;
@@ -562,7 +562,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                     {links.map((link, i) => (
                       <div key={i} className="group/link flex items-center gap-2 py-1 px-2 rounded hover:bg-board-column transition-colors">
                         <a
-                          href={link.url}
+                          href={normalizeUrl(link.url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-2 text-sm hover:underline flex-1 min-w-0"
@@ -595,8 +595,9 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
-                        const url = newLinkUrl.trim();
-                        if (!url) return;
+                        const raw = newLinkUrl.trim();
+                        if (!raw) return;
+                        const url = normalizeUrl(raw);
                         const updated = [...links, { url, title: safeHostname(url) }];
                         setLinks(updated);
                         setNewLinkUrl('');
@@ -609,8 +610,9 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                   {newLinkUrl.trim() && (
                     <button
                       onClick={() => {
-                        const url = newLinkUrl.trim();
-                        if (!url) return;
+                        const raw = newLinkUrl.trim();
+                        if (!raw) return;
+                        const url = normalizeUrl(raw);
                         const updated = [...links, { url, title: safeHostname(url) }];
                         setLinks(updated);
                         setNewLinkUrl('');
