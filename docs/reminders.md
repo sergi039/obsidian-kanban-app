@@ -138,6 +138,7 @@ Install as a per-user `launchd` job:
 ```bash
 KANBAN_API_URL=http://127.0.0.1:4000 \
 KANBAN_APP_URL=http://127.0.0.1:4000 \
+KANBAN_REMINDER_CALENDAR_NAME="Sergi Sinyugin" \
 KANBAN_REMINDER_EMAIL_TO=you@example.com \
 pnpm reminders:macos:install
 ```
@@ -159,7 +160,7 @@ Agent behavior:
 
 - `macos`: polls due reminders with `channel=macos`, sends a Notification Center notification, then calls `/fire`. If `terminal-notifier` is installed, notification clicks open the card URL; otherwise the agent falls back to a plain `osascript` notification.
 - `email`: polls due reminders with `channel=email`, sends through Mail.app, then calls `/fire`. The recipient comes from `source_meta.email_to`, `source_meta.to`, or `KANBAN_REMINDER_EMAIL_TO`.
-- `calendar`: syncs scheduled/snoozed reminders with `channel=calendar` by creating an `.ics` file and opening it with Calendar.app. After handoff, it calls `/fire`; in Kanban, `fired` means "handed off to Calendar.app", and Calendar owns the final alert.
+- `calendar`: syncs scheduled/snoozed reminders with `channel=calendar`. If `KANBAN_REMINDER_CALENDAR_NAME` or `source_meta.calendar_name` is set, the agent creates the event directly in that Calendar.app calendar. Otherwise it falls back to creating an `.ics` file and opening it with Calendar.app. After handoff, it calls `/fire`; in Kanban, `fired` means "handed off to Calendar.app", and Calendar owns the final alert.
 
 Mail.app delivery from `launchd` depends on macOS Automation privacy permissions. If logs show `Not authorised to send Apple events to Mail. (-1743)`, grant Mail automation access for the Node/osascript process in System Settings > Privacy & Security > Automation, or run `pnpm reminders:agent` from an interactive user session for one-off delivery.
 

@@ -269,6 +269,7 @@ Delivery channels:
 ```bash
 KANBAN_API_URL=http://127.0.0.1:4000 \
 KANBAN_APP_URL=http://127.0.0.1:4000 \
+KANBAN_REMINDER_CALENDAR_NAME="Sergi Sinyugin" \
 KANBAN_REMINDER_EMAIL_TO=you@example.com \
 pnpm reminders:macos:install
 ```

@@ -11,3 +11,4 @@
 - Added Kanban-owned reminders schema/API/UI because due dates alone cannot support exact-time follow-ups, snooze/dismiss, or macOS polling agents.
 - Added timezone-aware reminder validation and source-idempotency because email follow-up reminders must be safe to retry and deterministic across local/desktop agents.
 - Added browser notifications and a local macOS reminder agent for Notification Center, Calendar `.ics` handoff, and Mail.app email reminders because all non-in-app channels need an explicit delivery path outside the Kanban web UI.
+- Added configurable Calendar.app target calendar delivery because `.ics` import dialogs can default to a work account even for personal-board reminders.

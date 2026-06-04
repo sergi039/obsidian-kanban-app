@@ -11,6 +11,7 @@ API_URL="${KANBAN_API_URL:-http://127.0.0.1:4000}"
 APP_URL="${KANBAN_APP_URL:-http://127.0.0.1:4000}"
 API_TOKEN="${KANBAN_API_TOKEN:-${API_TOKEN:-}}"
 EMAIL_TO="${KANBAN_REMINDER_EMAIL_TO:-}"
+CALENDAR_NAME="${KANBAN_REMINDER_CALENDAR_NAME:-}"
 
 if [[ ! "$INTERVAL" =~ ^[0-9]+$ || "$INTERVAL" -lt 1 ]]; then
   echo "KANBAN_REMINDER_INTERVAL_SECONDS must be a positive integer" >&2
@@ -33,6 +34,7 @@ XML_API_URL="$(xml_escape "$API_URL")"
 XML_APP_URL="$(xml_escape "$APP_URL")"
 XML_API_TOKEN="$(xml_escape "$API_TOKEN")"
 XML_EMAIL_TO="$(xml_escape "$EMAIL_TO")"
+XML_CALENDAR_NAME="$(xml_escape "$CALENDAR_NAME")"
 XML_LOG_DIR="$(xml_escape "$LOG_DIR")"
 
 mkdir -p "$HOME/Library/LaunchAgents" "$LOG_DIR"
@@ -62,6 +64,8 @@ cat > "$PLIST" <<PLIST
     <string>$XML_API_TOKEN</string>
     <key>KANBAN_REMINDER_EMAIL_TO</key>
     <string>$XML_EMAIL_TO</string>
+    <key>KANBAN_REMINDER_CALENDAR_NAME</key>
+    <string>$XML_CALENDAR_NAME</string>
   </dict>
   <key>StartInterval</key>
   <integer>$INTERVAL</integer>

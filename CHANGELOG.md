@@ -7,6 +7,7 @@
 - Added in-app reminder badges, header reminder count/panel, card-detail reminder creation, and `reminder:*` / `has:reminder` filters.
 - Added reminder documentation and timezone-aware API validation.
 - Added browser notification delivery for open Kanban tabs and a local macOS delivery agent for Notification Center, Calendar `.ics` handoff, and Mail.app email reminders.
+- Added configurable Calendar.app target calendar delivery so reminder events can be created directly in a personal calendar instead of defaulting to a work-calendar import dialog.
 
 ## 2026-02-19
 
