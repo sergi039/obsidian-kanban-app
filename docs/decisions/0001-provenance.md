@@ -99,7 +99,7 @@ This ADR decides **one open question: where does *provenance* live** — the met
 ## Consensus log
 
 - **Claude (2026-06-04):** Recommends **D**. Rationale above. Open to **A** under the stated flip condition.
-- **Codex ( _date_ ):** _to fill — position, dissent, and any option/criterion Claude missed._
+- **Codex (2026-06-04):** Recommends **D++**: keep D's core split (backlink in Markdown, structured provenance in DB/log) but amend the contract before implementation. Use `source_uid` for the opaque stable source identifier used for dedup/audit (email Message-ID, Telegram chat/message id, etc.) and `source_url` for the optional user-openable HTTP(S) backlink; do not overload one `source_ref` field for both. `inbox_captures.card_id` should reference `cards.id ON DELETE SET NULL` so deleting a card does not erase dedup/audit history. The Markdown backlink should use a reserved source-link convention only when `source_url` exists, and the UI/reconciler must strip or classify that reserved link so it does not pollute card titles. **Required implementation constraint:** if links are canonical in Markdown, `reconcileBoard()` must refresh `cards.links` on existing-card updates, not only inserts. Dissent: option A is not a cheap flip with the current marker writer; `injectKbId()` / `injectKbCol()` rebuild the marker and would drop unknown `kb:*` attrs unless the marker parser/writer is refactored and covered by tests.
 - **Resolution:** _pending._
 
 ---
