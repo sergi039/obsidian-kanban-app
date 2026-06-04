@@ -7,3 +7,4 @@
 - Added routing config and confidence/margin clarification behavior so desktop agents can choose work, personal, or property boards when confident and ask the user when ambiguous.
 - Added fail-closed ingest authentication because external agent write endpoints must not rely on optional local-development API auth.
 - Updated reconciler link handling so Markdown remains the canonical link source for existing cards, not only newly inserted cards.
+- Accepted Claude Desktop as the primary supported desktop agent and deferred OpenAI/ChatGPT Desktop write support because it likely requires custom/full MCP workspace support plus remote/tunnel infrastructure.

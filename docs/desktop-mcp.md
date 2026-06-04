@@ -27,6 +27,12 @@ KANBAN_API_TOKEN=...
 
 Routing rules live in `config.routing.json`. Restart the API after changing that file; routing config is loaded by the server process.
 
+## Supported client strategy
+
+Claude Desktop is the primary supported desktop agent for Kanban task capture because it supports local stdio MCP and matches this repository's `apps/mcp` server.
+
+OpenAI/ChatGPT Desktop write support is deferred. Do not build a remote/tunnel adapter unless the owner confirms a supported OpenAI workspace/developer-mode path and explicitly reopens that work. See [ADR 0002](decisions/0002-desktop-agent-client-strategy.md).
+
 ## Claude Desktop
 
 Add an MCP server entry that points to the built server:
@@ -55,13 +61,13 @@ route work vs personal. If the server returns needs_clarification, ask one short
 question using the returned options.
 ```
 
-Use the same instruction in OpenAI/Codex-style desktop clients when they support local MCP tools.
+Use the same instruction in local Codex-style clients when they support local MCP tools.
 
 ## OpenAI / ChatGPT / Codex surfaces
 
-Use the same MCP server and API contract. For local Codex-style environments, configure this MCP server as a local command. For ChatGPT custom MCP apps, expose the API/MCP endpoint only through an authenticated tunnel or private network.
+Use the same MCP server and API contract for local Codex-style environments by configuring this MCP server as a local command.
 
-OpenAI currently documents full MCP connectors/custom MCP apps as a beta capability for eligible ChatGPT workspaces, so verify support in the target OpenAI desktop/web surface before relying on it for writes.
+OpenAI/ChatGPT Desktop is not a supported write path for this milestone. It may require a supported custom/full MCP app workspace plus a remote MCP endpoint or Secure MCP Tunnel. This is intentionally not part of the current implementation.
 
 For local Codex-style use, expose the same command:
 
