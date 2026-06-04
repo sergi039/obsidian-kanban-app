@@ -20,6 +20,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Managed links** — add/remove clickable links, stored in DB (auto-normalized URLs)
 - **Comments** — full CRUD with linkified URLs, author avatars, timestamps
 - **Custom fields** — TEXT, NUMBER, DATE, SINGLE_SELECT, ITERATION types per board
+- **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance
 
 **Organization**
 - **Custom priorities** — configurable per board with emoji, color, and card visibility
@@ -146,11 +147,32 @@ VAULT_PATH=/path/to/vault docker compose up -d
 
 Optionally set `API_TOKEN` for authenticated access.
 
+### Desktop Agent Capture
+
+Claude Desktop, OpenAI/Codex-style local agents, and other MCP clients can create Kanban cards through the bundled MCP server. The server calls the API only; it does not write Markdown or SQLite directly.
+
+```bash
+pnpm --filter @kanban/mcp build
+PORT=4000 SERVE_STATIC=1 API_TOKEN=... INGEST_API_TOKEN=... pnpm --filter @kanban/api start
+```
+
+Configure the desktop app to run `apps/mcp/dist/server.js` with:
+
+```bash
+KANBAN_API_URL=http://127.0.0.1:4000
+KANBAN_API_TOKEN=...
+```
+
+Routing rules live in `config.routing.json`. Agents auto-create only when routing is confident; otherwise they return clarification options so the user can choose work, personal, or another board.
+
+See [Desktop MCP setup](docs/desktop-mcp.md) for Claude/OpenAI/Codex configuration and agent instructions.
+
 ## 📁 Project Structure
 
 ```
 obsidian-kanban-app/
 ├── config.boards.json       ← Board configuration (edit this!)
+├── config.routing.json      ← Desktop agent routing rules
 ├── docker-compose.yml       ← Docker deployment
 ├── Dockerfile               ← Multi-stage production build
 ├── data/
@@ -168,6 +190,7 @@ obsidian-kanban-app/
 │   │       ├── filter-engine.ts ← Query parser for filters
 │   │       ├── utils.ts     ← Shared utilities
 │   │       └── routes/      ← API endpoints (cards, boards, views, fields, automations)
+│   ├── mcp/                 ← MCP server for Claude/OpenAI/Codex desktop capture
 │   └── web/                 ← Frontend (React 19 + Tailwind + @dnd-kit)
 │       └── src/
 │           ├── App.tsx
@@ -218,6 +241,7 @@ Obsidian (.md files)  ←→  Reconciler  ←→  SQLite DB  ←→  Web UI
 | `PORT` | `4000` | Server port |
 | `SERVE_STATIC` | — | Set to `1` to serve frontend from `apps/web/dist` |
 | `API_TOKEN` | — | Bearer token for API authentication |
+| `INGEST_API_TOKEN` | — | Required bearer token for `/api/inbox/*` agent ingestion routes |
 
 ### Board Columns
 
@@ -247,6 +271,12 @@ You can also configure `doneColumns` per board for custom done-state column name
 ```bash
 lsof -ti:4000 | xargs kill
 ```
+
+**Desktop agent cannot create tasks?**
+- Confirm the API process was started with `INGEST_API_TOKEN`
+- Confirm the MCP process has `KANBAN_API_TOKEN` set to the same value
+- Rebuild MCP after code changes: `pnpm --filter @kanban/mcp build`
+- Restart the API after editing `config.routing.json`
 
 ## Tech Stack
 

@@ -25,6 +25,8 @@ KANBAN_API_TOKEN=...
 
 `KANBAN_API_TOKEN` should be the same value as `INGEST_API_TOKEN`. Ingest endpoints fail closed when `INGEST_API_TOKEN` is not configured on the API process.
 
+Routing rules live in `config.routing.json`. Restart the API after changing that file; routing config is loaded by the server process.
+
 ## Claude Desktop
 
 Add an MCP server entry that points to the built server:
@@ -53,11 +55,26 @@ route work vs personal. If the server returns needs_clarification, ask one short
 question using the returned options.
 ```
 
+Use the same instruction in OpenAI/Codex-style desktop clients when they support local MCP tools.
+
 ## OpenAI / ChatGPT / Codex surfaces
 
 Use the same MCP server and API contract. For local Codex-style environments, configure this MCP server as a local command. For ChatGPT custom MCP apps, expose the API/MCP endpoint only through an authenticated tunnel or private network.
 
 OpenAI currently documents full MCP connectors/custom MCP apps as a beta capability for eligible ChatGPT workspaces, so verify support in the target OpenAI desktop/web surface before relying on it for writes.
+
+For local Codex-style use, expose the same command:
+
+```json
+{
+  "command": "node",
+  "args": ["/Users/ss/obsidian-kanban-app/apps/mcp/dist/server.js"],
+  "env": {
+    "KANBAN_API_URL": "http://127.0.0.1:4000",
+    "KANBAN_API_TOKEN": "replace-with-token"
+  }
+}
+```
 
 ## Tools
 
@@ -72,3 +89,10 @@ OpenAI currently documents full MCP connectors/custom MCP apps as a beta capabil
 - Generic work/personal signals ask when multiple boards are plausible.
 - Property boards are separate from personal boards.
 - Source URLs must be HTTP(S) to become Markdown links.
+
+## Safety model
+
+- Desktop clients use one high-level capture tool instead of separate work/personal write tools.
+- The API stores `source_uid`, `source_url`, bounded `source_meta`, and an `inbox_captures` row for idempotency and auditability.
+- Replays with the same payload return the existing card; replays with the same capture key and different payload are rejected.
+- Failed writes can be retried with the same capture key after the underlying file/API issue is fixed.
