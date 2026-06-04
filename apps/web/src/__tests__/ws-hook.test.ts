@@ -1,4 +1,7 @@
+import { render } from '@testing-library/react';
+import { createElement } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { clearApiToken, setApiToken } from '../api/auth';
 
 describe('useWebSocket module', () => {
   let MockWebSocket: any;
@@ -13,6 +16,7 @@ describe('useWebSocket module', () => {
       close: vi.fn(),
     }));
     vi.stubGlobal('WebSocket', MockWebSocket);
+    clearApiToken();
   });
 
   it('exports useWebSocket function', async () => {
@@ -54,5 +58,19 @@ describe('useWebSocket module', () => {
     const parsed = JSON.parse(data);
     expect(parsed.type).toBe('card-moved');
     expect(parsed.cardId).toBe('abc123');
+  });
+
+  it('passes saved API token as a WebSocket query parameter', async () => {
+    const { useWebSocket } = await import('../hooks/useWebSocket');
+    setApiToken('secret token');
+
+    function Harness() {
+      useWebSocket(vi.fn());
+      return null;
+    }
+
+    render(createElement(Harness));
+
+    expect(MockWebSocket).toHaveBeenCalledWith('ws://localhost:3000/ws?token=secret+token');
   });
 });

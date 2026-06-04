@@ -21,7 +21,7 @@ const BARE_URL_RE = /https?:\/\/[^\s)\]]+/g;
 const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
 
 /** Regex to extract kb:id (and optional kb:col) from HTML comment marker */
-const KB_ID_RE = /<!--\s*kb:id=([a-zA-Z0-9_-]+)(?:\s+kb:col=([A-Za-z0-9+_-]+))?\s*-->/;
+const KB_ID_RE = /<!--\s*kb:id=([a-zA-Z0-9_-]+)(?:\s+kb:col=([^\s]+))?\s*-->/;
 
 /**
  * Generate a new stable kb:id (8 chars, hex).
@@ -64,12 +64,18 @@ export function extractKbId(line: string): string | null {
  */
 export function extractKbCol(line: string): string | null {
   const match = line.match(KB_ID_RE);
-  return match?.[2] ? match[2].replace(/\+/g, ' ') : null;
+  if (!match?.[2]) return null;
+  const encoded = match[2];
+  try {
+    return decodeURIComponent(encoded.replace(/\+/g, '%20'));
+  } catch {
+    return encoded.replace(/\+/g, ' ');
+  }
 }
 
 /** Encode column name for marker: spaces → '+' */
 export function encodeCol(col: string): string {
-  return col.replace(/ /g, '+');
+  return encodeURIComponent(col).replace(/%20/g, '+');
 }
 
 /**
@@ -238,6 +244,34 @@ export function isDoneColumn(col: string, board?: { doneColumns?: string[] }): b
   if (col === 'Done') return true;
   if (board?.doneColumns?.includes(col)) return true;
   return false;
+}
+
+interface BoardColumnConfig {
+  columns?: string[];
+  doneColumns?: string[];
+}
+
+/**
+ * Return the board column that should receive checked Markdown tasks.
+ * Prefer configured done columns, then literal Done, then the last board column.
+ */
+export function getDefaultDoneColumn(board?: BoardColumnConfig): string {
+  const columns = board?.columns ?? [];
+  const configuredDone = board?.doneColumns?.find((col) => columns.includes(col));
+  if (configuredDone) return configuredDone;
+  if (columns.includes('Done')) return 'Done';
+  if (board?.doneColumns?.[0]) return board.doneColumns[0];
+  return columns[columns.length - 1] ?? 'Done';
+}
+
+/**
+ * Return the board column that should receive unchecked Markdown tasks.
+ * Prefer the first configured non-done column to avoid hardcoded Backlog.
+ */
+export function getDefaultOpenColumn(board?: BoardColumnConfig): string {
+  const columns = board?.columns ?? [];
+  const openColumn = columns.find((col) => !isDoneColumn(col, board));
+  return openColumn ?? columns[0] ?? 'Backlog';
 }
 
 /**

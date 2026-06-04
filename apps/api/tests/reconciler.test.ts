@@ -7,39 +7,27 @@ import Database from 'better-sqlite3';
 let testDb: InstanceType<typeof Database>;
 let vaultRoot: string;
 
-vi.mock('../src/db.js', () => ({
-  getDb: () => testDb,
-}));
+vi.mock('../src/db.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/db.js')>('../src/db.js');
+  return {
+    ...actual,
+    getDb: () => testDb,
+  };
+});
 
 vi.mock('../src/watcher.js', () => ({
   suppressWatcher: vi.fn(),
   unsuppressWatcher: vi.fn(),
 }));
 
-const SCHEMA = `
-  CREATE TABLE IF NOT EXISTS cards (
-    id TEXT PRIMARY KEY, board_id TEXT NOT NULL, column_name TEXT NOT NULL DEFAULT 'Backlog',
-    position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
-    line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
-    labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-    description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
-    created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-  );
-  CREATE TABLE IF NOT EXISTS sync_state (
-    file_path TEXT PRIMARY KEY, file_hash TEXT NOT NULL,
-    last_synced TEXT DEFAULT (datetime('now'))
-  );
-  CREATE INDEX IF NOT EXISTS idx_cards_board_position ON cards(board_id, position);
-  CREATE INDEX IF NOT EXISTS idx_cards_board_column ON cards(board_id, column_name);
-`;
-
 function makeBoard(
   id = 'b1',
   file = 'Tasks/Board.md',
   columns = ['Backlog', 'In Progress', 'Done'],
   priorities?: Array<{ id: string; emoji: string; label: string; color: string }>,
+  doneColumns?: string[],
 ) {
-  return { id, name: 'Test Board', file, columns, priorities };
+  return { id, name: 'Test Board', file, columns, priorities, doneColumns };
 }
 
 function writeMd(relPath: string, content: string) {
@@ -57,11 +45,10 @@ function getCards(boardId = 'b1'): Array<Record<string, unknown>> {
 }
 
 describe('reconciler', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vaultRoot = mkdtempSync(path.join(os.tmpdir(), 'kanban-test-'));
-    testDb = new Database(':memory:');
-    testDb.pragma('foreign_keys = ON');
-    testDb.exec(SCHEMA);
+    const { createTestDb } = await import('../src/db.js');
+    testDb = createTestDb();
   });
 
   afterEach(() => {
@@ -103,6 +90,18 @@ describe('reconciler', () => {
     expect(open!.column_name).toBe('Backlog');
     expect(done!.is_done).toBe(1);
     expect(done!.column_name).toBe('Done');
+  });
+
+  it('uses configured done column when creating done cards', async () => {
+    const board = makeBoard('b1', 'Tasks/Board.md', ['Todo', 'Doing', 'Complete'], undefined, ['Complete']);
+    writeMd('Tasks/Board.md', '- [x] Completed task\n');
+
+    const { reconcileBoard } = await import('../src/reconciler.js');
+    reconcileBoard(board, vaultRoot);
+
+    const card = getCards()[0];
+    expect(card.is_done).toBe(1);
+    expect(card.column_name).toBe('Complete');
   });
 
   it('stamps kb:id markers into .md file', async () => {
@@ -185,6 +184,24 @@ describe('reconciler', () => {
     cards = getCards();
     expect(cards[0].is_done).toBe(0);
     expect(cards[0].column_name).toBe('Backlog');
+  });
+
+  it('moves unchecked custom done cards to the default open column', async () => {
+    const board = makeBoard('b1', 'Tasks/Board.md', ['Todo', 'Doing', 'Complete'], undefined, ['Complete']);
+    writeMd('Tasks/Board.md', '- [x] Was done <!-- kb:id=done5678 -->\n');
+
+    const { reconcileBoard } = await import('../src/reconciler.js');
+    reconcileBoard(board, vaultRoot);
+
+    let cards = getCards();
+    expect(cards[0].column_name).toBe('Complete');
+
+    writeMd('Tasks/Board.md', '- [ ] Was done <!-- kb:id=done5678 -->\n');
+    reconcileBoard(board, vaultRoot);
+
+    cards = getCards();
+    expect(cards[0].is_done).toBe(0);
+    expect(cards[0].column_name).toBe('Todo');
   });
 
   it('preserves column assignment for existing cards (not in Done)', async () => {

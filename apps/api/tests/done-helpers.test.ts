@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isDoneColumn } from '../src/parser.js';
+import { getDefaultDoneColumn, getDefaultOpenColumn, isDoneColumn } from '../src/parser.js';
 
 describe('isDoneColumn', () => {
   it('returns true for "Done"', () => {
@@ -43,5 +43,38 @@ describe('isDoneColumn', () => {
   it('handles undefined board', () => {
     expect(isDoneColumn('Done', undefined)).toBe(true);
     expect(isDoneColumn('Backlog', undefined)).toBe(false);
+  });
+});
+
+describe('default board columns', () => {
+  it('uses the first configured done column that exists on the board', () => {
+    const board = {
+      columns: ['Todo', 'Doing', 'Complete', 'Archived'],
+      doneColumns: ['Complete', 'Archived'],
+    };
+
+    expect(getDefaultDoneColumn(board)).toBe('Complete');
+  });
+
+  it('falls back to literal Done when no configured done column exists', () => {
+    const board = {
+      columns: ['Backlog', 'In Progress', 'Done'],
+      doneColumns: ['Complete'],
+    };
+
+    expect(getDefaultDoneColumn(board)).toBe('Done');
+  });
+
+  it('uses the first non-done column as the default open column', () => {
+    const board = {
+      columns: ['Complete', 'Todo', 'Doing'],
+      doneColumns: ['Complete'],
+    };
+
+    expect(getDefaultOpenColumn(board)).toBe('Todo');
+  });
+
+  it('falls back to Backlog when no board columns are available', () => {
+    expect(getDefaultOpenColumn(undefined)).toBe('Backlog');
   });
 });

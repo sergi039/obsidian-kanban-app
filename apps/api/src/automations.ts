@@ -9,6 +9,7 @@
 
 import { createHash } from 'node:crypto';
 import { getDb } from './db.js';
+import { setCardFieldValue } from './field-values.js';
 import { broadcast } from './ws.js';
 import { safeJsonParse } from './utils.js';
 
@@ -146,23 +147,11 @@ function executeActions(actions: Action[], cardId: string, boardId: string, ctx:
     try {
       switch (action.type) {
         case 'set_field': {
-          // Verify field exists AND belongs to the same board as the card
-          const field = db.prepare('SELECT id, board_id FROM fields WHERE id = ?').get(action.field_id) as { id: string; board_id: string } | undefined;
-          if (!field) {
-            errors.push(`Field ${action.field_id} not found`);
+          const result = setCardFieldValue(db, action.field_id, cardId, action.value);
+          if (!result.ok) {
+            errors.push(result.error);
             break;
           }
-          if (field.board_id !== boardId) {
-            errors.push(`Field ${action.field_id} belongs to board "${field.board_id}", not "${boardId}"`);
-            break;
-          }
-          if (action.value === null) {
-            db.prepare('DELETE FROM field_values WHERE card_id = ? AND field_id = ?').run(cardId, action.field_id);
-          } else {
-            db.prepare('INSERT OR REPLACE INTO field_values (card_id, field_id, value) VALUES (?, ?, ?)')
-              .run(cardId, action.field_id, action.value);
-          }
-          db.prepare("UPDATE cards SET updated_at = datetime('now') WHERE id = ?").run(cardId);
           executed++;
           break;
         }

@@ -215,6 +215,26 @@ describe('automations engine', () => {
     expect(fv!.value).toBe('s1');
   });
 
+  it('set_field action normalizes SINGLE_SELECT option names to ids', () => {
+    createRule({ board_id: 'b1', name: 'Sprint by name', trigger: { type: 'card.created' }, actions: [{ type: 'set_field', field_id: 'f1', value: 'Sprint 1' }] });
+    fireEvent({ type: 'card.created', cardId: 'c1', boardId: 'b1', column: 'Backlog', title: 'T' });
+
+    const fv = testDb.prepare('SELECT value FROM field_values WHERE card_id = ? AND field_id = ?').get('c1', 'f1') as { value: string } | undefined;
+    expect(fv).toBeTruthy();
+    expect(fv!.value).toBe('s1');
+  });
+
+  it('set_field action rejects invalid SINGLE_SELECT values', () => {
+    createRule({ board_id: 'b1', name: 'Bad sprint', trigger: { type: 'card.created' }, actions: [{ type: 'set_field', field_id: 'f1', value: 'Sprint 99' }] });
+    const result = fireEvent({ type: 'card.created', cardId: 'c1', boardId: 'b1', column: 'Backlog', title: 'T' });
+
+    expect(result.rulesFired).toBe(1);
+    expect(result.totalActions).toBe(0);
+    expect(result.errors[0]).toMatch(/one of/i);
+    const fv = testDb.prepare('SELECT value FROM field_values WHERE card_id = ? AND field_id = ?').get('c1', 'f1');
+    expect(fv).toBeUndefined();
+  });
+
   it('set_field action with null clears the value', () => {
     // Set first
     testDb.prepare('INSERT INTO field_values (card_id, field_id, value) VALUES (?, ?, ?)').run('c1', 'f1', 's1');

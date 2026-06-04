@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { getApiToken } from '../api/auth';
 
 interface WsEvent {
   type: string;
@@ -20,9 +21,13 @@ export function useWebSocket(onBoardUpdate: (boardId?: string) => void) {
   useEffect(() => {
     function connect() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      const url = new URL(`${protocol}//${window.location.host}/ws`);
+      const token = getApiToken();
+      if (token) {
+        url.searchParams.set('token', token);
+      }
 
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(url.toString());
       wsRef.current = ws;
 
       ws.onopen = () => {

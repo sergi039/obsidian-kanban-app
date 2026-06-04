@@ -5,7 +5,16 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 // Import after mocking
-const { fetchBoards, fetchBoard, fetchCards, moveCard, patchCard, reloadSync } = await import(
+const {
+  clearApiToken,
+  fetchBoards,
+  fetchBoard,
+  fetchCards,
+  moveCard,
+  patchCard,
+  reloadSync,
+  setApiToken,
+} = await import(
   '../api/client'
 );
 
@@ -20,6 +29,7 @@ function mockResponse(data: unknown, status = 200) {
 
 beforeEach(() => {
   mockFetch.mockReset();
+  clearApiToken();
 });
 
 describe('fetchBoards', () => {
@@ -32,6 +42,22 @@ describe('fetchBoards', () => {
     const result = await fetchBoards();
     expect(result).toEqual(boards);
     expect(mockFetch).toHaveBeenCalledWith('/api/boards', expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) }));
+  });
+
+  it('adds bearer auth header when an API token is saved', async () => {
+    setApiToken('secret-token');
+    mockFetch.mockResolvedValueOnce(mockResponse([]));
+
+    await fetchBoards();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/boards',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer secret-token',
+        }),
+      }),
+    );
   });
 });
 
