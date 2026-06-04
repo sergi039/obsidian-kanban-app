@@ -22,7 +22,7 @@ const SCHEMA = `
     position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
     line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
     labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-    description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
+    description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
     created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS sync_state (
@@ -147,6 +147,26 @@ describe('reconciler', () => {
 
     expect(result.updated).toBe(1);
     expect(getCards()[0].title).toBe('Updated title');
+  });
+
+  it('updates links for existing cards when markdown links change', async () => {
+    const board = makeBoard();
+    writeMd('Tasks/Board.md', '- [ ] Original [old](https://old.example.com) <!-- kb:id=link1234 -->\n');
+
+    const { reconcileBoard } = await import('../src/reconciler.js');
+    reconcileBoard(board, vaultRoot);
+    expect(JSON.parse(getCards()[0].links as string)).toContainEqual({
+      title: 'old',
+      url: 'https://old.example.com',
+    });
+
+    writeMd('Tasks/Board.md', '- [ ] Original [new](https://new.example.com) <!-- kb:id=link1234 -->\n');
+    testDb.prepare('DELETE FROM sync_state').run();
+    reconcileBoard(board, vaultRoot);
+
+    expect(JSON.parse(getCards()[0].links as string)).toEqual([
+      { title: 'new', url: 'https://new.example.com' },
+    ]);
   });
 
   it('removes cards that are no longer in .md', async () => {

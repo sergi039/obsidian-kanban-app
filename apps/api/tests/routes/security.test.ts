@@ -188,6 +188,54 @@ describe('API token authentication', () => {
   });
 });
 
+describe('ingest token authentication', () => {
+  it('fails closed when INGEST_API_TOKEN is not set even if API_TOKEN exists', async () => {
+    const { ingestTokenAuth } = await import('../../src/middleware/security.js');
+    const originalApiToken = process.env.API_TOKEN;
+    const originalIngestToken = process.env.INGEST_API_TOKEN;
+    process.env.API_TOKEN = 'general-token';
+    delete process.env.INGEST_API_TOKEN;
+
+    try {
+      const app = new Hono();
+      app.use('/api/inbox/*', ingestTokenAuth());
+      app.post('/api/inbox/capture', (c) => c.json({ ok: true }));
+
+      const res = await app.request('/api/inbox/capture', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer general-token' },
+      });
+      expect(res.status).toBe(401);
+    } finally {
+      if (originalApiToken === undefined) delete process.env.API_TOKEN;
+      else process.env.API_TOKEN = originalApiToken;
+      if (originalIngestToken === undefined) delete process.env.INGEST_API_TOKEN;
+      else process.env.INGEST_API_TOKEN = originalIngestToken;
+    }
+  });
+
+  it('allows requests with INGEST_API_TOKEN', async () => {
+    const { ingestTokenAuth } = await import('../../src/middleware/security.js');
+    const originalIngestToken = process.env.INGEST_API_TOKEN;
+    process.env.INGEST_API_TOKEN = 'ingest-token';
+
+    try {
+      const app = new Hono();
+      app.use('/api/inbox/*', ingestTokenAuth());
+      app.post('/api/inbox/capture', (c) => c.json({ ok: true }));
+
+      const res = await app.request('/api/inbox/capture', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ingest-token' },
+      });
+      expect(res.status).toBe(200);
+    } finally {
+      if (originalIngestToken === undefined) delete process.env.INGEST_API_TOKEN;
+      else process.env.INGEST_API_TOKEN = originalIngestToken;
+    }
+  });
+});
+
 // --- Body size limit tests ---
 
 describe('body size limit', () => {
@@ -281,7 +329,7 @@ describe('path traversal protection', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
     `);

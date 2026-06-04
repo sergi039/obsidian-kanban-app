@@ -56,6 +56,8 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
     due_date: string | null;
     description: string | null;
     title: string;
+    source: string | null;
+    source_url: string | null;
   }>;
   const existingById = new Map(existingCards.map((c) => [c.id, c]));
 
@@ -73,8 +75,12 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
   );
 
   const insertStmt = db.prepare(`
-    INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, sub_items, source_fingerprint, seq_id, links)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO cards (
+      id, board_id, column_name, position, title, raw_line, line_number,
+      is_done, priority, sub_items, source_fingerprint, seq_id, links,
+      source, source_url, source_meta
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}')
   `);
 
   // Get next seq_id for this board
@@ -85,7 +91,10 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
     UPDATE cards SET
       title = ?, raw_line = ?, line_number = ?, is_done = ?,
       priority = ?, sub_items = ?, source_fingerprint = ?,
-      column_name = ?, updated_at = datetime('now')
+      column_name = ?, links = ?,
+      source = CASE WHEN ? IS NOT NULL THEN ? ELSE source END,
+      source_url = CASE WHEN ? IS NOT NULL THEN ? ELSE source_url END,
+      updated_at = datetime('now')
     WHERE id = ?
   `);
 
@@ -166,6 +175,11 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
           JSON.stringify(task.subItems),
           srcFp,
           col,
+          JSON.stringify(task.links),
+          task.sourceLink?.source ?? null,
+          task.sourceLink?.source ?? null,
+          task.sourceLink?.url ?? null,
+          task.sourceLink?.url ?? null,
           id,
         );
         updated++;
@@ -175,9 +189,6 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         let col = task.kbCol && board.columns.includes(task.kbCol) ? task.kbCol : null;
         if (!col) col = task.isDone ? 'Done' : 'Backlog';
         nextSeqId++;
-        const links = task.urls.map((u) => {
-          try { return { url: u, title: new URL(u).hostname }; } catch { return { url: u, title: u }; }
-        });
         insertStmt.run(
           id,
           board.id,
@@ -191,7 +202,9 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
           JSON.stringify(task.subItems),
           srcFp,
           nextSeqId,
-          JSON.stringify(links),
+          JSON.stringify(task.links),
+          task.sourceLink?.source ?? null,
+          task.sourceLink?.url ?? null,
         );
         added++;
       }

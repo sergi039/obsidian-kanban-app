@@ -15,13 +15,23 @@ vi.mock('../src/db.js', () => ({
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS comments (
         id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
         author TEXT NOT NULL DEFAULT 'user', text TEXT NOT NULL,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS inbox_captures (
+        capture_key TEXT PRIMARY KEY,
+        card_id TEXT REFERENCES cards(id) ON DELETE SET NULL,
+        source TEXT NOT NULL,
+        source_uid TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'completed',
+        updated_at TEXT DEFAULT (datetime('now')),
+        created_at TEXT DEFAULT (datetime('now'))
       );
     `);
     return db;
@@ -103,8 +113,18 @@ describe('column validation on card create', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS inbox_captures (
+        capture_key TEXT PRIMARY KEY,
+        card_id TEXT REFERENCES cards(id) ON DELETE SET NULL,
+        source TEXT NOT NULL,
+        source_uid TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'completed',
+        updated_at TEXT DEFAULT (datetime('now')),
+        created_at TEXT DEFAULT (datetime('now'))
       );
     `);
   });
@@ -124,6 +144,20 @@ describe('column validation on card create', () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toMatch(/not in board/i);
+  });
+
+  it('returns 404 when card creation targets a missing board', async () => {
+    const { default: cardRoutes } = await import('../src/routes/cards.js');
+    const app = new Hono();
+    app.route('/api/cards', cardRoutes);
+
+    const res = await app.request('/api/cards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ board_id: 'missing', title: 'Test' }),
+    });
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toMatchObject({ error: 'Board not found' });
   });
 
   it('accepts card creation with valid column', async () => {
@@ -153,7 +187,7 @@ describe('column validation on card move', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
     `);
@@ -201,7 +235,7 @@ describe('column validation on card PATCH', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
     `);
@@ -280,7 +314,7 @@ describe('unified move path (PATCH column_name uses move transaction)', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
     `);
@@ -356,7 +390,7 @@ describe('position normalization', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
     `);

@@ -73,7 +73,7 @@ const SCHEMA = `
     position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
     line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
     labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-    description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
+    description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
     created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS comments (

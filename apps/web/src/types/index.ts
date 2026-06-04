@@ -42,6 +42,10 @@ export interface Card {
   checklist: ChecklistItem[];
   links: LinkItem[];
   source_fingerprint: string | null;
+  source: string | null;
+  source_uid: string | null;
+  source_url: string | null;
+  source_meta: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }

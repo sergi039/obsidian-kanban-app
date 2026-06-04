@@ -16,6 +16,7 @@ import { apiTokenAuth, bodyLimit, getCorsOrigins, securityHeaders } from './midd
 import boardRoutes from './routes/boards.js';
 import cardRoutes from './routes/cards.js';
 import exportRoutes from './routes/export.js';
+import inboxRoutes from './routes/inbox.js';
 import viewRoutes from './routes/views.js';
 import fieldRoutes from './routes/fields.js';
 import automationRoutes from './routes/automations.js';
@@ -40,6 +41,7 @@ app.route('/api/views', viewRoutes);
 app.route('/api/fields', fieldRoutes);
 app.route('/api/automations', automationRoutes);
 app.route('/api/export', exportRoutes);
+app.route('/api/inbox', inboxRoutes);
 
 app.get('/api/health', (c) => c.json({ ok: true }));
 

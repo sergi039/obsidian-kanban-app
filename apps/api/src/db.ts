@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS cards (
   sub_items TEXT DEFAULT '[]',
   description TEXT DEFAULT '',
   source_fingerprint TEXT,
+  source TEXT,
+  source_uid TEXT,
+  source_url TEXT,
+  source_meta TEXT DEFAULT '{}',
   seq_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
@@ -82,6 +86,17 @@ CREATE TABLE IF NOT EXISTS sync_state (
   file_hash TEXT NOT NULL,
   last_synced TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS inbox_captures (
+  capture_key TEXT PRIMARY KEY,
+  card_id TEXT REFERENCES cards(id) ON DELETE SET NULL,
+  source TEXT NOT NULL,
+  source_uid TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'completed',
+  updated_at TEXT DEFAULT (datetime('now')),
+  created_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 const INDEXES = [
@@ -89,11 +104,16 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_cards_board_column ON cards(board_id, column_name)`,
   `CREATE INDEX IF NOT EXISTS idx_cards_priority ON cards(priority)`,
   `CREATE INDEX IF NOT EXISTS idx_cards_due_date ON cards(due_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_cards_source ON cards(source)`,
+  `CREATE INDEX IF NOT EXISTS idx_cards_source_uid ON cards(source, source_uid)`,
   `CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(card_id)`,
   `CREATE INDEX IF NOT EXISTS idx_fields_board ON fields(board_id, position)`,
   `CREATE INDEX IF NOT EXISTS idx_field_values_card ON field_values(card_id)`,
   `CREATE INDEX IF NOT EXISTS idx_field_values_field ON field_values(field_id)`,
   `CREATE INDEX IF NOT EXISTS idx_automations_board ON automations(board_id, enabled)`,
+  `CREATE INDEX IF NOT EXISTS idx_inbox_captures_card ON inbox_captures(card_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_inbox_captures_source_uid ON inbox_captures(source, source_uid)`,
+  `CREATE INDEX IF NOT EXISTS idx_inbox_captures_source_created ON inbox_captures(source, created_at)`,
 ];
 
 const MIGRATIONS = [
@@ -155,7 +175,23 @@ const MIGRATIONS = [
   `ALTER TABLE cards ADD COLUMN checklist TEXT DEFAULT '[]'`,
   // Add links column for managed link storage
   `ALTER TABLE cards ADD COLUMN links TEXT DEFAULT '[]'`,
-];
+  // Add inbox provenance columns (ADR 0001 D++)
+  `ALTER TABLE cards ADD COLUMN source TEXT`,
+  `ALTER TABLE cards ADD COLUMN source_uid TEXT`,
+  `ALTER TABLE cards ADD COLUMN source_url TEXT`,
+  `ALTER TABLE cards ADD COLUMN source_meta TEXT DEFAULT '{}'`,
+  // Capture log powers idempotency/audit for external task ingestion
+	  `CREATE TABLE IF NOT EXISTS inbox_captures (
+	    capture_key TEXT PRIMARY KEY,
+	    card_id TEXT REFERENCES cards(id) ON DELETE SET NULL,
+	    source TEXT NOT NULL,
+	    source_uid TEXT NOT NULL,
+	    request_hash TEXT NOT NULL,
+	    status TEXT NOT NULL DEFAULT 'completed',
+	    updated_at TEXT DEFAULT (datetime('now')),
+	    created_at TEXT DEFAULT (datetime('now'))
+	  )`,
+	];
 
 /**
  * Create an isolated in-memory database for testing.
