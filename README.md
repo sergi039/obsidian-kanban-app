@@ -273,6 +273,8 @@ KANBAN_REMINDER_EMAIL_TO=you@example.com \
 pnpm reminders:macos:install
 ```
 
+Mail.app delivery from `launchd` requires macOS Automation permission for the Node/osascript process to control Mail. If the log shows `Not authorised to send Apple events to Mail. (-1743)`, grant that permission in System Settings > Privacy & Security > Automation or run `pnpm reminders:agent` from an interactive user session for one-off delivery.
+
 ### Board Columns
 
 Columns are defined per board in `config.boards.json`. The special column name **"Done"** triggers automatic checkbox sync:

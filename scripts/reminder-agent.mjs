@@ -49,6 +49,17 @@ function commandExists(command) {
   return result.status === 0;
 }
 
+function runCommand(command, args) {
+  try {
+    execFileSync(command, args);
+  } catch (err) {
+    const stdout = err.stdout?.toString().trim();
+    const stderr = err.stderr?.toString().trim();
+    const details = [stderr, stdout].filter(Boolean).join('\n');
+    throw new Error(details || err.message || `Command failed: ${command}`);
+  }
+}
+
 function appleString(value) {
   return `"${String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r\n?|\n/g, ' ')}"`;
 }
@@ -124,18 +135,18 @@ function notifyMacOS(reminder) {
   const openUrl = cardUrl(reminder);
 
   if (commandExists('terminal-notifier')) {
-    execFileSync('terminal-notifier', [
+    runCommand('terminal-notifier', [
       '-title', title,
       '-message', message,
       '-subtitle', reminder.board_id,
       '-group', `obsidian-kanban-${reminder.id}`,
       '-open', openUrl,
-    ], { stdio: 'ignore' });
+    ]);
     return;
   }
 
   const script = `display notification ${appleString(message)} with title ${appleString(title)} subtitle ${appleString(reminder.board_id)} sound name "Glass"`;
-  execFileSync('osascript', ['-e', script], { stdio: 'ignore' });
+  runCommand('osascript', ['-e', script]);
 }
 
 function sendMail(reminder) {
@@ -156,7 +167,7 @@ tell application "Mail"
   end tell
 end tell`;
 
-  execFileSync('osascript', ['-e', script], { stdio: 'ignore' });
+  runCommand('osascript', ['-e', script]);
 }
 
 function icsDate(date) {
@@ -212,7 +223,7 @@ function createCalendarEvent(reminder) {
   }
 
   if (process.env.KANBAN_REMINDER_CALENDAR_OPEN !== '0') {
-    execFileSync('open', [filePath], { stdio: 'ignore' });
+    runCommand('open', [filePath]);
   }
   return filePath;
 }
