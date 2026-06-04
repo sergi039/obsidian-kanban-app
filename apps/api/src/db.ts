@@ -248,11 +248,11 @@ export function createTestDb(): Database.Database {
   const testDb = new Database(':memory:');
   testDb.pragma('foreign_keys = ON');
   testDb.exec(SCHEMA);
-  for (const sql of INDEXES) {
-    testDb.exec(sql);
-  }
   for (const sql of MIGRATIONS) {
     try { testDb.exec(sql); } catch { /* already exists */ }
+  }
+  for (const sql of INDEXES) {
+    testDb.exec(sql);
   }
   return testDb;
 }
@@ -268,11 +268,6 @@ export function getDb(dbPath?: string): Database.Database {
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
 
-  // Create indexes
-  for (const sql of INDEXES) {
-    db.exec(sql);
-  }
-
   // Run migrations for existing DBs
   for (const sql of MIGRATIONS) {
     try {
@@ -280,6 +275,11 @@ export function getDb(dbPath?: string): Database.Database {
     } catch {
       // Column/table already exists — safe to ignore
     }
+  }
+
+  // Create indexes after migrations so legacy databases have newly indexed columns.
+  for (const sql of INDEXES) {
+    db.exec(sql);
   }
 
   return db;

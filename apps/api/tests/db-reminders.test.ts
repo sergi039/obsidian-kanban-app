@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { createTestDb } from '../src/db.js';
+import Database from 'better-sqlite3';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { closeDb, createTestDb, getDb } from '../src/db.js';
 
 describe('reminders database schema', () => {
   it('creates reminders table and indexes in test DB', () => {
@@ -39,6 +43,46 @@ describe('reminders database schema', () => {
       expect(remaining.count).toBe(0);
     } finally {
       db.close();
+    }
+  });
+
+  it('runs migrations before creating indexes on legacy databases', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'kanban-legacy-db-'));
+    const dbPath = path.join(dir, 'kanban.db');
+    const legacy = new Database(dbPath);
+    try {
+      legacy.exec(`
+        CREATE TABLE cards (
+          id TEXT PRIMARY KEY,
+          board_id TEXT NOT NULL,
+          column_name TEXT NOT NULL DEFAULT 'Backlog',
+          position INTEGER NOT NULL DEFAULT 0,
+          title TEXT NOT NULL,
+          raw_line TEXT NOT NULL,
+          line_number INTEGER NOT NULL,
+          is_done INTEGER DEFAULT 0,
+          priority TEXT,
+          labels TEXT DEFAULT '[]',
+          due_date TEXT,
+          sub_items TEXT DEFAULT '[]',
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now'))
+        );
+      `);
+    } finally {
+      legacy.close();
+    }
+
+    try {
+      const migrated = getDb(dbPath);
+      const columns = migrated.prepare('PRAGMA table_info(cards)').all() as Array<{ name: string }>;
+      expect(columns.map((column) => column.name)).toEqual(expect.arrayContaining(['source', 'source_uid', 'source_url', 'source_meta']));
+
+      const cardIndexes = migrated.prepare('PRAGMA index_list(cards)').all() as Array<{ name: string }>;
+      expect(cardIndexes.map((index) => index.name)).toEqual(expect.arrayContaining(['idx_cards_source', 'idx_cards_source_uid']));
+    } finally {
+      closeDb();
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
