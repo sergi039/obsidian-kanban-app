@@ -10,3 +10,4 @@
 - Accepted Claude Desktop as the primary supported desktop agent and deferred OpenAI/ChatGPT Desktop write support because it likely requires custom/full MCP workspace support plus remote/tunnel infrastructure.
 - Added Kanban-owned reminders schema/API/UI because due dates alone cannot support exact-time follow-ups, snooze/dismiss, or macOS polling agents.
 - Added timezone-aware reminder validation and source-idempotency because email follow-up reminders must be safe to retry and deterministic across local/desktop agents.
+- Added browser notifications and a local macOS reminder agent for Notification Center, Calendar `.ics` handoff, and Mail.app email reminders because all non-in-app channels need an explicit delivery path outside the Kanban web UI.

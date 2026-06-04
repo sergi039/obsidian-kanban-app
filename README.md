@@ -260,6 +260,19 @@ Supported API surface:
 
 `trigger_at` values must be timezone-aware ISO datetimes (`Z` or explicit offset). See [Reminders](docs/reminders.md).
 
+Delivery channels:
+
+- `In app` shows badges, counts, and reminder panel state inside Kanban.
+- `Browser notification` works while the Kanban web app is open and browser notification permission is granted.
+- `macOS notification`, `Calendar event`, and `Email via Mail.app` require the local macOS agent. Calendar reminders are marked fired after handoff to Calendar.app:
+
+```bash
+KANBAN_API_URL=http://127.0.0.1:4000 \
+KANBAN_APP_URL=http://127.0.0.1:4000 \
+KANBAN_REMINDER_EMAIL_TO=you@example.com \
+pnpm reminders:macos:install
+```
+
 ### Board Columns
 
 Columns are defined per board in `config.boards.json`. The special column name **"Done"** triggers automatic checkbox sync:

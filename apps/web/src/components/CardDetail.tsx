@@ -1036,11 +1036,21 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                         className="w-full text-xs bg-board-column border border-board-border rounded-md px-2 py-1.5 text-board-text focus:outline-none"
                       >
                         <option value="in_app">In app</option>
-                        <option value="browser">Browser</option>
-                        <option value="macos">macOS</option>
-                        <option value="calendar">Calendar</option>
-                        <option value="email">Email</option>
+                        <option value="browser">Browser notification</option>
+                        <option value="macos">macOS notification</option>
+                        <option value="calendar">Calendar event</option>
+                        <option value="email">Email via Mail.app</option>
                       </select>
+                      {newReminderChannel === 'browser' && (
+                        <div className="text-[10px] text-board-text-muted">
+                          Browser notifications work while Kanban is open. Enable them from the top bar if prompted.
+                        </div>
+                      )}
+                      {['macos', 'calendar', 'email'].includes(newReminderChannel) && (
+                        <div className="text-[10px] text-board-text-muted">
+                          Requires the local macOS reminder agent. Run pnpm reminders:macos:install after setup.
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-1">
                         <button type="button" onClick={() => setQuickReminder(60)} className="text-[10px] px-1.5 py-0.5 rounded bg-board-column text-board-text-muted hover:text-board-text">1h</button>
                         <button type="button" onClick={() => setQuickReminder(24 * 60)} className="text-[10px] px-1.5 py-0.5 rounded bg-board-column text-board-text-muted hover:text-board-text">Tomorrow</button>

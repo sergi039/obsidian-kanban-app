@@ -17,6 +17,7 @@ const {
   createReminder,
   snoozeReminder,
   dismissReminder,
+  fireReminder,
 } = await import('../api/client');
 
 function mockResponse(data: unknown, status = 200) {
@@ -151,6 +152,10 @@ describe('reminders API', () => {
     mockFetch.mockResolvedValueOnce(mockResponse({ ...reminder, status: 'dismissed' }));
     await dismissReminder('r1');
     expect(mockFetch.mock.calls[2][0]).toBe('/api/reminders/r1/dismiss');
+
+    mockFetch.mockResolvedValueOnce(mockResponse({ ...reminder, status: 'fired' }));
+    await fireReminder('r1');
+    expect(mockFetch.mock.calls[3][0]).toBe('/api/reminders/r1/fire');
   });
 });
 

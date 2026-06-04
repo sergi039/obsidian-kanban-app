@@ -183,10 +183,6 @@ reminders.get('/', (c) => {
     params.push(cardId);
   }
 
-  if (!boardId && !cardId) {
-    return c.json({ error: 'board_id or card_id required' }, 400);
-  }
-
   const status = c.req.query('status');
   if (status) {
     if (!ReminderStatusSchema.safeParse(status).success) return c.json({ error: 'Invalid status' }, 400);
@@ -199,6 +195,13 @@ reminders.get('/', (c) => {
     if (!ReminderChannelSchema.safeParse(channel).success) return c.json({ error: 'Invalid channel' }, 400);
     where.push('reminders.channel = ?');
     params.push(channel);
+  }
+
+  if (!boardId && !cardId) {
+    if (!channel) return c.json({ error: 'board_id, card_id, or channel required' }, 400);
+    if (channel !== 'calendar') {
+      return c.json({ error: 'board_id or card_id required for channel listings except calendar handoff' }, 400);
+    }
   }
 
   params.push(parseLimit(c.req.query('limit')));

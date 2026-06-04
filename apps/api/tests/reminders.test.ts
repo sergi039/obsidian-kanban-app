@@ -153,6 +153,11 @@ describe('reminders routes', () => {
       channel: 'browser',
       trigger_at: '2026-06-04T10:00:00Z',
     });
+    await createReminder(app, {
+      card_id: 'c2',
+      channel: 'calendar',
+      trigger_at: '2026-06-04T11:00:00Z',
+    });
 
     const list = await app.request('/api/reminders?board_id=b1&card_id=c1&status=scheduled&channel=macos');
     expect(list.status).toBe(200);
@@ -161,6 +166,15 @@ describe('reminders routes', () => {
 
     const unscoped = await app.request('/api/reminders');
     expect(unscoped.status).toBe(400);
+
+    const browserOnly = await app.request('/api/reminders?channel=browser&status=scheduled');
+    expect(browserOnly.status).toBe(400);
+
+    const channelOnly = await app.request('/api/reminders?channel=calendar&status=scheduled');
+    expect(channelOnly.status).toBe(200);
+    const channelBody = await channelOnly.json() as Array<Record<string, unknown>>;
+    expect(channelBody).toHaveLength(1);
+    expect(channelBody[0].card_id).toBe('c2');
   });
 
   it('returns an existing reminder for duplicate source identity', async () => {

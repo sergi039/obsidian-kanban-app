@@ -18,11 +18,11 @@ Reminder status values:
 
 Reminder channel values:
 
-- `in_app`
-- `browser`
-- `macos`
-- `calendar`
-- `email`
+- `in_app` — shown inside the Kanban UI.
+- `browser` — delivered by the open Kanban browser tab through the Web Notifications API.
+- `macos` — delivered by the local macOS reminder agent through Notification Center.
+- `calendar` — handed off by the local macOS reminder agent as an `.ics` Calendar event.
+- `email` — delivered by the local macOS reminder agent through Mail.app.
 
 `trigger_at`, `snoozed_until`, `last_fired_at`, and `dismissed_at` are stored as ISO datetimes. Incoming datetime values must include `Z` or an explicit offset.
 
@@ -107,13 +107,66 @@ Email reminders should use stable source identity:
 
 For the same `card_id`, `source`, and `source_uid`, repeated create calls return the existing reminder. This keeps Claude/email workflows safe to retry.
 
-## macOS Delivery Plan
+## Delivery Channels
 
-The current implementation provides the API/UI state needed for delivery. The next implementation step is a local macOS notifier:
+### In-App
 
-1. A small local checker polls `/api/reminders/due?channel=macos`.
-2. It sends a Notification Center alert with the card title and reminder message.
-3. After successful delivery it calls `/api/reminders/:id/fire`.
-4. Snooze/dismiss continue to happen through the Kanban UI first; native notification actions can be added later.
+In-app reminders are visible in the Kanban UI as card badges, the header reminder counter, and the reminders panel. They do not require any external service.
 
-For launch scheduling, use a per-user `launchd` agent rather than `cron`.
+### Browser
+
+Browser reminders work while the Kanban web app is open. The app polls:
+
+```http
+GET /api/reminders/due?channel=browser&board_id=<active-board-id>
+```
+
+When the browser permission is granted, due reminders are shown with `new Notification(...)`; clicking the notification focuses Kanban and opens the card. After display, the app calls `/api/reminders/:id/fire`.
+
+### macOS, Calendar, Email
+
+These channels are delivered by `scripts/reminder-agent.mjs`.
+
+Run once:
+
+```bash
+pnpm reminders:agent
+```
+
+Install as a per-user `launchd` job:
+
+```bash
+KANBAN_API_URL=http://127.0.0.1:4000 \
+KANBAN_APP_URL=http://127.0.0.1:4000 \
+KANBAN_REMINDER_EMAIL_TO=you@example.com \
+pnpm reminders:macos:install
+```
+
+The installer writes:
+
+```text
+~/Library/LaunchAgents/com.obsidian-kanban.reminders.plist
+```
+
+Logs:
+
+```text
+~/Library/Logs/ObsidianKanban/reminders.out.log
+~/Library/Logs/ObsidianKanban/reminders.err.log
+```
+
+Agent behavior:
+
+- `macos`: polls due reminders with `channel=macos`, sends a Notification Center notification, then calls `/fire`. If `terminal-notifier` is installed, notification clicks open the card URL; otherwise the agent falls back to a plain `osascript` notification.
+- `email`: polls due reminders with `channel=email`, sends through Mail.app, then calls `/fire`. The recipient comes from `source_meta.email_to`, `source_meta.to`, or `KANBAN_REMINDER_EMAIL_TO`.
+- `calendar`: syncs scheduled/snoozed reminders with `channel=calendar` by creating an `.ics` file and opening it with Calendar.app. After handoff, it calls `/fire`; in Kanban, `fired` means "handed off to Calendar.app", and Calendar owns the final alert.
+
+The agent stores a local delivery ledger at:
+
+```text
+data/reminder-delivery.json
+```
+
+This prevents duplicate OS/email/calendar delivery if the process crashes after local delivery but before `/fire`.
+
+If `API_TOKEN` is enabled for the Kanban API, set `KANBAN_API_TOKEN` for the agent. Do not commit tokens to the repository.

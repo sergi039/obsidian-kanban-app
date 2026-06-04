@@ -6,6 +6,7 @@
 - Added per-card reminders with exact `trigger_at` datetimes, status tracking, snooze/dismiss/fire actions, and due polling API for future macOS notification agents.
 - Added in-app reminder badges, header reminder count/panel, card-detail reminder creation, and `reminder:*` / `has:reminder` filters.
 - Added reminder documentation and timezone-aware API validation.
+- Added browser notification delivery for open Kanban tabs and a local macOS delivery agent for Notification Center, Calendar `.ics` handoff, and Mail.app email reminders.
 
 ## 2026-02-19
 

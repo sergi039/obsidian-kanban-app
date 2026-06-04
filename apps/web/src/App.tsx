@@ -11,6 +11,8 @@ import {
   updateBoardPriorities,
   updateBoardCategories,
   fetchBoardReminders,
+  fetchDueReminders,
+  fireReminder,
 } from './api/client';
 import type { BoardSummary, BoardDetail, Field, PriorityDef, CategoryDef, Reminder } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
@@ -36,6 +38,51 @@ const FALLBACK_PRIORITIES: PriorityDef[] = [
   { id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' },
 ];
 
+const BROWSER_NOTIFIED_STORAGE_KEY = 'kanban:browser-reminders:notified';
+
+function browserNotificationStorage(): Storage | undefined {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function loadBrowserNotifiedIds(storage: Storage | undefined): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    return new Set(JSON.parse(storage?.getItem(BROWSER_NOTIFIED_STORAGE_KEY) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function storeBrowserNotifiedIds(storage: Storage | undefined, ids: Set<string>): void {
+  try {
+    storage?.setItem(BROWSER_NOTIFIED_STORAGE_KEY, JSON.stringify([...ids].slice(-200)));
+  } catch {
+    // Storage can be unavailable in private/locked-down browser contexts.
+  }
+}
+
+function claimBrowserNotification(reminderId: string, fallback: Set<string>): boolean {
+  const storage = browserNotificationStorage();
+  const ids = loadBrowserNotifiedIds(storage);
+  if (ids.has(reminderId) || fallback.has(reminderId)) return false;
+  ids.add(reminderId);
+  fallback.add(reminderId);
+  storeBrowserNotifiedIds(storage, ids);
+  return true;
+}
+
+function releaseBrowserNotification(reminderId: string, fallback: Set<string>): void {
+  const storage = browserNotificationStorage();
+  const ids = loadBrowserNotifiedIds(storage);
+  ids.delete(reminderId);
+  fallback.delete(reminderId);
+  storeBrowserNotifiedIds(storage, ids);
+}
+
 export default function App() {
   const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
@@ -51,7 +98,12 @@ export default function App() {
   const [showReminders, setShowReminders] = useState(false);
   const [boardSortField, setBoardSortField] = useState<BoardSortField>('position');
   const [boardReminders, setBoardReminders] = useState<Reminder[]>([]);
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission>(() =>
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'denied',
+  );
   const openSettingsRef = useRef<(() => void) | null>(null);
+  const openedCardParamRef = useRef<string | null>(null);
+  const browserNotifiedRef = useRef<Set<string>>(loadBrowserNotifiedIds(browserNotificationStorage()));
   const { theme, cycleTheme } = useTheme();
 
   // Load boards list
@@ -60,7 +112,8 @@ export default function App() {
       .then((data) => {
         setBoards(data);
         if (data.length > 0 && !activeBoardId) {
-          setActiveBoardId(data[0].id);
+          const boardParam = new URLSearchParams(window.location.search).get('board');
+          setActiveBoardId(data.find((board) => board.id === boardParam)?.id ?? data[0].id);
         }
         setError(null);
       })
@@ -110,6 +163,12 @@ export default function App() {
     [activeBoardId, loadBoard],
   );
   useWebSocket(handleWsUpdate);
+
+  const requestBrowserNotifications = useCallback(async () => {
+    if (!('Notification' in window)) return;
+    const permission = await Notification.requestPermission();
+    setBrowserNotificationPermission(permission);
+  }, []);
 
   const handleBoardChange = (boardId: string) => {
     setActiveBoardId(boardId);
@@ -204,6 +263,63 @@ export default function App() {
     () => boardReminders.filter((reminder) => isDueReminder(reminder)).length,
     [boardReminders],
   );
+
+  useEffect(() => {
+    const cardParam = new URLSearchParams(window.location.search).get('card');
+    if (!cardParam || openedCardParamRef.current === cardParam || allCards.length === 0) return;
+    const card = allCards.find((candidate) => candidate.id === cardParam);
+    if (card) {
+      setSelectedCard(card);
+      openedCardParamRef.current = cardParam;
+    }
+  }, [allCards]);
+
+  useEffect(() => {
+    if (!activeBoardId) return;
+    if (!('Notification' in window) || browserNotificationPermission !== 'granted') return;
+
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const due = await fetchDueReminders({
+          board_id: activeBoardId,
+          channel: 'browser',
+          before: new Date().toISOString(),
+          limit: 20,
+        });
+        for (const reminder of due) {
+          if (stopped || !claimBrowserNotification(reminder.id, browserNotifiedRef.current)) continue;
+          const card = allCards.find((candidate) => candidate.id === reminder.card_id);
+          try {
+            const notification = new Notification(`Kanban: ${card?.title || reminder.card_title || 'Reminder'}`, {
+              body: reminder.message || `Board: ${reminder.board_id}`,
+              tag: `kanban-reminder-${reminder.id}`,
+              requireInteraction: true,
+            });
+            notification.onclick = () => {
+              window.focus();
+              if (card) setSelectedCard(card);
+              notification.close();
+            };
+            await fireReminder(reminder.id);
+          } catch (err) {
+            releaseBrowserNotification(reminder.id, browserNotifiedRef.current);
+            throw err;
+          }
+        }
+        if (due.length > 0) await loadBoard();
+      } catch (err) {
+        console.warn('Browser reminder delivery failed:', err);
+      }
+    };
+
+    poll();
+    const timer = window.setInterval(poll, 30_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [activeBoardId, allCards, browserNotificationPermission, loadBoard]);
 
   const filterCards = useCallback((cards: Card[]) => {
     if (!filterQuery.trim()) return cards;
@@ -398,6 +514,16 @@ export default function App() {
           >
             ⏰ {dueReminderCount}
           </button>
+          {'Notification' in window && browserNotificationPermission !== 'granted' && (
+            <button
+              onClick={requestBrowserNotifications}
+              disabled={browserNotificationPermission === 'denied'}
+              className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
+              title={browserNotificationPermission === 'denied' ? 'Browser notifications are blocked in browser settings' : 'Enable browser notifications'}
+            >
+              🔔 Browser
+            </button>
+          )}
           <button
             onClick={handleReload}
             disabled={syncing}
