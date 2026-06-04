@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   fetchBoards,
   fetchBoard,
@@ -10,8 +10,9 @@ import {
   fetchFields,
   updateBoardPriorities,
   updateBoardCategories,
+  fetchBoardReminders,
 } from './api/client';
-import type { BoardSummary, BoardDetail, Field, PriorityDef, CategoryDef } from './types';
+import type { BoardSummary, BoardDetail, Field, PriorityDef, CategoryDef, Reminder } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
 import { Board } from './components/Board';
 
@@ -23,10 +24,12 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useTheme } from './hooks/useTheme';
 import { ThemeToggle } from './components/ThemeToggle';
 import { AutomationsPanel } from './components/AutomationsPanel';
+import { RemindersPanel } from './components/RemindersPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { BoardSort } from './components/BoardSort';
 import type { BoardSortField } from './components/BoardSort';
 import type { Card } from './types';
+import { activeReminders, isDueReminder, reminderState } from './lib/reminder-utils';
 
 const FALLBACK_PRIORITIES: PriorityDef[] = [
   { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
@@ -45,7 +48,9 @@ export default function App() {
   const [boardFields, setBoardFields] = useState<Field[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [showAutomations, setShowAutomations] = useState(false);
+  const [showReminders, setShowReminders] = useState(false);
   const [boardSortField, setBoardSortField] = useState<BoardSortField>('position');
+  const [boardReminders, setBoardReminders] = useState<Reminder[]>([]);
   const openSettingsRef = useRef<(() => void) | null>(null);
   const { theme, cycleTheme } = useTheme();
 
@@ -66,16 +71,21 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Load active board detail + fields
+  // Load active board detail + fields + reminders
   const loadBoard = useCallback(async (): Promise<BoardDetail | null> => {
     if (!activeBoardId) return null;
     try {
-      const [detail, fields] = await Promise.all([
+      const [detail, fields, reminders] = await Promise.all([
         fetchBoard(activeBoardId),
         fetchFields(activeBoardId),
+        fetchBoardReminders(activeBoardId).catch((err) => {
+          console.warn('Failed to fetch reminders:', err);
+          return [] as Reminder[];
+        }),
       ]);
       setBoardDetail(detail);
       setBoardFields(fields);
+      setBoardReminders(reminders);
       setError(null);
       return detail;
     } catch (err) {
@@ -104,6 +114,8 @@ export default function App() {
   const handleBoardChange = (boardId: string) => {
     setActiveBoardId(boardId);
     setFilterQuery('');
+    setBoardReminders([]);
+    setShowReminders(false);
   };
 
   const handleReload = async () => {
@@ -173,6 +185,26 @@ export default function App() {
     setBoards(updatedBoards);
   };
 
+  const allCards = useMemo(
+    () => boardDetail?.columns.flatMap((col) => col.cards) ?? [],
+    [boardDetail],
+  );
+
+  const remindersByCard = useMemo(() => {
+    const map = new Map<string, Reminder[]>();
+    for (const reminder of boardReminders) {
+      const existing = map.get(reminder.card_id) ?? [];
+      existing.push(reminder);
+      map.set(reminder.card_id, existing);
+    }
+    return map;
+  }, [boardReminders]);
+
+  const dueReminderCount = useMemo(
+    () => boardReminders.filter((reminder) => isDueReminder(reminder)).length,
+    [boardReminders],
+  );
+
   const filterCards = useCallback((cards: Card[]) => {
     if (!filterQuery.trim()) return cards;
 
@@ -193,7 +225,7 @@ export default function App() {
     }
     if (current) parts.push(current);
 
-    const KNOWN = new Set(['status', 'priority', 'label', 'due', 'done', 'has', 'board']);
+    const KNOWN = new Set(['status', 'priority', 'label', 'due', 'done', 'has', 'board', 'reminder']);
 
     return cards.filter((card) => {
       for (const part of parts) {
@@ -230,6 +262,7 @@ export default function App() {
               else if (hv === 'priority') match = !!card.priority;
               else if (hv === 'labels' || hv === 'label') match = card.labels.length > 0;
               else if (hv === 'due' || hv === 'due_date') match = !!card.due_date;
+              else if (hv === 'reminder' || hv === 'reminders') match = activeReminders(remindersByCard.get(card.id) ?? []).length > 0;
               // has:comments not available client-side (no comment count on card)
               break;
             }
@@ -266,6 +299,21 @@ export default function App() {
             case 'board':
               match = vals.some((v) => card.board_id.toLowerCase() === v.toLowerCase());
               break;
+            case 'reminder': {
+              const active = activeReminders(remindersByCard.get(card.id) ?? []);
+              const states = active.map((reminder) => reminderState(reminder));
+              match = vals.some((v) => {
+                const rv = v.toLowerCase();
+                if (rv === 'any') return active.length > 0;
+                if (rv === 'none') return active.length === 0;
+                if (rv === 'due') return states.includes('due') || states.includes('overdue');
+                if (rv === 'overdue') return states.includes('overdue');
+                if (rv === 'today') return states.includes('today') || states.includes('due');
+                if (rv === 'upcoming') return states.includes('upcoming');
+                return false;
+              });
+              break;
+            }
           }
           if (neg ? match : !match) return false;
         } else {
@@ -275,7 +323,7 @@ export default function App() {
       }
       return true;
     });
-  }, [filterQuery]);
+  }, [filterQuery, remindersByCard]);
 
   const boardPriorities = boardDetail && Array.isArray(boardDetail.priorities)
     ? boardDetail.priorities
@@ -340,6 +388,17 @@ export default function App() {
             ⚡ Auto
           </button>
           <button
+            onClick={() => setShowReminders((value) => !value)}
+            className={`px-3 h-8 text-sm border border-board-border rounded-md transition-colors ${
+              dueReminderCount > 0
+                ? 'bg-amber-500/15 text-amber-500 hover:bg-amber-500/20'
+                : 'bg-board-column hover:bg-board-card text-board-text-muted hover:text-board-text'
+            }`}
+            title="Reminders"
+          >
+            ⏰ {dueReminderCount}
+          </button>
+          <button
             onClick={handleReload}
             disabled={syncing}
             className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
@@ -372,6 +431,7 @@ export default function App() {
               board={{ ...boardDetail, priorities: boardPriorities }}
               sortField={boardSortField}
               filterCards={filterCards}
+              remindersByCard={remindersByCard}
               onCardMove={handleCardMove}
               onCardClick={setSelectedCard}
               onCardAdd={handleCardAdd}
@@ -384,7 +444,7 @@ export default function App() {
             />
           ) : (
             <TableView
-              cards={filterCards(boardDetail.columns.flatMap((col) => col.cards))}
+              cards={filterCards(allCards)}
               columns={boardDetail.columns.map((c) => c.name)}
               priorities={boardPriorities}
               categories={boardDetail?.categories ?? []}
@@ -419,6 +479,9 @@ export default function App() {
               });
             }
           }}
+          onRemindersChanged={async () => {
+            await loadBoard();
+          }}
           onManageCategories={() => {
             setSelectedCard(null);
             setTimeout(() => openSettingsRef.current?.(), 50);
@@ -433,6 +496,18 @@ export default function App() {
           columns={boardDetail?.columns.map((c) => c.name) || []}
           fields={boardFields}
           onClose={() => setShowAutomations(false)}
+        />
+      )}
+
+      {showReminders && (
+        <RemindersPanel
+          reminders={boardReminders}
+          cards={allCards}
+          onClose={() => setShowReminders(false)}
+          onOpenCard={setSelectedCard}
+          onRefresh={async () => {
+            await loadBoard();
+          }}
         />
       )}
     </div>

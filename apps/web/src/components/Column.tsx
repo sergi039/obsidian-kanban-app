@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Card, PriorityDef, CategoryDef } from '../types';
+import type { Card, PriorityDef, CategoryDef, Reminder } from '../types';
 import { DraggableCard } from './DraggableCard';
 import { AddCard } from './AddCard';
 import { ColumnMenu } from './ColumnManager';
@@ -12,6 +12,7 @@ interface Props {
   cards: Card[];
   priorities: PriorityDef[];
   categories?: CategoryDef[];
+  remindersByCard?: Map<string, Reminder[]>;
   boardId: string;
   sortableId: string;
   isSorted?: boolean;
@@ -54,6 +55,7 @@ export function Column({
   cards,
   priorities,
   categories,
+  remindersByCard,
   boardId,
   sortableId,
   isSorted,
@@ -119,7 +121,14 @@ export function Column({
       >
         <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
           {cards.map((card) => (
-            <DraggableCard key={card.id} card={card} priorities={priorities} categories={categories} onClick={() => onCardClick(card)} />
+            <DraggableCard
+              key={card.id}
+              card={card}
+              priorities={priorities}
+              categories={categories}
+              reminders={remindersByCard?.get(card.id)}
+              onClick={() => onCardClick(card)}
+            />
           ))}
         </SortableContext>
         {cards.length === 0 && !isOver && (

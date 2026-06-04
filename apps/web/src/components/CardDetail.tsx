@@ -1,7 +1,41 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { patchCard, fetchComments, addComment, updateComment, deleteComment, fetchFieldValues, setFieldValue } from '../api/client';
-import type { Card, ChecklistItem, LinkItem, Comment, FieldValue, Field, PatchCardRequest, PriorityDef, CategoryDef } from '../types';
+import {
+  patchCard,
+  fetchComments,
+  addComment,
+  updateComment,
+  deleteComment,
+  fetchFieldValues,
+  setFieldValue,
+  fetchCardReminders,
+  createReminder,
+  snoozeReminder,
+  dismissReminder,
+  deleteReminder,
+} from '../api/client';
+import type {
+  Card,
+  ChecklistItem,
+  LinkItem,
+  Comment,
+  FieldValue,
+  Field,
+  PatchCardRequest,
+  PriorityDef,
+  CategoryDef,
+  Reminder,
+  ReminderChannel,
+} from '../types';
 import { extractLinks, linkifyText, safeHostname, normalizeUrl } from '../lib/link-utils';
+import {
+  activeReminders,
+  formatReminderTime,
+  isDueReminder,
+  localDateTimeInputToIso,
+  reminderEffectiveAt,
+  sortReminders,
+  toLocalDateTimeInput,
+} from '../lib/reminder-utils';
 
 interface Props {
   card: Card;
@@ -11,6 +45,7 @@ interface Props {
   fields: Field[];
   onClose: () => void;
   onUpdate: () => Promise<void>;
+  onRemindersChanged?: () => Promise<void>;
   onManageCategories?: () => void;
 }
 
@@ -163,7 +198,7 @@ function CustomFieldInput({ field, value, cardId, onSaved, onLocalChange }: {
   );
 }
 
-export function CardDetail({ card, columns, priorities, categories, fields, onClose, onUpdate, onManageCategories }: Props) {
+export function CardDetail({ card, columns, priorities, categories, fields, onClose, onUpdate, onRemindersChanged, onManageCategories }: Props) {
   // Managed links — prefer card.links from DB, fall back to title extraction for transitional cards
   const initialLinks: LinkItem[] = card.links.length > 0
     ? card.links
@@ -188,6 +223,14 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
 
   // Custom field values
   const [fieldValues, setFieldValues] = useState<FieldValue[]>([]);
+
+  // Reminders
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [loadingReminders, setLoadingReminders] = useState(true);
+  const [savingReminder, setSavingReminder] = useState(false);
+  const [newReminderAt, setNewReminderAt] = useState('');
+  const [newReminderMessage, setNewReminderMessage] = useState('');
+  const [newReminderChannel, setNewReminderChannel] = useState<ReminderChannel>('in_app');
 
   // Comments
   const [comments, setComments] = useState<Comment[]>([]);
@@ -226,7 +269,20 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose, editingDesc, editingCommentId, description]);
 
-  // Load comments + field values
+  const loadReminders = useCallback(async () => {
+    setLoadingReminders(true);
+    try {
+      const data = await fetchCardReminders(card.id);
+      setReminders(data);
+    } catch (err) {
+      console.error('Failed to load reminders:', err);
+      setReminders([]);
+    } finally {
+      setLoadingReminders(false);
+    }
+  }, [card.id]);
+
+  // Load comments + field values + reminders
   useEffect(() => {
     setLoadingComments(true);
     fetchComments(card.id)
@@ -237,7 +293,9 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
     fetchFieldValues(card.id)
       .then(setFieldValues)
       .catch((err) => console.error('Failed to load field values:', err));
-  }, [card.id]);
+
+    loadReminders();
+  }, [card.id, loadReminders]);
 
   // Auto-resize description textarea
   useEffect(() => {
@@ -273,6 +331,74 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
   const handleDueDateChange = (val: string) => {
     setDueDate(val);
     saveField({ due_date: val || null });
+  };
+
+  const refreshReminderState = async () => {
+    await loadReminders();
+    await onRemindersChanged?.();
+  };
+
+  const handleCreateReminder = async () => {
+    const iso = localDateTimeInputToIso(newReminderAt);
+    if (!iso) return;
+    setSavingReminder(true);
+    try {
+      await createReminder({
+        card_id: card.id,
+        kind: 'custom',
+        channel: newReminderChannel,
+        trigger_at: iso,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        message: newReminderMessage.trim(),
+      });
+      setNewReminderAt('');
+      setNewReminderMessage('');
+      await refreshReminderState();
+    } catch (err) {
+      console.error('Failed to create reminder:', err);
+    } finally {
+      setSavingReminder(false);
+    }
+  };
+
+  const handleSnoozeReminder = async (reminderId: string, minutes: number) => {
+    setSavingReminder(true);
+    try {
+      await snoozeReminder(reminderId, { minutes });
+      await refreshReminderState();
+    } catch (err) {
+      console.error('Failed to snooze reminder:', err);
+    } finally {
+      setSavingReminder(false);
+    }
+  };
+
+  const handleDismissReminder = async (reminderId: string) => {
+    setSavingReminder(true);
+    try {
+      await dismissReminder(reminderId);
+      await refreshReminderState();
+    } catch (err) {
+      console.error('Failed to dismiss reminder:', err);
+    } finally {
+      setSavingReminder(false);
+    }
+  };
+
+  const handleDeleteReminder = async (reminderId: string) => {
+    setSavingReminder(true);
+    try {
+      await deleteReminder(reminderId);
+      await refreshReminderState();
+    } catch (err) {
+      console.error('Failed to delete reminder:', err);
+    } finally {
+      setSavingReminder(false);
+    }
+  };
+
+  const setQuickReminder = (minutes: number) => {
+    setNewReminderAt(toLocalDateTimeInput(new Date(Date.now() + minutes * 60_000).toISOString()));
   };
 
   const handleColumnChange = (val: string) => {
@@ -377,6 +503,9 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
       console.error('Failed to delete comment:', err);
     }
   };
+
+  const activeCardReminders = activeReminders(reminders);
+  const inactiveCardReminders = sortReminders(reminders).filter((reminder) => !activeCardReminders.some((active) => active.id === reminder.id));
 
   return (
     <>
@@ -828,6 +957,136 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                   onChange={(e) => handleDueDateChange(e.target.value)}
                   className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1.5 text-board-text focus:outline-none"
                 />
+              </div>
+
+              {/* Reminders */}
+              <div>
+                <label className="text-xs font-medium text-board-text-muted uppercase tracking-wider block mb-1">Reminders</label>
+                {loadingReminders ? (
+                  <div className="text-xs text-board-text-muted py-2">Loading…</div>
+                ) : (
+                  <div className="space-y-2">
+                    {activeCardReminders.length > 0 && (
+                      <div className="space-y-1">
+                        {activeCardReminders.map((reminder) => {
+                          const due = isDueReminder(reminder);
+                          return (
+                            <div key={reminder.id} className="rounded-md border border-board-border bg-board-column p-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[11px] px-1.5 py-0.5 rounded ${due ? 'bg-amber-500/15 text-amber-500' : 'bg-board-card text-board-text-muted'}`}>
+                                  ⏰ {formatReminderTime(reminder)}
+                                </span>
+                                <span className="text-[10px] text-board-text-muted">{reminder.channel}</span>
+                              </div>
+                              {reminder.message && (
+                                <div className="text-xs text-board-text mt-1 break-words">{reminder.message}</div>
+                              )}
+                              <div className="text-[10px] text-board-text-muted mt-1">
+                                {new Date(reminderEffectiveAt(reminder)).toLocaleString()}
+                              </div>
+                              <div className="flex items-center gap-1 mt-2">
+                                <button
+                                  type="button"
+                                  disabled={savingReminder}
+                                  onClick={() => handleSnoozeReminder(reminder.id, 60)}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-board-card hover:bg-board-card-hover text-board-text-muted hover:text-board-text disabled:opacity-50"
+                                >
+                                  +1h
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={savingReminder}
+                                  onClick={() => handleSnoozeReminder(reminder.id, 24 * 60)}
+                                  className="text-[10px] px-1.5 py-0.5 rounded bg-board-card hover:bg-board-card-hover text-board-text-muted hover:text-board-text disabled:opacity-50"
+                                >
+                                  Tomorrow
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={savingReminder}
+                                  onClick={() => handleDismissReminder(reminder.id)}
+                                  className="text-[10px] px-1.5 py-0.5 rounded text-board-text-muted hover:text-red-400 disabled:opacity-50"
+                                >
+                                  Dismiss
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="rounded-md border border-board-border p-2 space-y-2">
+                      <input
+                        type="datetime-local"
+                        value={newReminderAt}
+                        onChange={(e) => setNewReminderAt(e.target.value)}
+                        className="w-full text-xs bg-board-column border border-board-border rounded-md px-2 py-1.5 text-board-text focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={newReminderMessage}
+                        onChange={(e) => setNewReminderMessage(e.target.value)}
+                        placeholder="Optional note"
+                        className="w-full text-xs bg-board-column border border-board-border rounded-md px-2 py-1.5 text-board-text focus:outline-none placeholder:text-board-text-muted/50"
+                      />
+                      <select
+                        value={newReminderChannel}
+                        onChange={(e) => setNewReminderChannel(e.target.value as ReminderChannel)}
+                        className="w-full text-xs bg-board-column border border-board-border rounded-md px-2 py-1.5 text-board-text focus:outline-none"
+                      >
+                        <option value="in_app">In app</option>
+                        <option value="browser">Browser</option>
+                        <option value="macos">macOS</option>
+                        <option value="calendar">Calendar</option>
+                        <option value="email">Email</option>
+                      </select>
+                      <div className="flex flex-wrap gap-1">
+                        <button type="button" onClick={() => setQuickReminder(60)} className="text-[10px] px-1.5 py-0.5 rounded bg-board-column text-board-text-muted hover:text-board-text">1h</button>
+                        <button type="button" onClick={() => setQuickReminder(24 * 60)} className="text-[10px] px-1.5 py-0.5 rounded bg-board-column text-board-text-muted hover:text-board-text">Tomorrow</button>
+                        {dueDate && (
+                          <button
+                            type="button"
+                            onClick={() => setNewReminderAt(`${dueDate}T09:00`)}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-board-column text-board-text-muted hover:text-board-text"
+                          >
+                            Due 09:00
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={savingReminder || !newReminderAt}
+                        onClick={handleCreateReminder}
+                        className="w-full text-xs font-medium text-white rounded-md py-1.5 transition-colors disabled:opacity-50"
+                        style={{ backgroundColor: 'var(--board-accent)' }}
+                      >
+                        {savingReminder ? 'Saving…' : '+ Add reminder'}
+                      </button>
+                    </div>
+
+                    {inactiveCardReminders.length > 0 && (
+                      <details className="text-xs text-board-text-muted">
+                        <summary className="cursor-pointer hover:text-board-text">History ({inactiveCardReminders.length})</summary>
+                        <div className="space-y-1 mt-1">
+                          {inactiveCardReminders.map((reminder) => (
+                            <div key={reminder.id} className="flex items-center justify-between gap-2 rounded bg-board-column px-2 py-1">
+                              <span className="truncate">{reminder.status} · {formatReminderTime(reminder)}</span>
+                              <button
+                                type="button"
+                                disabled={savingReminder}
+                                onClick={() => handleDeleteReminder(reminder.id)}
+                                className="text-[10px] text-board-text-muted hover:text-red-400 disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Categories */}

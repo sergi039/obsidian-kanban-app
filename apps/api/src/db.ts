@@ -97,6 +97,27 @@ CREATE TABLE IF NOT EXISTS inbox_captures (
   updated_at TEXT DEFAULT (datetime('now')),
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS reminders (
+  id TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  board_id TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'custom',
+  channel TEXT NOT NULL DEFAULT 'in_app',
+  status TEXT NOT NULL DEFAULT 'scheduled',
+  trigger_at TEXT NOT NULL,
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  message TEXT DEFAULT '',
+  snoozed_until TEXT,
+  last_fired_at TEXT,
+  dismissed_at TEXT,
+  source TEXT,
+  source_uid TEXT,
+  source_url TEXT,
+  source_meta TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 const INDEXES = [
@@ -114,6 +135,11 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_inbox_captures_card ON inbox_captures(card_id)`,
   `CREATE INDEX IF NOT EXISTS idx_inbox_captures_source_uid ON inbox_captures(source, source_uid)`,
   `CREATE INDEX IF NOT EXISTS idx_inbox_captures_source_created ON inbox_captures(source, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_reminders_card ON reminders(card_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_reminders_board_status ON reminders(board_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(status, trigger_at, snoozed_until)`,
+  `CREATE INDEX IF NOT EXISTS idx_reminders_source_uid ON reminders(source, source_uid)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_source_unique ON reminders(card_id, source, source_uid) WHERE source IS NOT NULL AND source_uid IS NOT NULL`,
 ];
 
 const MIGRATIONS = [
@@ -191,6 +217,27 @@ const MIGRATIONS = [
 	    updated_at TEXT DEFAULT (datetime('now')),
 	    created_at TEXT DEFAULT (datetime('now'))
 	  )`,
+  // Reminders are Kanban-owned runtime metadata, not Markdown writeback state.
+  `CREATE TABLE IF NOT EXISTS reminders (
+    id TEXT PRIMARY KEY,
+    card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    board_id TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'custom',
+    channel TEXT NOT NULL DEFAULT 'in_app',
+    status TEXT NOT NULL DEFAULT 'scheduled',
+    trigger_at TEXT NOT NULL,
+    timezone TEXT NOT NULL DEFAULT 'UTC',
+    message TEXT DEFAULT '',
+    snoozed_until TEXT,
+    last_fired_at TEXT,
+    dismissed_at TEXT,
+    source TEXT,
+    source_uid TEXT,
+    source_url TEXT,
+    source_meta TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`,
 	];
 
 /**

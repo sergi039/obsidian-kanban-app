@@ -1,10 +1,12 @@
-import type { Card, PriorityDef, CategoryDef } from '../types';
+import type { Card, PriorityDef, CategoryDef, Reminder } from '../types';
 import { extractLinks } from '../lib/link-utils';
+import { formatReminderTime, isDueReminder, nextActiveReminder } from '../lib/reminder-utils';
 
 interface Props {
   card: Card;
   priorities: PriorityDef[];
   categories?: CategoryDef[];
+  reminders?: Reminder[];
   onClick: () => void;
 }
 
@@ -25,11 +27,13 @@ function cleanTitle(title: string, priorities: PriorityDef[]): string {
 
 const MAX_VISIBLE_BADGES = 3;
 
-export function KanbanCard({ card, priorities, categories = [], onClick }: Props) {
+export function KanbanCard({ card, priorities, categories = [], reminders = [], onClick }: Props) {
   const linkCount = card.links.length > 0 ? card.links.length : extractLinks(card.title).length;
   const displayTitle = cleanTitle(card.title, priorities);
   const priorityDef = card.priority ? priorities.find((p) => p.id === card.priority) : undefined;
   const showPriority = priorityDef && priorityDef.showOnCard !== false;
+  const nextReminder = nextActiveReminder(reminders);
+  const reminderIsDue = nextReminder ? isDueReminder(nextReminder) : false;
 
   // Resolve visible category badges
   const visibleCategories = card.labels
@@ -137,6 +141,18 @@ export function KanbanCard({ card, priorities, categories = [], onClick }: Props
         )}
         {card.due_date && (
           <span className="text-[11px] text-board-text-muted">📅 {card.due_date}</span>
+        )}
+        {nextReminder && (
+          <span
+            className={`text-[11px] px-1.5 py-0.5 rounded ${
+              reminderIsDue
+                ? 'bg-amber-500/15 text-amber-500'
+                : 'bg-board-column text-board-text-muted'
+            }`}
+            title={nextReminder.message || 'Reminder'}
+          >
+            ⏰ {formatReminderTime(nextReminder)}
+          </span>
         )}
       </div>
     </div>

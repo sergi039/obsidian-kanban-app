@@ -8,3 +8,5 @@
 - Added fail-closed ingest authentication because external agent write endpoints must not rely on optional local-development API auth.
 - Updated reconciler link handling so Markdown remains the canonical link source for existing cards, not only newly inserted cards.
 - Accepted Claude Desktop as the primary supported desktop agent and deferred OpenAI/ChatGPT Desktop write support because it likely requires custom/full MCP workspace support plus remote/tunnel infrastructure.
+- Added Kanban-owned reminders schema/API/UI because due dates alone cannot support exact-time follow-ups, snooze/dismiss, or macOS polling agents.
+- Added timezone-aware reminder validation and source-idempotency because email follow-up reminders must be safe to retry and deterministic across local/desktop agents.

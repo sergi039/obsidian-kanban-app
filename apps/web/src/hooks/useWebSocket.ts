@@ -32,7 +32,14 @@ export function useWebSocket(onBoardUpdate: (boardId?: string) => void) {
       ws.onmessage = (event) => {
         try {
           const data: WsEvent = JSON.parse(event.data);
-          if (data.type === 'board-updated' || data.type === 'boards-changed' || data.type === 'card-moved' || data.type === 'card-updated' || data.type === 'sync-complete') {
+          if (
+            data.type === 'board-updated' ||
+            data.type === 'boards-changed' ||
+            data.type === 'card-moved' ||
+            data.type === 'card-updated' ||
+            data.type === 'sync-complete' ||
+            data.type.startsWith('reminder-')
+          ) {
             callbackRef.current(data.boardId);
           }
         } catch (err) {

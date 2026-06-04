@@ -5,9 +5,19 @@ const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
 // Import after mocking
-const { fetchBoards, fetchBoard, fetchCards, moveCard, patchCard, reloadSync } = await import(
-  '../api/client'
-);
+const {
+  fetchBoards,
+  fetchBoard,
+  fetchCards,
+  moveCard,
+  patchCard,
+  reloadSync,
+  fetchBoardReminders,
+  fetchDueReminders,
+  createReminder,
+  snoozeReminder,
+  dismissReminder,
+} = await import('../api/client');
 
 function mockResponse(data: unknown, status = 200) {
   return {
@@ -106,6 +116,41 @@ describe('reloadSync', () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe('/api/boards/sync/reload');
     expect(init.method).toBe('POST');
+  });
+});
+
+describe('reminders API', () => {
+  it('fetches board and due reminders with query params', async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse([]));
+    await fetchBoardReminders('b1');
+    expect(mockFetch.mock.calls[0][0]).toBe('/api/reminders?board_id=b1');
+
+    mockFetch.mockResolvedValueOnce(mockResponse([]));
+    await fetchDueReminders({ board_id: 'b1', channel: 'macos', before: '2026-06-04T09:00:00.000Z', limit: 20 });
+    const url = mockFetch.mock.calls[1][0] as string;
+    expect(url).toContain('/api/reminders/due?');
+    expect(url).toContain('board_id=b1');
+    expect(url).toContain('channel=macos');
+    expect(url).toContain('before=2026-06-04T09%3A00%3A00.000Z');
+    expect(url).toContain('limit=20');
+  });
+
+  it('creates, snoozes, and dismisses reminders', async () => {
+    const reminder = { id: 'r1', card_id: 'c1', trigger_at: '2026-06-04T09:00:00.000Z' };
+    mockFetch.mockResolvedValueOnce(mockResponse(reminder));
+    await createReminder({ card_id: 'c1', trigger_at: reminder.trigger_at });
+    expect(mockFetch.mock.calls[0][0]).toBe('/api/reminders');
+    expect(mockFetch.mock.calls[0][1].method).toBe('POST');
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ card_id: 'c1', trigger_at: reminder.trigger_at });
+
+    mockFetch.mockResolvedValueOnce(mockResponse({ ...reminder, status: 'snoozed' }));
+    await snoozeReminder('r1', { minutes: 60 });
+    expect(mockFetch.mock.calls[1][0]).toBe('/api/reminders/r1/snooze');
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({ minutes: 60 });
+
+    mockFetch.mockResolvedValueOnce(mockResponse({ ...reminder, status: 'dismissed' }));
+    await dismissReminder('r1');
+    expect(mockFetch.mock.calls[2][0]).toBe('/api/reminders/r1/dismiss');
   });
 });
 

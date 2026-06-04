@@ -20,6 +20,7 @@ import inboxRoutes from './routes/inbox.js';
 import viewRoutes from './routes/views.js';
 import fieldRoutes from './routes/fields.js';
 import automationRoutes from './routes/automations.js';
+import reminderRoutes from './routes/reminders.js';
 
 const app = new Hono();
 
@@ -40,6 +41,7 @@ app.route('/api/cards', cardRoutes);
 app.route('/api/views', viewRoutes);
 app.route('/api/fields', fieldRoutes);
 app.route('/api/automations', automationRoutes);
+app.route('/api/reminders', reminderRoutes);
 app.route('/api/export', exportRoutes);
 app.route('/api/inbox', inboxRoutes);
 
