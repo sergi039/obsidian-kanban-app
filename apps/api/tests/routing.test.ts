@@ -9,6 +9,8 @@ const config: AppConfig = {
     { id: 'vs', name: 'VirtoSoftware', file: 'Business/VS.md', columns: ['Backlog', 'Done'] },
     { id: 'vp', name: 'VP', file: 'Business/VP.md', columns: ['Backlog', 'Done'] },
     { id: 'private', name: 'Private', file: 'Private/Tasks.md', columns: ['Backlog', 'Done'] },
+    { id: 'cervantes', name: 'Cervantes', file: 'Properties/Cervantes.md', columns: ['Backlog', 'Done'] },
+    { id: 'arrecife-reconstruction', name: 'Arrecife Reconstruction', file: 'Properties/Arrecife.md', columns: ['Backlog', 'Done'] },
   ],
 };
 
@@ -18,8 +20,10 @@ const routing: RoutingConfig = {
   clarifyWithinMargin: 0.2,
   rules: [
     { boardId: 'vs', domain: 'work', column: 'Backlog', aliases: ['virto', 'virtosoftware', 'vs', 'работа'] },
-    { boardId: 'vp', domain: 'work', column: 'Backlog', aliases: ['vp', 'virto property', 'работа'] },
+    { boardId: 'vp', domain: 'work', column: 'Backlog', aliases: ['vp', 'virto property', 'property catalog', '8085', 'работа'] },
     { boardId: 'private', domain: 'personal', column: 'Backlog', aliases: ['private', 'personal', 'покупки', 'купить'] },
+    { boardId: 'cervantes', domain: 'property', column: 'Backlog', aliases: ['cervantes', 'property', 'ремонт'] },
+    { boardId: 'arrecife-reconstruction', domain: 'property', column: 'Backlog', aliases: ['arrecife', 'property', 'ремонт'] },
   ],
 };
 
@@ -42,5 +46,12 @@ describe('routeTask', () => {
     const result = routeTask('купить батарейки и продукты', { config, routing });
     expect(result.needsClarification).toBe(false);
     expect(result.boardId).toBe('private');
+  });
+
+  it('lets strong VP aliases dominate generic property aliases', () => {
+    const result = routeTask('Починить property catalog 8085 фильтры', { config, routing });
+    expect(result.needsClarification).toBe(false);
+    expect(result.boardId).toBe('vp');
+    expect(result.candidates[0]).toMatchObject({ boardId: 'vp' });
   });
 });

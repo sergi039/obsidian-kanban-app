@@ -18,6 +18,7 @@ const RoutingConfigSchema = z.object({
 });
 
 export type RoutingConfig = z.infer<typeof RoutingConfigSchema>;
+const STRONG_SCORE_GAP = 3;
 
 export interface RouteTaskResult {
   boardId: string | null;
@@ -142,23 +143,23 @@ export function routeTask(
       return {
         boardId: null,
         column: null,
-	        confidence: 0,
-	        needsClarification: true,
-	        question: `Board "${explicitBoardId}" was not found. Which Kanban board should I use?`,
-	        reasonCode: 'explicit_board_not_found',
-	        reason: 'Explicit board was not found',
-	        candidates: [],
-	      };
+        confidence: 0,
+        needsClarification: true,
+        question: `Board "${explicitBoardId}" was not found. Which Kanban board should I use?`,
+        reasonCode: 'explicit_board_not_found',
+        reason: 'Explicit board was not found',
+        candidates: [],
+      };
     }
     return {
       boardId: board.id,
       column: board.columns[0] ?? 'Backlog',
-	      confidence: 1,
-	      needsClarification: false,
-	      reasonCode: 'explicit_board_requested',
-	      reason: `Explicit board "${board.id}" requested`,
-	      candidates: [{ boardId: board.id, score: 100, matched: ['explicit'] }],
-	    };
+      confidence: 1,
+      needsClarification: false,
+      reasonCode: 'explicit_board_requested',
+      reason: `Explicit board "${board.id}" requested`,
+      candidates: [{ boardId: board.id, score: 100, matched: ['explicit'] }],
+    };
   }
 
   const normalizedText = normalize(text);
@@ -189,56 +190,58 @@ export function routeTask(
         return {
           boardId: board.id,
           column: board.columns[0] ?? 'Backlog',
-	          confidence: 0.5,
-	          needsClarification: false,
-	          reasonCode: 'default_board_used',
-	          reason: 'No confident routing match; default board used by caller policy',
-	          candidates,
-	        };
+          confidence: 0.5,
+          needsClarification: false,
+          reasonCode: 'default_board_used',
+          reason: 'No confident routing match; default board used by caller policy',
+          candidates,
+        };
       }
     }
     return {
       boardId: null,
       column: null,
-	      confidence: 0,
-	      needsClarification: true,
-	      question: 'Which Kanban board should I use: work or personal?',
-	      reasonCode: top?.score === second?.score ? 'routing_tie' : 'no_alias_match',
-	      reason: top?.score === second?.score ? 'Routing tie' : 'No routing alias matched',
-	      candidates,
-	    };
+      confidence: 0,
+      needsClarification: true,
+      question: 'Which Kanban board should I use: work or personal?',
+      reasonCode: top?.score === second?.score ? 'routing_tie' : 'no_alias_match',
+      reason: top?.score === second?.score ? 'Routing tie' : 'No routing alias matched',
+      candidates,
+    };
   }
 
   const confidence = confidenceFromScore(top.score);
   const secondConfidence = second ? confidenceFromScore(second.score) : 0;
-  if (confidence < routing.clarifyBelowConfidence || (second && confidence - secondConfidence < routing.clarifyWithinMargin)) {
+  const scoreGap = second ? top.score - second.score : Number.POSITIVE_INFINITY;
+  const closeMatch = !!second && confidence - secondConfidence < routing.clarifyWithinMargin && scoreGap < STRONG_SCORE_GAP;
+  if (confidence < routing.clarifyBelowConfidence || closeMatch) {
     return {
       boardId: null,
       column: null,
       confidence,
       needsClarification: true,
-	      question: candidates
+      question: candidates
         .filter((candidate) => candidate.score > 0)
         .slice(0, 5)
         .map((candidate) => config.boards.find((board) => board.id === candidate.boardId)?.name ?? candidate.boardId)
         .join(', ')
         ? `Which Kanban board should I use: ${candidates.filter((candidate) => candidate.score > 0).slice(0, 5).map((candidate) => config.boards.find((board) => board.id === candidate.boardId)?.name ?? candidate.boardId).join(', ')}?`
         : 'Which Kanban board should I use?',
-	      reason: confidence < routing.clarifyBelowConfidence
-	        ? `Best match "${top.boardId}" confidence ${confidence} is below threshold ${routing.clarifyBelowConfidence}`
-	        : `Best match "${top.boardId}" is too close to "${second?.boardId}"`,
-	      reasonCode: confidence < routing.clarifyBelowConfidence ? 'low_confidence' : 'close_match',
-	      candidates,
-	    };
+      reason: confidence < routing.clarifyBelowConfidence
+        ? `Best match "${top.boardId}" confidence ${confidence} is below threshold ${routing.clarifyBelowConfidence}`
+        : `Best match "${top.boardId}" is too close to "${second?.boardId}"`,
+      reasonCode: confidence < routing.clarifyBelowConfidence ? 'low_confidence' : 'close_match',
+      candidates,
+    };
   }
 
   return {
     boardId: top.boardId,
     column: top.column,
-	  confidence,
-	  needsClarification: false,
-	  reasonCode: 'matched_aliases',
-	  reason: `Matched aliases: ${top.matched.join(', ')}`,
-	  candidates,
-	};
+    confidence,
+    needsClarification: false,
+    reasonCode: 'matched_aliases',
+    reason: `Matched aliases: ${top.matched.join(', ')}`,
+    candidates,
+  };
 }
