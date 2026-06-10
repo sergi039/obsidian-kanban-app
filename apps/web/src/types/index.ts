@@ -234,6 +234,7 @@ export interface MoveCardRequest {
 }
 
 export interface PatchCardRequest {
+  title?: string;
   column_name?: string;
   position?: number;
   labels?: string[];

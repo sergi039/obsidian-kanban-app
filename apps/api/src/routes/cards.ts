@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { getDb } from '../db.js';
 import { DEFAULT_PRIORITIES, loadConfig } from '../config.js';
-import { writeBackDoneState, writeBackPriority, writeBackColumn } from '../writeback.js';
+import { writeBackDoneState, writeBackPriority, writeBackColumn, writeBackTitle } from '../writeback.js';
 import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
 import { isDoneColumn } from '../parser.js';
@@ -21,6 +21,7 @@ const CreateCardSchema = z.object({
 });
 
 const PatchCardSchema = z.object({
+  title: z.string().trim().min(1).max(500).optional(),
   column_name: z.string().optional(),
   position: z.number().int().optional(),
   labels: z.array(z.string()).optional(),
@@ -200,7 +201,7 @@ cards.patch('/:id', async (c) => {
 
   const columnChanging = fields.column_name !== undefined && fields.column_name !== existing.column_name;
   const positionChanging = fields.position !== undefined;
-  const hasMetadataChanges = fields.labels !== undefined || fields.priority !== undefined ||
+  const hasMetadataChanges = fields.title !== undefined || fields.labels !== undefined || fields.priority !== undefined ||
     fields.due_date !== undefined || fields.description !== undefined || fields.checklist !== undefined ||
     fields.links !== undefined;
 
@@ -267,6 +268,22 @@ cards.patch('/:id', async (c) => {
     db.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   }
 
+  let writeBackWarning: string | undefined;
+
+  // Write back title to .md file (writeBackTitle also updates title/raw_line/links in DB).
+  if (fields.title !== undefined) {
+    suppressWatcher();
+    try {
+      const result = writeBackTitle(id, fields.title);
+      if (!result.success) {
+        writeBackWarning = result.error;
+        console.warn(`[writeback] Title failed for card ${id}: ${result.error}`);
+      }
+    } finally {
+      unsuppressWatcher();
+    }
+  }
+
   // Write back priority to .md file
   if (fields.priority !== undefined) {
     suppressWatcher();
@@ -322,7 +339,11 @@ cards.patch('/:id', async (c) => {
     }
   }
 
-  return c.json(formatCard(updated));
+  const response = formatCard(updated);
+  if (writeBackWarning) {
+    return c.json({ ...response, _writeBackWarning: writeBackWarning });
+  }
+  return c.json(response);
 });
 
 // POST /api/cards/:id/move — move card to column + position (atomic transaction)

@@ -90,6 +90,7 @@ vi.mock('../src/writeback.js', () => ({
   writeBackDoneState: vi.fn(() => ({ success: true, changed: true, lineNumber: 1 })),
   writeBackPriority: vi.fn(() => ({ success: true, changed: true, lineNumber: 1 })),
   writeBackColumn: vi.fn(() => ({ success: true, changed: true, lineNumber: 1 })),
+  writeBackTitle: vi.fn(() => ({ success: true, changed: true, lineNumber: 1 })),
 }));
 
 vi.mock('../src/automations.js', () => ({
@@ -301,6 +302,36 @@ describe('column validation on card PATCH', () => {
 
     const card = testDb.prepare('SELECT priority FROM cards WHERE id = ?').get('c1') as { priority: string | null };
     expect(card.priority).toBe('blocker');
+  });
+
+  it('rejects PATCH with an empty title (400)', async () => {
+    const { default: cardRoutes } = await import('../src/routes/cards.js');
+    const app = new Hono();
+    app.route('/api/cards', cardRoutes);
+
+    const res = await app.request('/api/cards/c1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '   ' }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/invalid body/i);
+  });
+
+  it('accepts PATCH with a non-empty title and routes through writeBackTitle', async () => {
+    const writeback = await import('../src/writeback.js');
+    const { default: cardRoutes } = await import('../src/routes/cards.js');
+    const app = new Hono();
+    app.route('/api/cards', cardRoutes);
+
+    const res = await app.request('/api/cards/c1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Renamed via API' }),
+    });
+    expect(res.status).toBe(200);
+    expect(writeback.writeBackTitle).toHaveBeenCalledWith('c1', 'Renamed via API');
   });
 });
 

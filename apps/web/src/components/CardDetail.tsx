@@ -215,6 +215,12 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
   const [labels, setLabels] = useState<string[]>(card.labels);
   const [saving, setSaving] = useState(false);
 
+  // Title (click-to-edit)
+  const displayTitle = cleanTitle(card.title, priorities);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(displayTitle);
+  const titleRef = useRef<HTMLInputElement>(null);
+
   // Description
   const [description, setDescription] = useState(card.description || '');
   const [editingDesc, setEditingDesc] = useState(false);
@@ -250,6 +256,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
     closeRef.current?.focus();
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (editingTitle) { setEditingTitle(false); setTitleDraft(displayTitle); return; }
         if (editingDesc) { setEditingDesc(false); setDescDraft(description); return; }
         if (editingCommentId) { setEditingCommentId(null); return; }
         onClose();
@@ -267,7 +274,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, editingDesc, editingCommentId, description]);
+  }, [onClose, editingTitle, displayTitle, editingDesc, editingCommentId, description]);
 
   const loadReminders = useCallback(async () => {
     setLoadingReminders(true);
@@ -296,6 +303,14 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
 
     loadReminders();
   }, [card.id, loadReminders]);
+
+  // Focus + select the title input when entering edit mode
+  useEffect(() => {
+    if (editingTitle && titleRef.current) {
+      titleRef.current.focus();
+      titleRef.current.select();
+    }
+  }, [editingTitle]);
 
   // Auto-resize description textarea
   useEffect(() => {
@@ -404,6 +419,39 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
   const handleColumnChange = (val: string) => {
     setColumnName(val);
     saveField({ column_name: val });
+  };
+
+  // Title handlers (click-to-edit)
+  const handleTitleEdit = () => {
+    setTitleDraft(displayTitle);
+    setEditingTitle(true);
+  };
+
+  const handleTitleSave = async () => {
+    const trimmed = titleDraft.trim();
+    setEditingTitle(false);
+    // Empty input does not save; no change → no request.
+    if (!trimmed || trimmed === displayTitle) {
+      setTitleDraft(displayTitle);
+      return;
+    }
+    await saveField({ title: trimmed });
+  };
+
+  const handleTitleCancel = () => {
+    setEditingTitle(false);
+    setTitleDraft(displayTitle);
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleTitleSave();
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      handleTitleCancel();
+    }
   };
 
   // Description handlers
@@ -522,10 +570,39 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
         >
           {/* Header */}
           <div className="flex items-start justify-between p-6 pb-0">
-            <div className="flex-1 pr-4">
-              <h2 className="text-xl font-semibold text-board-text leading-snug">
-                {cleanTitle(card.title, priorities)}
-              </h2>
+            <div className="flex-1 pr-4 min-w-0">
+              {editingTitle ? (
+                <input
+                  ref={titleRef}
+                  type="text"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onKeyDown={handleTitleKeyDown}
+                  onBlur={handleTitleSave}
+                  placeholder="Card title…"
+                  className="w-full text-xl font-semibold text-board-text leading-snug bg-board-column border border-board-border rounded-md px-2 py-1 focus:outline-none"
+                  style={{ ['--tw-ring-color' as string]: 'var(--board-accent-ring)' }}
+                />
+              ) : (
+                <div className="group/title flex items-center gap-2">
+                  <h2
+                    onClick={handleTitleEdit}
+                    className="text-xl font-semibold text-board-text leading-snug cursor-text hover:bg-board-column rounded px-1 -mx-1 transition-colors"
+                    title="Click to edit title"
+                  >
+                    {displayTitle}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={handleTitleEdit}
+                    aria-label="Edit title"
+                    title="Edit title"
+                    className="text-board-text-muted hover:text-board-text text-sm opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0"
+                  >
+                    ✏️
+                  </button>
+                </div>
+              )}
               <p className="text-xs text-board-text-muted mt-1">
                 {card.board_id} · Line {card.line_number}
               </p>
