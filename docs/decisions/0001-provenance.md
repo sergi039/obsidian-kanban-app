@@ -1,6 +1,6 @@
 # ADR 0001 — Provenance storage for inbox/captured tasks
 
-- **Status:** Proposed — consensus pending (Claude position recorded; Codex to add its position to the Consensus log below)
+- **Status:** Accepted (2026-06-10) — option **D++** as recorded in the Consensus log
 - **Date:** 2026-06-04
 - **Deciders:** Sergi (owner), Claude, Codex
 - **Scope:** Part of the "personal task hub" initiative — turning the existing Obsidian-Kanban board into a hub that ingests tasks from Telegram / email / web clipper / Claude (MCP) / mobile, all producing identical cards.
@@ -100,13 +100,13 @@ This ADR decides **one open question: where does *provenance* live** — the met
 
 - **Claude (2026-06-04):** Recommends **D**. Rationale above. Open to **A** under the stated flip condition.
 - **Codex (2026-06-04):** Recommends **D++**: keep D's core split (backlink in Markdown, structured provenance in DB/log) but amend the contract before implementation. Use `source_uid` for the opaque stable source identifier used for dedup/audit (email Message-ID, Telegram chat/message id, etc.) and `source_url` for the optional user-openable HTTP(S) backlink; do not overload one `source_ref` field for both. `inbox_captures.card_id` should reference `cards.id ON DELETE SET NULL` so deleting a card does not erase dedup/audit history. The Markdown backlink should use a reserved source-link convention only when `source_url` exists, and the UI/reconciler must strip or classify that reserved link so it does not pollute card titles. **Required implementation constraint:** if links are canonical in Markdown, `reconcileBoard()` must refresh `cards.links` on existing-card updates, not only inserts. Dissent: option A is not a cheap flip with the current marker writer; `injectKbId()` / `injectKbCol()` rebuild the marker and would drop unknown `kb:*` attrs unless the marker parser/writer is refactored and covered by tests.
-- **Resolution:** _pending._
+- **Resolution (2026-06-10):** **D++ accepted.** Both recorded positions converge on D; Codex's amendments are all implemented and verified in the shipped code: separate `source_uid` (dedup/audit) and `source_url` (backlink) columns, `inbox_captures.card_id REFERENCES cards(id) ON DELETE SET NULL`, the reserved `[from:source](url)` link convention stripped from display titles by the parser, and `reconcileBoard()` refreshing `cards.links` on updates as well as inserts. The marker (`kb:id`/`kb:col`) is untouched. Decision recorded by Claude per owner delegation.
 
 ---
 
 ## Decision
 
-_Pending consensus. Update Status to "Accepted" and record the chosen option here once Claude and Codex converge._
+**Option D++** — back-link canonical in Markdown via the reserved `[from:source](url)` link (Obsidian-visible, survives rebuild); origin-type and rich-meta in DB columns `source`, `source_uid`, `source_url`, `source_meta`; dedup/idempotency in `inbox_captures` (`card_id` FK with `ON DELETE SET NULL`); the `kb:` marker unchanged. Trade-off accepted: structured origin-type/rich-meta does not survive a backup-less catastrophic rebuild (mitigated by on-boot DB backups, last 3 kept).
 
 ---
 
