@@ -100,12 +100,20 @@ function getReminder(id: string): Record<string, unknown> | undefined {
   `).get(id) as Record<string, unknown> | undefined;
 }
 
-function emitReminderChanged(type: string, row: Record<string, unknown>): void {
+type ReminderEventType =
+  | 'reminder-created'
+  | 'reminder-updated'
+  | 'reminder-snoozed'
+  | 'reminder-dismissed'
+  | 'reminder-fired'
+  | 'reminder-deleted';
+
+function emitReminderChanged(type: ReminderEventType, row: Record<string, unknown>): void {
   broadcast({
     type,
-    reminderId: row.id,
-    cardId: row.card_id,
-    boardId: row.board_id,
+    reminderId: row.id != null ? String(row.id) : undefined,
+    cardId: typeof row.card_id === 'string' ? row.card_id : undefined,
+    boardId: typeof row.board_id === 'string' ? row.board_id : undefined,
     timestamp: new Date().toISOString(),
   });
 }

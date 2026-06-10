@@ -108,7 +108,7 @@ inbox.post('/capture', async (c) => {
       allowDefaultOnAmbiguous: parsed.data.allow_default_on_ambiguous,
     });
 
-    if ('needsClarification' in result && result.needsClarification) {
+    if ('needsClarification' in result) {
       return c.json({
         status: 'needs_clarification',
         clarification: {

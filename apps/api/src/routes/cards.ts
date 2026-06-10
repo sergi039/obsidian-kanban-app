@@ -145,10 +145,13 @@ cards.post('/', async (c) => {
       source: 'manual',
     });
     if (!result.created) {
-      if (result.needsClarification && result.route.reasonCode === 'explicit_board_not_found') {
-        return c.json({ error: 'Board not found' }, 404);
+      if ('needsClarification' in result) {
+        if (result.route.reasonCode === 'explicit_board_not_found') {
+          return c.json({ error: 'Board not found' }, 404);
+        }
+        return c.json({ error: result.question, route: result.route }, 400);
       }
-      return c.json({ error: result.question ?? 'Unable to create card', route: result.route }, 400);
+      return c.json({ error: 'Unable to create card', route: result.route ?? null }, 400);
     }
     return c.json(result.card, result.duplicate ? 200 : 201);
   } catch (err) {
