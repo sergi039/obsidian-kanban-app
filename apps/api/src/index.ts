@@ -45,7 +45,26 @@ app.route('/api/reminders', reminderRoutes);
 app.route('/api/export', exportRoutes);
 app.route('/api/inbox', inboxRoutes);
 
-app.get('/api/health', (c) => c.json({ ok: true }));
+function buildHealth() {
+  const cfg = loadConfig();
+  const boards = cfg.boards.map((board) => {
+    const abs = path.join(cfg.vaultRoot, board.file);
+    let exists = false;
+    let mtime: string | null = null;
+    try {
+      const stat = statSync(abs);
+      exists = true;
+      mtime = stat.mtime.toISOString();
+    } catch {
+      exists = false;
+      mtime = null;
+    }
+    return { id: board.id, file: board.file, exists, mtime };
+  });
+  return { ok: true, vaultRoot: cfg.vaultRoot, boards };
+}
+
+app.get('/api/health', (c) => c.json(buildHealth()));
 
 // Serve built frontend in production
 if (process.env.NODE_ENV === 'production' || process.env.SERVE_STATIC) {
@@ -90,7 +109,7 @@ const config = loadConfig();
 const db = getDb();
 
 // Backup DB on startup (keeps last 3 backups)
-import { copyFileSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { copyFileSync, existsSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { PROJECT_ROOT } from './config.js';
 const DB_PATH = path.join(PROJECT_ROOT, 'data', 'kanban.db');
 try {
@@ -118,6 +137,16 @@ try {
 console.log(`[boot] Loaded ${config.boards.length} boards from config`);
 console.log(`[boot] Vault root: ${config.vaultRoot}`);
 
+if (!existsSync(config.vaultRoot)) {
+  console.error(`[boot] ERROR: vault root does not exist: ${config.vaultRoot} — sync will not work until this path is fixed`);
+}
+for (const board of config.boards) {
+  const abs = path.join(config.vaultRoot, board.file);
+  if (!existsSync(abs)) {
+    console.error(`[boot] ERROR: board "${board.id}" file not found: ${abs} — this board will not sync`);
+  }
+}
+
 // Initial sync
 const results = reconcileAll(config.vaultRoot, config.boards);
 for (const r of results) {
@@ -137,40 +166,62 @@ startWatcher(config);
 const PORT = Number(process.env.PORT) || 4000;
 
 const server = createServer(async (req, res) => {
-  const response = await app.fetch(
-    new Request(`http://localhost:${PORT}${req.url}`, {
-      method: req.method,
-      headers: Object.entries(req.headers).reduce(
-        (acc, [k, v]) => {
-          if (v) acc[k] = Array.isArray(v) ? v.join(', ') : v;
-          return acc;
-        },
-        {} as Record<string, string>,
-      ),
-      body: ['GET', 'HEAD'].includes(req.method || 'GET')
-        ? undefined
-        : await new Promise<string>((resolve, reject) => {
-            const maxSize = Number(process.env.MAX_BODY_SIZE) || 1_048_576;
-            let body = '';
-            let size = 0;
-            req.on('data', (chunk: Buffer | string) => {
-              size += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
-              if (size > maxSize) {
-                req.destroy();
-                reject(new Error('Body too large'));
-                return;
-              }
-              body += chunk;
-            });
-            req.on('end', () => resolve(body));
-            req.on('error', reject);
-          }),
-    }),
-  );
+  try {
+    const response = await app.fetch(
+      new Request(`http://localhost:${PORT}${req.url}`, {
+        method: req.method,
+        headers: Object.entries(req.headers).reduce(
+          (acc, [k, v]) => {
+            if (v) acc[k] = Array.isArray(v) ? v.join(', ') : v;
+            return acc;
+          },
+          {} as Record<string, string>,
+        ),
+        body: ['GET', 'HEAD'].includes(req.method || 'GET')
+          ? undefined
+          : await new Promise<string>((resolve, reject) => {
+              const maxSize = Number(process.env.MAX_BODY_SIZE) || 1_048_576;
+              let body = '';
+              let size = 0;
+              req.on('data', (chunk: Buffer | string) => {
+                size += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
+                if (size > maxSize) {
+                  req.destroy();
+                  reject(new Error('Body too large'));
+                  return;
+                }
+                body += chunk;
+              });
+              req.on('end', () => resolve(body));
+              req.on('error', reject);
+            }),
+      }),
+    );
 
-  res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
-  const body = await response.arrayBuffer();
-  res.end(Buffer.from(body));
+    res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+    const body = await response.arrayBuffer();
+    res.end(Buffer.from(body));
+  } catch (err) {
+    const tooLarge = err instanceof Error && err.message === 'Body too large';
+    console.error('[server] Request handling error:', err);
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    const status = tooLarge ? 413 : 500;
+    const message = tooLarge ? 'Body too large' : 'Internal server error';
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: message }));
+  }
+});
+
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[boot] Port ${PORT} already in use — is another instance running?`);
+    process.exit(1);
+  }
+  console.error('[boot] Server error:', err);
+  process.exit(1);
 });
 
 // Attach WebSocket server
