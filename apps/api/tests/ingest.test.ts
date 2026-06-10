@@ -48,6 +48,11 @@ function createDb(): InstanceType<typeof Database> {
       updated_at TEXT DEFAULT (datetime('now')),
       created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS sync_state (
+      file_path TEXT PRIMARY KEY,
+      file_hash TEXT NOT NULL,
+      last_synced TEXT DEFAULT (datetime('now'))
+    );
   `);
   return db;
 }
@@ -112,6 +117,26 @@ describe('ingestCard', () => {
       card_id: result.card.id,
     });
     expect(readFileSync(path.join(vaultRoot, 'Private.md'), 'utf-8')).toContain('Retryable task');
+  });
+
+  it('stamps sync_state with sha256 of the post-write file on successful capture', async () => {
+    const { ingestCard } = await import('../src/ingest.js');
+    const config = createConfig(vaultRoot);
+
+    const result = ingestCard({
+      boardId: 'private',
+      title: 'Hash-stamped task',
+      source: 'claude',
+      sourceUid: 'claude-message-hash',
+    }, config);
+
+    expect(result.created).toBe(true);
+    const filePath = path.join(vaultRoot, 'Private.md');
+    const onDisk = readFileSync(filePath, 'utf-8');
+    const row = testDb.prepare('SELECT file_hash FROM sync_state WHERE file_path = ?').get(filePath) as
+      | { file_hash: string }
+      | undefined;
+    expect(row?.file_hash).toBe(createHash('sha256').update(onDisk).digest('hex'));
   });
 
   it('returns a duplicate capture before re-routing a completed write', async () => {

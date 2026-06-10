@@ -243,6 +243,7 @@ boards.post('/sync/reload', async (c) => {
     const config = loadConfig();
     const { reconcileAll } = await import('../reconciler.js');
     const results = reconcileAll(config.vaultRoot, config.boards);
+    broadcast({ type: 'sync-complete', timestamp: new Date().toISOString() });
     return c.json({ ok: true, results });
   } catch (err) {
     console.error('[sync/reload] Error:', err);
