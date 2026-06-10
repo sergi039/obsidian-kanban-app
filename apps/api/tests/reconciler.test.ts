@@ -420,6 +420,72 @@ describe('reconciler', () => {
     expect(result.migrated).toBe(0);
   });
 
+  it('assigns per-column positions (not global file index) to new cards', async () => {
+    const board = makeBoard();
+    // Tasks alternate between Backlog and In Progress via kb:col markers.
+    // Global file index would give 0,1,2,3,4,5 across all cards, but each
+    // column should get its own contiguous 0,1,2 sequence.
+    writeMd(
+      'Tasks/Board.md',
+      [
+        '- [ ] Back 0 <!-- kb:id=pos00001 kb:col=Backlog -->',
+        '- [ ] Prog 0 <!-- kb:id=pos00002 kb:col=In+Progress -->',
+        '- [ ] Back 1 <!-- kb:id=pos00003 kb:col=Backlog -->',
+        '- [ ] Prog 1 <!-- kb:id=pos00004 kb:col=In+Progress -->',
+        '- [ ] Back 2 <!-- kb:id=pos00005 kb:col=Backlog -->',
+        '- [ ] Prog 2 <!-- kb:id=pos00006 kb:col=In+Progress -->',
+      ].join('\n') + '\n',
+    );
+
+    const { reconcileBoard } = await import('../src/reconciler.js');
+    reconcileBoard(board, vaultRoot);
+
+    const backlog = testDb
+      .prepare("SELECT title, position FROM cards WHERE board_id = ? AND column_name = 'Backlog' ORDER BY position")
+      .all('b1') as Array<{ title: string; position: number }>;
+    const inProgress = testDb
+      .prepare("SELECT title, position FROM cards WHERE board_id = ? AND column_name = 'In Progress' ORDER BY position")
+      .all('b1') as Array<{ title: string; position: number }>;
+
+    // Each column gets contiguous 0,1,2 — NOT the global file index (0,2,4 / 1,3,5).
+    expect(backlog.map((c) => c.position)).toEqual([0, 1, 2]);
+    expect(backlog.map((c) => c.title)).toEqual(['Back 0', 'Back 1', 'Back 2']);
+    expect(inProgress.map((c) => c.position)).toEqual([0, 1, 2]);
+    expect(inProgress.map((c) => c.title)).toEqual(['Prog 0', 'Prog 1', 'Prog 2']);
+  });
+
+  it('continues per-column position from existing DB max on re-reconcile', async () => {
+    const board = makeBoard();
+    writeMd(
+      'Tasks/Board.md',
+      [
+        '- [ ] First <!-- kb:id=seedaaa1 kb:col=Backlog -->',
+        '- [ ] Second <!-- kb:id=seedaaa2 kb:col=Backlog -->',
+      ].join('\n') + '\n',
+    );
+
+    const { reconcileBoard } = await import('../src/reconciler.js');
+    reconcileBoard(board, vaultRoot);
+
+    // Add a third Backlog task; force re-reconcile.
+    writeMd(
+      'Tasks/Board.md',
+      [
+        '- [ ] First <!-- kb:id=seedaaa1 kb:col=Backlog -->',
+        '- [ ] Second <!-- kb:id=seedaaa2 kb:col=Backlog -->',
+        '- [ ] Third <!-- kb:id=seedaaa3 kb:col=Backlog -->',
+      ].join('\n') + '\n',
+    );
+    testDb.prepare('DELETE FROM sync_state').run();
+    reconcileBoard(board, vaultRoot);
+
+    const card = testDb
+      .prepare('SELECT position FROM cards WHERE id = ?')
+      .get('seedaaa3') as { position: number };
+    // New card continues from existing max (2), not reset to a global index.
+    expect(card.position).toBe(2);
+  });
+
   it('legacy fingerprint migration: adopts existing card ID and stamps kb:id', async () => {
     const board = makeBoard();
     const { computeFingerprint } = await import('../src/parser.js');

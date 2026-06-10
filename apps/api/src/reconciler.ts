@@ -87,6 +87,16 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
   const maxSeqRow = db.prepare('SELECT COALESCE(MAX(seq_id), 0) as max_seq FROM cards WHERE board_id = ?').get(board.id) as { max_seq: number };
   let nextSeqId = maxSeqRow.max_seq;
 
+  // Seed per-column next position from existing DB max position per column.
+  // New cards are appended within their target column (not the global file index).
+  const nextPosByColumn = new Map<string, number>();
+  const maxPosRows = db
+    .prepare('SELECT column_name, MAX(position) as max_pos FROM cards WHERE board_id = ? GROUP BY column_name')
+    .all(board.id) as Array<{ column_name: string; max_pos: number }>;
+  for (const row of maxPosRows) {
+    nextPosByColumn.set(row.column_name, row.max_pos + 1);
+  }
+
   const updateStmt = db.prepare(`
     UPDATE cards SET
       title = ?, raw_line = ?, line_number = ?, is_done = ?,
@@ -189,11 +199,14 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         let col = task.kbCol && board.columns.includes(task.kbCol) ? task.kbCol : null;
         if (!col) col = task.isDone ? 'Done' : 'Backlog';
         nextSeqId++;
+        // Assign the next position within the target column (per-column, not global file index).
+        const position = nextPosByColumn.get(col) ?? 0;
+        nextPosByColumn.set(col, position + 1);
         insertStmt.run(
           id,
           board.id,
           col,
-          i,
+          position,
           task.title,
           task.rawLine,
           task.lineNumber,
