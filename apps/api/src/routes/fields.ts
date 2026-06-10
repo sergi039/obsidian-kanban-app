@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { getDb } from '../db.js';
 import { loadConfig } from '../config.js';
+import { setCardFieldValue } from '../field-values.js';
 import { safeJsonParse } from '../utils.js';
 
 const fields = new Hono();
@@ -167,63 +168,10 @@ fields.put('/:fieldId/values/:cardId', async (c) => {
   if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
 
   const db = getDb();
-  const field = db.prepare('SELECT * FROM fields WHERE id = ?').get(fieldId) as Record<string, unknown> | undefined;
-  if (!field) return c.json({ error: 'Field not found' }, 404);
-  const card = db.prepare('SELECT id, board_id FROM cards WHERE id = ?').get(cardId) as { id: string; board_id: string } | undefined;
-  if (!card) return c.json({ error: 'Card not found' }, 404);
+  const result = setCardFieldValue(db, fieldId, cardId, parsed.data.value);
+  if (!result.ok) return c.json({ error: result.error }, result.status as 400 | 404);
 
-  // Board integrity: field and card must belong to the same board
-  if (card.board_id !== field.board_id) {
-    return c.json({ error: 'Field and card belong to different boards' }, 400);
-  }
-
-  // Validate value against field type
-  let value = parsed.data.value;
-  if (value !== null) {
-    const type = field.type as string;
-    if (type === 'NUMBER') {
-      if (value.trim().length === 0 || !Number.isFinite(Number(value))) {
-        return c.json({ error: 'Value must be a finite number' }, 400);
-      }
-    }
-    if (type === 'DATE') {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        return c.json({ error: 'Value must be a date (YYYY-MM-DD)' }, 400);
-      }
-      const [y, m, d] = value.split('-').map(Number);
-      const dt = new Date(y, m - 1, d);
-      if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
-        return c.json({ error: 'Invalid calendar date' }, 400);
-      }
-    }
-    if (type === 'ITERATION') {
-      if (typeof value !== 'string' || value.trim().length === 0) {
-        return c.json({ error: 'Iteration value must be a non-empty string' }, 400);
-      }
-    }
-    if (type === 'SINGLE_SELECT') {
-      const options = safeJsonParse<Array<{ id: string; name: string }>>(field.options as string, []);
-      const match = options.find((o) => o.id === value || o.name === value);
-      if (!match) {
-        return c.json({ error: `Value must be one of: ${options.map((o) => o.name).join(', ')}` }, 400);
-      }
-      // Always normalize to option.id for canonical storage
-      value = match.id;
-    }
-  }
-
-  if (value === null) {
-    db.prepare('DELETE FROM field_values WHERE card_id = ? AND field_id = ?').run(cardId, fieldId);
-  } else {
-    db.prepare(
-      'INSERT OR REPLACE INTO field_values (card_id, field_id, value) VALUES (?, ?, ?)'
-    ).run(cardId, fieldId, value);
-  }
-
-  // Touch card updated_at
-  db.prepare("UPDATE cards SET updated_at = datetime('now') WHERE id = ?").run(cardId);
-
-  return c.json({ ok: true, card_id: cardId, field_id: fieldId, value });
+  return c.json({ ok: true, card_id: result.cardId, field_id: result.fieldId, value: result.value });
 });
 
 export default fields;

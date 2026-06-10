@@ -1,13 +1,16 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type FormEvent } from 'react';
 import {
+  clearApiToken,
   fetchBoards,
   fetchBoard,
+  isAuthError,
   reloadSync,
   createCard,
   addColumn,
   renameColumn,
   deleteColumn,
   fetchFields,
+  setApiToken,
   updateBoardPriorities,
   updateBoardCategories,
   fetchBoardReminders,
@@ -101,28 +104,42 @@ export default function App() {
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission>(() =>
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'denied',
   );
+  const [authRequired, setAuthRequired] = useState(false);
+  const [apiTokenInput, setApiTokenInput] = useState('');
   const openSettingsRef = useRef<(() => void) | null>(null);
   const openedCardParamRef = useRef<string | null>(null);
   const browserNotifiedRef = useRef<Set<string>>(loadBrowserNotifiedIds(browserNotificationStorage()));
   const { theme, cycleTheme } = useTheme();
 
   // Load boards list
-  useEffect(() => {
-    fetchBoards()
-      .then((data) => {
-        setBoards(data);
-        if (data.length > 0 && !activeBoardId) {
-          const boardParam = new URLSearchParams(window.location.search).get('board');
-          setActiveBoardId(data.find((board) => board.id === boardParam)?.id ?? data[0].id);
-        }
+  const loadBoardsList = useCallback(async () => {
+    try {
+      const data = await fetchBoards();
+      setBoards(data);
+      setActiveBoardId((current) => {
+        if (current) return current;
+        const boardParam = new URLSearchParams(window.location.search).get('board');
+        return data.find((board) => board.id === boardParam)?.id ?? data[0]?.id ?? null;
+      });
+      setAuthRequired(false);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch boards:', err);
+      if (isAuthError(err)) {
+        clearApiToken();
+        setAuthRequired(true);
         setError(null);
-      })
-      .catch((err) => {
-        console.error('Failed to fetch boards:', err);
+      } else {
         setError('Failed to load boards. Is the API running?');
-      })
-      .finally(() => setLoading(false));
+      }
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadBoardsList();
+  }, [loadBoardsList]);
 
   // Load active board detail + fields + reminders
   const loadBoard = useCallback(async (): Promise<BoardDetail | null> => {
@@ -143,7 +160,13 @@ export default function App() {
       return detail;
     } catch (err) {
       console.error('Failed to fetch board:', err);
-      setError(`Failed to load board "${activeBoardId}".`);
+      if (isAuthError(err)) {
+        clearApiToken();
+        setAuthRequired(true);
+        setError(null);
+      } else {
+        setError(`Failed to load board "${activeBoardId}".`);
+      }
       return null;
     }
   }, [activeBoardId]);
@@ -158,7 +181,14 @@ export default function App() {
       if (!boardId || boardId === activeBoardId) {
         loadBoard();
       }
-      fetchBoards().then(setBoards).catch(() => {});
+      fetchBoards()
+        .then(setBoards)
+        .catch((err) => {
+          if (isAuthError(err)) {
+            clearApiToken();
+            setAuthRequired(true);
+          }
+        });
     },
     [activeBoardId, loadBoard],
   );
@@ -187,10 +217,27 @@ export default function App() {
       setError(null);
     } catch (err) {
       console.error('Sync failed:', err);
-      setError('Sync failed. Check server logs.');
+      if (isAuthError(err)) {
+        clearApiToken();
+        setAuthRequired(true);
+        setError(null);
+      } else {
+        setError('Sync failed. Check server logs.');
+      }
     } finally {
       setSyncing(false);
     }
+  };
+
+  const handleAuthSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    const token = apiTokenInput.trim();
+    if (!token) return;
+
+    setApiToken(token);
+    setAuthRequired(false);
+    setLoading(true);
+    await loadBoardsList();
   };
 
   const handleCardMove = async () => {
@@ -450,6 +497,39 @@ export default function App() {
       <div className="flex items-center justify-center h-screen bg-board-bg">
         <div className="text-board-text-muted text-lg">Loading boards…</div>
       </div>
+    );
+  }
+
+  if (authRequired) {
+    return (
+      <ErrorBoundary>
+        <div className="min-h-screen bg-board-bg flex items-center justify-center px-6">
+          <form
+            onSubmit={handleAuthSubmit}
+            className="w-full max-w-sm border border-board-border bg-board-column rounded-lg p-5 shadow-lg"
+          >
+            <h1 className="text-base font-semibold text-board-text mb-4">API token required</h1>
+            <label className="block text-sm text-board-text-muted mb-2" htmlFor="api-token">
+              Token
+            </label>
+            <input
+              id="api-token"
+              type="password"
+              value={apiTokenInput}
+              onChange={(event) => setApiTokenInput(event.target.value)}
+              autoFocus
+              className="w-full h-9 px-3 rounded-md border border-board-border bg-board-bg text-board-text outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={!apiTokenInput.trim()}
+              className="mt-4 w-full h-9 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Continue
+            </button>
+          </form>
+        </div>
+      </ErrorBoundary>
     );
   }
 

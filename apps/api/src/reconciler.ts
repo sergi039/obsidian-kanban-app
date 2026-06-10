@@ -1,7 +1,15 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { parseMarkdownTasks, computeFingerprint, allocateUniqueKbId, injectKbId, isDoneColumn } from './parser.js';
+import {
+  allocateUniqueKbId,
+  computeFingerprint,
+  getDefaultDoneColumn,
+  getDefaultOpenColumn,
+  injectKbId,
+  isDoneColumn,
+  parseMarkdownTasks,
+} from './parser.js';
 import { getDb } from './db.js';
 import { DEFAULT_PRIORITIES } from './config.js';
 import type { BoardConfig } from './config.js';
@@ -171,9 +179,9 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
       if (existing) {
         let col = existing.column_name;
         if (task.isDone && !existing.is_done) {
-          col = 'Done';
+          col = getDefaultDoneColumn(board);
         } else if (!task.isDone && existing.is_done && isDoneColumn(existing.column_name, board)) {
-          col = 'Backlog';
+          col = getDefaultOpenColumn(board);
         }
 
         updateStmt.run(
@@ -197,7 +205,7 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         // Use kb:col from .md marker if available, otherwise default by done state
         // Validate kb:col is a known column; fall back to Done/Backlog if not
         let col = task.kbCol && board.columns.includes(task.kbCol) ? task.kbCol : null;
-        if (!col) col = task.isDone ? 'Done' : 'Backlog';
+        if (!col) col = task.isDone ? getDefaultDoneColumn(board) : getDefaultOpenColumn(board);
         nextSeqId++;
         // Assign the next position within the target column (per-column, not global file index).
         const position = nextPosByColumn.get(col) ?? 0;

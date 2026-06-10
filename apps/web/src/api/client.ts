@@ -18,20 +18,61 @@ import type {
   UpdateReminderRequest,
   SnoozeReminderRequest,
 } from '../types';
+export { clearApiToken, getApiToken, setApiToken } from './auth';
+import { getApiToken } from './auth';
 
 const BASE = '/api';
 
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly body: string,
+  ) {
+    super(`API ${status}: ${body}`);
+  }
+}
+
+export function isAuthError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
+function normalizeHeaders(headers?: HeadersInit): Record<string, string> {
+  if (!headers) return {};
+  if (headers instanceof Headers) {
+    const out: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      out[key] = value;
+    });
+    return out;
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers);
+  }
+  return { ...headers };
+}
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  const lowerName = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === lowerName);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...normalizeHeaders(init?.headers),
+  };
+  const token = getApiToken();
+  if (token && !hasHeader(headers, 'Authorization')) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...init?.headers,
-    },
+    headers,
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
+    throw new ApiError(res.status, body);
   }
   return res.json();
 }

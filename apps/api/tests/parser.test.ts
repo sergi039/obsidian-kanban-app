@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { parseMarkdownTasks, computeFingerprint, generateKbId, extractKbId, injectKbId, stripKbIdFromTitle } from '../src/parser.js';
+import {
+  computeFingerprint,
+  encodeCol,
+  extractKbCol,
+  extractKbId,
+  generateKbId,
+  injectKbCol,
+  injectKbId,
+  parseMarkdownTasks,
+  stripKbIdFromTitle,
+} from '../src/parser.js';
 
 // ─── Real content from VirtoSoftware file ─────────────────────
 const VS_CONTENT = `---
@@ -417,6 +427,29 @@ describe('kb:id markers', () => {
 
     it('trims trailing whitespace before appending', () => {
       expect(injectKbId('- [ ] Task text   ', 'abc12345')).toBe('- [ ] Task text <!-- kb:id=abc12345 -->');
+    });
+  });
+
+  describe('kb:col markers', () => {
+    it('preserves compatibility with legacy plus-encoded spaces', () => {
+      expect(extractKbCol('- [ ] Task <!-- kb:id=abc12345 kb:col=In+Progress -->'))
+        .toBe('In Progress');
+    });
+
+    it('percent-encodes column names with unicode and punctuation', () => {
+      const col = 'Готово/QA & A+B';
+      expect(encodeCol(col)).toBe('%D0%93%D0%BE%D1%82%D0%BE%D0%B2%D0%BE%2FQA+%26+A%2BB');
+    });
+
+    it('extracts percent-encoded kb:col values', () => {
+      const line = '- [ ] Task <!-- kb:id=abc12345 kb:col=%D0%93%D0%BE%D1%82%D0%BE%D0%B2%D0%BE%2FQA+%26+A%2BB -->';
+      expect(extractKbCol(line)).toBe('Готово/QA & A+B');
+    });
+
+    it('injects encoded kb:col values into existing markers', () => {
+      const line = injectKbCol('- [ ] Task <!-- kb:id=abc12345 -->', 'Готово/QA & A+B');
+      expect(line).toContain('kb:col=%D0%93%D0%BE%D1%82%D0%BE%D0%B2%D0%BE%2FQA+%26+A%2BB');
+      expect(extractKbCol(line)).toBe('Готово/QA & A+B');
     });
   });
 

@@ -9,6 +9,18 @@
 - Added browser notification delivery for open Kanban tabs and a local macOS delivery agent for Notification Center, Calendar `.ics` handoff, and Mail.app email reminders.
 - Added configurable Calendar.app target calendar delivery so reminder events can be created directly in a personal calendar instead of defaulting to a work-calendar import dialog.
 
+### Stability
+- Added API typecheck/build script so root `pnpm build` verifies backend TypeScript, not only the web bundle.
+- Reused the shared test DB schema in reconciler tests to prevent drift from production migrations.
+- Reconciler now respects configured done/open columns instead of writing hardcoded `Done`/`Backlog`.
+- `kb:col` markers now percent-encode column names, preserving spaces, punctuation, `+`, and non-Latin text while still reading legacy `+` markers.
+
+### Authentication
+- Added frontend API token storage, bearer headers for fetch requests, and WebSocket `?token=` support so `API_TOKEN` deployments remain usable from the UI.
+
+### Automations
+- Automation `set_field` actions now reuse the same field value validation and normalization as the fields API.
+
 ## 2026-02-19
 
 ### Board Management
