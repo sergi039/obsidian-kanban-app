@@ -10,7 +10,7 @@ import path from 'node:path';
 import { suppressWatcher, unsuppressWatcher } from './watcher.js';
 import { DEFAULT_PRIORITIES, loadConfig } from './config.js';
 import { getDb } from './db.js';
-import { extractKbId, injectKbCol } from './parser.js';
+import { extractKbId, injectKbCol, extractTaskLinks } from './parser.js';
 
 export interface WriteBackResult {
   success: boolean;
@@ -23,6 +23,19 @@ const CHECKBOX_RE = /^(\s*- \[)([ xX])(\] .*)$/;
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Update sync_state.file_hash for a file after a write-back modifies it.
+ * Hashes the exact bytes written so the value matches what reconciler computes
+ * (createHash('sha256').update(content)), preventing a redundant re-reconcile of
+ * our own change. `content` MUST be the post-write file content.
+ */
+export function updateSyncStateHash(filePath: string, content: string): void {
+  const hash = createHash('sha256').update(content).digest('hex');
+  getDb()
+    .prepare(`INSERT OR REPLACE INTO sync_state (file_path, file_hash, last_synced) VALUES (?, ?, datetime('now'))`)
+    .run(filePath, hash);
 }
 
 /**
@@ -128,7 +141,9 @@ export function writeBackDoneState(
       }
 
       lines[found] = `${foundMatch[1]}${isDone ? 'x' : ' '}${foundMatch[3]}`;
-      atomicWrite(filePath, lines.join('\n'));
+      const foundContent = lines.join('\n');
+      atomicWrite(filePath, foundContent);
+      updateSyncStateHash(filePath, foundContent);
 
       // Update line_number in DB
       db.prepare('UPDATE cards SET line_number = ? WHERE id = ?').run(found + 1, cardId);
@@ -145,7 +160,9 @@ export function writeBackDoneState(
     const newMark = isDone ? 'x' : ' ';
     lines[lineIdx] = `${checkboxMatch[1]}${newMark}${checkboxMatch[3]}`;
 
-    atomicWrite(filePath, lines.join('\n'));
+    const updatedContent = lines.join('\n');
+    atomicWrite(filePath, updatedContent);
+    updateSyncStateHash(filePath, updatedContent);
 
     return { success: true, changed: true, lineNumber: card.line_number };
   } catch (err) {
@@ -247,7 +264,9 @@ export function writeBackPriority(
     }
 
     lines[lineIdx] = line;
-    atomicWrite(filePath, lines.join('\n'));
+    const updatedContent = lines.join('\n');
+    atomicWrite(filePath, updatedContent);
+    updateSyncStateHash(filePath, updatedContent);
 
     // Update raw_line and line_number in DB
     db.prepare('UPDATE cards SET raw_line = ?, line_number = ? WHERE id = ?').run(line, lineIdx + 1, cardId);
@@ -311,11 +330,136 @@ export function writeBackColumn(
     }
 
     lines[lineIdx] = updatedLine;
-    atomicWrite(filePath, lines.join('\n'));
+    const updatedContent = lines.join('\n');
+    atomicWrite(filePath, updatedContent);
+    updateSyncStateHash(filePath, updatedContent);
 
     // Update raw_line in DB to keep in sync
     db.prepare('UPDATE cards SET raw_line = ?, line_number = ? WHERE id = ?').run(updatedLine, lineIdx + 1, cardId);
 
+    return { success: true, changed: true, lineNumber: lineIdx + 1 };
+  } catch (err) {
+    return { success: false, changed: false, lineNumber: card.line_number, error: String(err) };
+  }
+}
+
+/** Matches the kb marker (kb:id + optional kb:col) anywhere in the line. */
+const KB_MARKER_RE = /<!--\s*kb:id=[a-zA-Z0-9_-]+(?:\s+kb:col=[A-Za-z0-9+_-]+)?\s*-->/;
+/** Matches a [from:source](url) source link (first occurrence). */
+const SOURCE_LINK_RE = /\[from:[a-z][a-z0-9_-]*\]\((https?:\/\/[^)]+)\)/i;
+
+/**
+ * Write-back a new display title to the .md file for a given card.
+ *
+ * The line is rebuilt preserving (in original order):
+ *   leading whitespace + `- [ ]`/`- [x]` checkbox state, the priority emoji
+ *   (if one of the board's configured priority emojis is present in the old line),
+ *   the `[from:source](url)` link, and the kb marker (kb:id + kb:col) exactly.
+ * Only the display-title text portion is replaced by `newTitle`.
+ *
+ * Primary line matching is by kb:id (like writeBackColumn). If the card has no
+ * kb:id, this returns a failure result rather than fuzzy-matching.
+ *
+ * Also re-extracts links from the rebuilt line text (same as the parser) and
+ * updates the card's title, raw_line, and links columns for consistency.
+ */
+export function writeBackTitle(
+  cardId: string,
+  newTitle: string,
+): WriteBackResult {
+  const db = getDb();
+  const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(cardId) as
+    | { board_id: string; line_number: number; raw_line: string }
+    | undefined;
+
+  if (!card) {
+    return { success: false, changed: false, lineNumber: 0, error: 'Card not found' };
+  }
+
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === card.board_id);
+  if (!board) {
+    return { success: false, changed: false, lineNumber: card.line_number, error: 'Board config not found' };
+  }
+
+  // Primary matching is by kb:id only — no fuzzy fallback (parity with writeBackColumn).
+  const cardKbId = extractKbId(card.raw_line);
+  if (!cardKbId) {
+    return { success: false, changed: false, lineNumber: card.line_number, error: 'Card has no kb:id marker' };
+  }
+
+  const trimmedTitle = newTitle.trim();
+  if (trimmedTitle.length === 0) {
+    return { success: false, changed: false, lineNumber: card.line_number, error: 'Title cannot be empty' };
+  }
+
+  const priorityDefs = board.priorities ?? DEFAULT_PRIORITIES;
+  const priorityEmojis = Array.from(new Set(priorityDefs.map((p) => p.emoji)));
+
+  const filePath = path.join(config.vaultRoot, board.file);
+
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+
+    // Locate the line by kb:id (verify expected index, else search whole file).
+    let lineIdx = card.line_number - 1;
+    const fileKbId = lineIdx >= 0 && lineIdx < lines.length ? extractKbId(lines[lineIdx]) : null;
+    if (fileKbId !== cardKbId) {
+      const found = lines.findIndex((l) => extractKbId(l) === cardKbId);
+      if (found === -1) {
+        return { success: false, changed: false, lineNumber: card.line_number, error: 'Line not found by kb:id' };
+      }
+      lineIdx = found;
+    }
+
+    const originalLine = lines[lineIdx];
+    const checkboxMatch = originalLine.match(/^(\s*- \[[ xX]\]\s*)(.*)$/);
+    if (!checkboxMatch) {
+      return { success: false, changed: false, lineNumber: lineIdx + 1, error: 'Line is not a checkbox task' };
+    }
+
+    const prefix = checkboxMatch[1];
+    const tail = checkboxMatch[2];
+
+    // Preserve the kb marker and the [from:source](url) link exactly.
+    const kbMarkerMatch = tail.match(KB_MARKER_RE);
+    const kbMarker = kbMarkerMatch ? kbMarkerMatch[0] : null;
+    const sourceLinkMatch = tail.match(SOURCE_LINK_RE);
+    const sourceLink = sourceLinkMatch ? sourceLinkMatch[0] : null;
+
+    // Preserve the priority emoji only if a configured one is present in the old line.
+    const presentEmoji = priorityEmojis.find((emoji) => emoji && tail.includes(emoji)) ?? null;
+
+    // Rebuild: prefix + [emoji ] + newTitle + [ sourceLink] + [ kbMarker]
+    const parts: string[] = [];
+    if (presentEmoji) parts.push(presentEmoji);
+    parts.push(trimmedTitle);
+    if (sourceLink) parts.push(sourceLink);
+    if (kbMarker) parts.push(kbMarker);
+    const line = `${prefix}${parts.join(' ')}`;
+
+    if (line === originalLine) {
+      return { success: true, changed: false, lineNumber: lineIdx + 1 };
+    }
+
+    suppressWatcher();
+    try {
+      lines[lineIdx] = line;
+      const updatedContent = lines.join('\n');
+      atomicWrite(filePath, updatedContent);
+      updateSyncStateHash(filePath, updatedContent);
+    } finally {
+      unsuppressWatcher();
+    }
+
+    // Re-extract links from the rebuilt line text (same logic as parser/reconciler).
+    const { links } = extractTaskLinks(line);
+
+    db.prepare('UPDATE cards SET title = ?, raw_line = ?, line_number = ?, links = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      .run(trimmedTitle, line, lineIdx + 1, JSON.stringify(links), cardId);
+
+    console.log(`[writeback] Card ${cardId} title updated at line ${lineIdx + 1}`);
     return { success: true, changed: true, lineNumber: lineIdx + 1 };
   } catch (err) {
     return { success: false, changed: false, lineNumber: card.line_number, error: String(err) };
@@ -376,9 +520,9 @@ export function stampAllColumns(): number {
     if (changed) {
       suppressWatcher();
       try {
-        atomicWrite(filePath, lines.join('\n'));
-        const newHash = createHash('sha256').update(lines.join('\n')).digest('hex');
-        db.prepare(`INSERT OR REPLACE INTO sync_state (file_path, file_hash, last_synced) VALUES (?, ?, datetime('now'))`).run(filePath, newHash);
+        const updatedContent = lines.join('\n');
+        atomicWrite(filePath, updatedContent);
+        updateSyncStateHash(filePath, updatedContent);
       } finally {
         unsuppressWatcher();
       }

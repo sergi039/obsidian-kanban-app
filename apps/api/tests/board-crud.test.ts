@@ -73,7 +73,7 @@ const SCHEMA = `
     position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
     line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
     labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-    description TEXT DEFAULT '', source_fingerprint TEXT, seq_id INTEGER,
+    description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
     created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS comments (
@@ -319,5 +319,29 @@ describe('board categories cleanup', () => {
 
     const row = testDb.prepare('SELECT labels FROM cards WHERE id = ?').get('c1') as { labels: string };
     expect(JSON.parse(row.labels)).toEqual(['bug']);
+  });
+});
+
+describe('sync reload', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    testDb.pragma('foreign_keys = ON');
+    testDb.exec(SCHEMA);
+  });
+
+  afterEach(() => testDb.close());
+
+  it('broadcasts sync-complete after reconcile succeeds', async () => {
+    const { broadcast } = await import('../src/ws.js');
+    const { default: boardRoutes } = await import('../src/routes/boards.js');
+    const app = new Hono();
+    app.route('/api/boards', boardRoutes);
+
+    const res = await app.request('/api/boards/sync/reload', { method: 'POST' });
+    expect(res.status).toBe(200);
+
+    expect(broadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'sync-complete' }),
+    );
   });
 });

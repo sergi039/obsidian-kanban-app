@@ -16,7 +16,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { moveCard, reorderColumns } from '../api/client';
-import type { BoardDetail, Card, PriorityDef, CategoryDef } from '../types';
+import type { BoardDetail, Card, PriorityDef, CategoryDef, Reminder } from '../types';
 import type { BoardSortField } from './BoardSort';
 import { Column } from './Column';
 import { KanbanCard } from './Card';
@@ -27,6 +27,7 @@ interface Props {
   board: BoardDetail;
   sortField: BoardSortField;
   filterCards: (cards: Card[]) => Card[];
+  remindersByCard?: Map<string, Reminder[]>;
   onCardMove: () => Promise<void>;
   onCardClick: (card: Card) => void;
   onCardAdd: (title: string, column: string) => Promise<void>;
@@ -86,6 +87,7 @@ export function Board({
   board,
   sortField,
   filterCards,
+  remindersByCard,
   onCardMove,
   onCardClick,
   onCardAdd,
@@ -349,6 +351,7 @@ export function Board({
               cards={sortCards(filterCards(col.cards))}
               priorities={priorities}
               categories={boardCategories}
+              remindersByCard={remindersByCard}
               boardId={board.id}
               isSorted={isSorted}
               onCardClick={onCardClick}
@@ -372,7 +375,13 @@ export function Board({
       <DragOverlay dropAnimation={null}>
         {activeCard ? (
           <div className="rotate-2 opacity-80 w-80">
-            <KanbanCard card={activeCard} priorities={priorities} categories={boardCategories} onClick={() => {}} />
+            <KanbanCard
+              card={activeCard}
+              priorities={priorities}
+              categories={boardCategories}
+              reminders={remindersByCard?.get(activeCard.id)}
+              onClick={() => {}}
+            />
           </div>
         ) : null}
         {activeColName ? (

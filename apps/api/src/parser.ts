@@ -9,6 +9,8 @@ export interface ParsedTask {
   isDone: boolean;
   priority: string | null;
   urls: string[];
+  links: ParsedLink[];
+  sourceLink: ParsedSourceLink | null;
   subItems: string[];
   /** Stable ID from <!-- kb:id=xxx --> marker, if present */
   kbId: string | null;
@@ -16,9 +18,20 @@ export interface ParsedTask {
   kbCol: string | null;
 }
 
+export interface ParsedLink {
+  url: string;
+  title: string;
+}
+
+export interface ParsedSourceLink {
+  source: string;
+  url: string;
+}
+
 const TASK_RE = /^(\s*)- \[([ xX])\]\s+(.*)/;
 const BARE_URL_RE = /https?:\/\/[^\s)\]]+/g;
 const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+const SOURCE_LINK_RE = /\s*\[from:([a-z][a-z0-9_-]*)\]\((https?:\/\/[^)]+)\)/gi;
 
 /** Regex to extract kb:id (and optional kb:col) from HTML comment marker */
 const KB_ID_RE = /<!--\s*kb:id=([a-zA-Z0-9_-]+)(?:\s+kb:col=([^\s]+))?\s*-->/;
@@ -119,6 +132,49 @@ export function stripKbIdFromTitle(title: string): string {
   return title.replace(KB_ID_RE, '').trimEnd();
 }
 
+export function stripSourceLinksFromTitle(title: string): string {
+  return title.replace(SOURCE_LINK_RE, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function safeHostname(raw: string): string {
+  try {
+    return new URL(raw).hostname;
+  } catch {
+    return raw;
+  }
+}
+
+export function extractTaskLinks(text: string): { links: ParsedLink[]; sourceLink: ParsedSourceLink | null } {
+  const links: ParsedLink[] = [];
+  const seen = new Set<string>();
+  let sourceLink: ParsedSourceLink | null = null;
+
+  const mdRe = new RegExp(MD_LINK_RE.source, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = mdRe.exec(text)) !== null) {
+    const title = m[1] || safeHostname(m[2]);
+    const url = m[2];
+    if (!seen.has(url)) {
+      links.push({ title, url });
+      seen.add(url);
+    }
+    const sourceMatch = title.match(/^from:([a-z][a-z0-9_-]*)$/i);
+    if (sourceMatch && !sourceLink) {
+      sourceLink = { source: sourceMatch[1].toLowerCase(), url };
+    }
+  }
+
+  const bareRe = new RegExp(BARE_URL_RE.source, 'g');
+  while ((m = bareRe.exec(text)) !== null) {
+    if (!seen.has(m[0])) {
+      links.push({ title: safeHostname(m[0]), url: m[0] });
+      seen.add(m[0]);
+    }
+  }
+
+  return { links, sourceLink };
+}
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -190,20 +246,13 @@ export function parseMarkdownTasks(content: string, priorityDefs?: PriorityDef[]
       const kbId = extractKbId(rawTitleText);
       const kbCol = extractKbCol(rawTitleText);
       const titleText = stripKbIdFromTitle(rawTitleText);
+      const { links, sourceLink } = extractTaskLinks(titleText);
+      const sourceStrippedTitle = stripSourceLinksFromTitle(titleText);
 
-      const { priority, emoji } = detectPriority(titleText, defs);
-      const displayTitle = emoji ? stripPriorityEmoji(titleText, emoji) : titleText;
+      const { priority, emoji } = detectPriority(sourceStrippedTitle, defs);
+      const displayTitle = emoji ? stripPriorityEmoji(sourceStrippedTitle, emoji) : sourceStrippedTitle;
 
-      const urls: string[] = [];
-      const mdRe = new RegExp(MD_LINK_RE.source, 'g');
-      let m: RegExpExecArray | null;
-      while ((m = mdRe.exec(displayTitle)) !== null) {
-        urls.push(m[2]);
-      }
-      const bareRe = new RegExp(BARE_URL_RE.source, 'g');
-      while ((m = bareRe.exec(displayTitle)) !== null) {
-        if (!urls.includes(m[0])) urls.push(m[0]);
-      }
+      const urls = links.map((link) => link.url);
 
       currentTask = {
         title: displayTitle,
@@ -212,6 +261,8 @@ export function parseMarkdownTasks(content: string, priorityDefs?: PriorityDef[]
         isDone,
         priority,
         urls,
+        links,
+        sourceLink,
         subItems: [],
         kbId,
         kbCol,

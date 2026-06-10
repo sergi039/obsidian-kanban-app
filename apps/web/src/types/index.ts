@@ -42,8 +42,75 @@ export interface Card {
   checklist: ChecklistItem[];
   links: LinkItem[];
   source_fingerprint: string | null;
+  source: string | null;
+  source_uid: string | null;
+  source_url: string | null;
+  source_meta: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export type ReminderKind = 'due' | 'follow_up' | 'custom';
+export type ReminderChannel = 'in_app' | 'browser' | 'macos' | 'calendar' | 'email';
+export type ReminderStatus = 'scheduled' | 'snoozed' | 'fired' | 'dismissed';
+
+export interface Reminder {
+  id: string;
+  card_id: string;
+  board_id: string;
+  kind: ReminderKind;
+  channel: ReminderChannel;
+  status: ReminderStatus;
+  trigger_at: string;
+  timezone: string;
+  message: string;
+  snoozed_until: string | null;
+  last_fired_at: string | null;
+  dismissed_at: string | null;
+  source: string | null;
+  source_uid: string | null;
+  source_url: string | null;
+  source_meta: Record<string, unknown>;
+  card_title?: string;
+  card_column_name?: string;
+  card_is_done?: boolean;
+  effective_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateReminderRequest {
+  card_id: string;
+  kind?: ReminderKind;
+  channel?: ReminderChannel;
+  trigger_at: string;
+  timezone?: string;
+  message?: string;
+  source?: string | null;
+  source_uid?: string | null;
+  source_url?: string | null;
+  source_meta?: Record<string, unknown>;
+}
+
+export interface UpdateReminderRequest {
+  kind?: ReminderKind;
+  channel?: ReminderChannel;
+  status?: ReminderStatus;
+  trigger_at?: string;
+  timezone?: string;
+  message?: string;
+  snoozed_until?: string | null;
+  last_fired_at?: string | null;
+  dismissed_at?: string | null;
+  source?: string | null;
+  source_uid?: string | null;
+  source_url?: string | null;
+  source_meta?: Record<string, unknown>;
+}
+
+export interface SnoozeReminderRequest {
+  until?: string;
+  minutes?: number;
 }
 
 export interface Comment {
@@ -167,6 +234,7 @@ export interface MoveCardRequest {
 }
 
 export interface PatchCardRequest {
+  title?: string;
   column_name?: string;
   position?: number;
   labels?: string[];

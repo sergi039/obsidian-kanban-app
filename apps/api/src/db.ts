@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS cards (
   sub_items TEXT DEFAULT '[]',
   description TEXT DEFAULT '',
   source_fingerprint TEXT,
+  source TEXT,
+  source_uid TEXT,
+  source_url TEXT,
+  source_meta TEXT DEFAULT '{}',
   seq_id INTEGER,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
@@ -82,6 +86,38 @@ CREATE TABLE IF NOT EXISTS sync_state (
   file_hash TEXT NOT NULL,
   last_synced TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS inbox_captures (
+  capture_key TEXT PRIMARY KEY,
+  card_id TEXT REFERENCES cards(id) ON DELETE SET NULL,
+  source TEXT NOT NULL,
+  source_uid TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'completed',
+  updated_at TEXT DEFAULT (datetime('now')),
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS reminders (
+  id TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  board_id TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'custom',
+  channel TEXT NOT NULL DEFAULT 'in_app',
+  status TEXT NOT NULL DEFAULT 'scheduled',
+  trigger_at TEXT NOT NULL,
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  message TEXT DEFAULT '',
+  snoozed_until TEXT,
+  last_fired_at TEXT,
+  dismissed_at TEXT,
+  source TEXT,
+  source_uid TEXT,
+  source_url TEXT,
+  source_meta TEXT DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
 `;
 
 const INDEXES = [
@@ -89,11 +125,21 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_cards_board_column ON cards(board_id, column_name)`,
   `CREATE INDEX IF NOT EXISTS idx_cards_priority ON cards(priority)`,
   `CREATE INDEX IF NOT EXISTS idx_cards_due_date ON cards(due_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_cards_source ON cards(source)`,
+  `CREATE INDEX IF NOT EXISTS idx_cards_source_uid ON cards(source, source_uid)`,
   `CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(card_id)`,
   `CREATE INDEX IF NOT EXISTS idx_fields_board ON fields(board_id, position)`,
   `CREATE INDEX IF NOT EXISTS idx_field_values_card ON field_values(card_id)`,
   `CREATE INDEX IF NOT EXISTS idx_field_values_field ON field_values(field_id)`,
   `CREATE INDEX IF NOT EXISTS idx_automations_board ON automations(board_id, enabled)`,
+  `CREATE INDEX IF NOT EXISTS idx_inbox_captures_card ON inbox_captures(card_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_inbox_captures_source_uid ON inbox_captures(source, source_uid)`,
+  `CREATE INDEX IF NOT EXISTS idx_inbox_captures_source_created ON inbox_captures(source, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_reminders_card ON reminders(card_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_reminders_board_status ON reminders(board_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(status, trigger_at, snoozed_until)`,
+  `CREATE INDEX IF NOT EXISTS idx_reminders_source_uid ON reminders(source, source_uid)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_source_unique ON reminders(card_id, source, source_uid) WHERE source IS NOT NULL AND source_uid IS NOT NULL`,
 ];
 
 const MIGRATIONS = [
@@ -155,7 +201,44 @@ const MIGRATIONS = [
   `ALTER TABLE cards ADD COLUMN checklist TEXT DEFAULT '[]'`,
   // Add links column for managed link storage
   `ALTER TABLE cards ADD COLUMN links TEXT DEFAULT '[]'`,
-];
+  // Add inbox provenance columns (ADR 0001 D++)
+  `ALTER TABLE cards ADD COLUMN source TEXT`,
+  `ALTER TABLE cards ADD COLUMN source_uid TEXT`,
+  `ALTER TABLE cards ADD COLUMN source_url TEXT`,
+  `ALTER TABLE cards ADD COLUMN source_meta TEXT DEFAULT '{}'`,
+  // Capture log powers idempotency/audit for external task ingestion
+	  `CREATE TABLE IF NOT EXISTS inbox_captures (
+	    capture_key TEXT PRIMARY KEY,
+	    card_id TEXT REFERENCES cards(id) ON DELETE SET NULL,
+	    source TEXT NOT NULL,
+	    source_uid TEXT NOT NULL,
+	    request_hash TEXT NOT NULL,
+	    status TEXT NOT NULL DEFAULT 'completed',
+	    updated_at TEXT DEFAULT (datetime('now')),
+	    created_at TEXT DEFAULT (datetime('now'))
+	  )`,
+  // Reminders are Kanban-owned runtime metadata, not Markdown writeback state.
+  `CREATE TABLE IF NOT EXISTS reminders (
+    id TEXT PRIMARY KEY,
+    card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    board_id TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'custom',
+    channel TEXT NOT NULL DEFAULT 'in_app',
+    status TEXT NOT NULL DEFAULT 'scheduled',
+    trigger_at TEXT NOT NULL,
+    timezone TEXT NOT NULL DEFAULT 'UTC',
+    message TEXT DEFAULT '',
+    snoozed_until TEXT,
+    last_fired_at TEXT,
+    dismissed_at TEXT,
+    source TEXT,
+    source_uid TEXT,
+    source_url TEXT,
+    source_meta TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`,
+	];
 
 /**
  * Create an isolated in-memory database for testing.
@@ -165,11 +248,11 @@ export function createTestDb(): Database.Database {
   const testDb = new Database(':memory:');
   testDb.pragma('foreign_keys = ON');
   testDb.exec(SCHEMA);
-  for (const sql of INDEXES) {
-    testDb.exec(sql);
-  }
   for (const sql of MIGRATIONS) {
     try { testDb.exec(sql); } catch { /* already exists */ }
+  }
+  for (const sql of INDEXES) {
+    testDb.exec(sql);
   }
   return testDb;
 }
@@ -185,11 +268,6 @@ export function getDb(dbPath?: string): Database.Database {
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
 
-  // Create indexes
-  for (const sql of INDEXES) {
-    db.exec(sql);
-  }
-
   // Run migrations for existing DBs
   for (const sql of MIGRATIONS) {
     try {
@@ -197,6 +275,11 @@ export function getDb(dbPath?: string): Database.Database {
     } catch {
       // Column/table already exists — safe to ignore
     }
+  }
+
+  // Create indexes after migrations so legacy databases have newly indexed columns.
+  for (const sql of INDEXES) {
+    db.exec(sql);
   }
 
   return db;

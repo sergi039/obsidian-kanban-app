@@ -166,6 +166,14 @@ describe('parseMarkdownTasks', () => {
       expect(supportTask!.urls).toContain('https://learn.microsoft.com/partner-center/support/support-hours');
     });
 
+    it('strips reserved source links from titles but keeps provenance link metadata', () => {
+      const [task] = parseMarkdownTasks('- [ ] Follow up with tenant [from:telegram](https://t.me/c/1/2) <!-- kb:id=src12345 -->\n');
+      expect(task.title).toBe('Follow up with tenant');
+      expect(task.urls).toContain('https://t.me/c/1/2');
+      expect(task.links).toContainEqual({ title: 'from:telegram', url: 'https://t.me/c/1/2' });
+      expect(task.sourceLink).toEqual({ source: 'telegram', url: 'https://t.me/c/1/2' });
+    });
+
     it('extracts bare URLs', () => {
       const samTask = tasks.find((t) => t.title.includes('sam.gov'));
       expect(samTask).toBeDefined();

@@ -58,7 +58,7 @@ describe('fields validation', () => {
         due_date TEXT DEFAULT NULL,
         sub_items TEXT DEFAULT '[]',
         description TEXT DEFAULT NULL,
-        source_fingerprint TEXT DEFAULT NULL,
+        source_fingerprint TEXT DEFAULT NULL, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}',
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );

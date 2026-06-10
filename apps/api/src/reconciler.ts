@@ -64,6 +64,8 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
     due_date: string | null;
     description: string | null;
     title: string;
+    source: string | null;
+    source_url: string | null;
   }>;
   const existingById = new Map(existingCards.map((c) => [c.id, c]));
 
@@ -81,19 +83,36 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
   );
 
   const insertStmt = db.prepare(`
-    INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, sub_items, source_fingerprint, seq_id, links)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO cards (
+      id, board_id, column_name, position, title, raw_line, line_number,
+      is_done, priority, sub_items, source_fingerprint, seq_id, links,
+      source, source_url, source_meta
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}')
   `);
 
   // Get next seq_id for this board
   const maxSeqRow = db.prepare('SELECT COALESCE(MAX(seq_id), 0) as max_seq FROM cards WHERE board_id = ?').get(board.id) as { max_seq: number };
   let nextSeqId = maxSeqRow.max_seq;
 
+  // Seed per-column next position from existing DB max position per column.
+  // New cards are appended within their target column (not the global file index).
+  const nextPosByColumn = new Map<string, number>();
+  const maxPosRows = db
+    .prepare('SELECT column_name, MAX(position) as max_pos FROM cards WHERE board_id = ? GROUP BY column_name')
+    .all(board.id) as Array<{ column_name: string; max_pos: number }>;
+  for (const row of maxPosRows) {
+    nextPosByColumn.set(row.column_name, row.max_pos + 1);
+  }
+
   const updateStmt = db.prepare(`
     UPDATE cards SET
       title = ?, raw_line = ?, line_number = ?, is_done = ?,
       priority = ?, sub_items = ?, source_fingerprint = ?,
-      column_name = ?, updated_at = datetime('now')
+      column_name = ?, links = ?,
+      source = CASE WHEN ? IS NOT NULL THEN ? ELSE source END,
+      source_url = CASE WHEN ? IS NOT NULL THEN ? ELSE source_url END,
+      updated_at = datetime('now')
     WHERE id = ?
   `);
 
@@ -174,6 +193,11 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
           JSON.stringify(task.subItems),
           srcFp,
           col,
+          JSON.stringify(task.links),
+          task.sourceLink?.source ?? null,
+          task.sourceLink?.source ?? null,
+          task.sourceLink?.url ?? null,
+          task.sourceLink?.url ?? null,
           id,
         );
         updated++;
@@ -183,14 +207,14 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         let col = task.kbCol && board.columns.includes(task.kbCol) ? task.kbCol : null;
         if (!col) col = task.isDone ? getDefaultDoneColumn(board) : getDefaultOpenColumn(board);
         nextSeqId++;
-        const links = task.urls.map((u) => {
-          try { return { url: u, title: new URL(u).hostname }; } catch { return { url: u, title: u }; }
-        });
+        // Assign the next position within the target column (per-column, not global file index).
+        const position = nextPosByColumn.get(col) ?? 0;
+        nextPosByColumn.set(col, position + 1);
         insertStmt.run(
           id,
           board.id,
           col,
-          i,
+          position,
           task.title,
           task.rawLine,
           task.lineNumber,
@@ -199,7 +223,9 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
           JSON.stringify(task.subItems),
           srcFp,
           nextSeqId,
-          JSON.stringify(links),
+          JSON.stringify(task.links),
+          task.sourceLink?.source ?? null,
+          task.sourceLink?.url ?? null,
         );
         added++;
       }

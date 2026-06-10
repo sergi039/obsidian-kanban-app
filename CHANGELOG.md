@@ -2,6 +2,13 @@
 
 ## 2026-06-04
 
+### Reminders
+- Added per-card reminders with exact `trigger_at` datetimes, status tracking, snooze/dismiss/fire actions, and due polling API for future macOS notification agents.
+- Added in-app reminder badges, header reminder count/panel, card-detail reminder creation, and `reminder:*` / `has:reminder` filters.
+- Added reminder documentation and timezone-aware API validation.
+- Added browser notification delivery for open Kanban tabs and a local macOS delivery agent for Notification Center, Calendar `.ics` handoff, and Mail.app email reminders.
+- Added configurable Calendar.app target calendar delivery so reminder events can be created directly in a personal calendar instead of defaulting to a work-calendar import dialog.
+
 ### Stability
 - Added API typecheck/build script so root `pnpm build` verifies backend TypeScript, not only the web bundle.
 - Reused the shared test DB schema in reconciler tests to prevent drift from production migrations.

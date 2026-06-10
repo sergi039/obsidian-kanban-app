@@ -1,0 +1,19 @@
+{
+  "defaultBoard": "private",
+  "clarifyBelowConfidence": 0.85,
+  "clarifyWithinMargin": 0.2,
+  "rules": [
+    {
+      "boardId": "work",
+      "domain": "work",
+      "column": "Backlog",
+      "aliases": ["work", "client", "release", "project"]
+    },
+    {
+      "boardId": "private",
+      "domain": "personal",
+      "column": "Backlog",
+      "aliases": ["personal", "private", "home", "family", "shopping"]
+    }
+  ]
+}

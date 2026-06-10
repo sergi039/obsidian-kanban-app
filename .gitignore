@@ -9,3 +9,4 @@ dist/
 config.boards.json
 .task/
 logs/
+*.tsbuildinfo

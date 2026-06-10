@@ -19,7 +19,9 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Checklists** — GitHub-style task lists with progress bar
 - **Managed links** — add/remove clickable links, stored in DB (auto-normalized URLs)
 - **Comments** — full CRUD with linkified URLs, author avatars, timestamps
+- **Reminders** — per-card reminder records with due/upcoming badges, snooze/dismiss, and polling-friendly API state
 - **Custom fields** — TEXT, NUMBER, DATE, SINGLE_SELECT, ITERATION types per board
+- **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance
 
 **Organization**
 - **Custom priorities** — configurable per board with emoji, color, and card visibility
@@ -146,11 +148,32 @@ VAULT_PATH=/path/to/vault docker compose up -d
 
 Optionally set `API_TOKEN` for authenticated access.
 
+### Desktop Agent Capture
+
+Claude Desktop, OpenAI/Codex-style local agents, and other MCP clients can create Kanban cards through the bundled MCP server. The server calls the API only; it does not write Markdown or SQLite directly.
+
+```bash
+pnpm --filter @kanban/mcp build
+PORT=4000 SERVE_STATIC=1 API_TOKEN=... INGEST_API_TOKEN=... pnpm --filter @kanban/api start
+```
+
+Configure the desktop app to run `apps/mcp/dist/server.js` with:
+
+```bash
+KANBAN_API_URL=http://127.0.0.1:4000
+KANBAN_API_TOKEN=...
+```
+
+Routing rules live in `config.routing.json`. Agents auto-create only when routing is confident; otherwise they return clarification options so the user can choose work, personal, or another board.
+
+See [Desktop MCP setup](docs/desktop-mcp.md) for Claude/OpenAI/Codex configuration and agent instructions.
+
 ## 📁 Project Structure
 
 ```
 obsidian-kanban-app/
 ├── config.boards.json       ← Board configuration (edit this!)
+├── config.routing.json      ← Desktop agent routing rules
 ├── docker-compose.yml       ← Docker deployment
 ├── Dockerfile               ← Multi-stage production build
 ├── data/
@@ -167,7 +190,8 @@ obsidian-kanban-app/
 │   │       ├── automations.ts ← Event-driven automation engine
 │   │       ├── filter-engine.ts ← Query parser for filters
 │   │       ├── utils.ts     ← Shared utilities
-│   │       └── routes/      ← API endpoints (cards, boards, views, fields, automations)
+│   │       └── routes/      ← API endpoints (cards, boards, views, fields, automations, reminders)
+│   ├── mcp/                 ← MCP server for Claude/OpenAI/Codex desktop capture
 │   └── web/                 ← Frontend (React 19 + Tailwind + @dnd-kit)
 │       └── src/
 │           ├── App.tsx
@@ -207,7 +231,7 @@ Obsidian (.md files)  ←→  Reconciler  ←→  SQLite DB  ←→  Web UI
 |-----------|------|
 | `.md` → DB | Task text, done state, priority emoji, sub-items, links (new cards) |
 | DB → `.md` | Done checkbox `[x]`/`[ ]`, priority emoji, column marker |
-| DB only | Column position, labels, categories, custom fields, comments, descriptions, checklists, managed links |
+| DB only | Column position, labels, categories, custom fields, comments, descriptions, checklists, managed links, reminders |
 
 ## 🛠 Configuration Reference
 
@@ -218,6 +242,39 @@ Obsidian (.md files)  ←→  Reconciler  ←→  SQLite DB  ←→  Web UI
 | `PORT` | `4000` | Server port |
 | `SERVE_STATIC` | — | Set to `1` to serve frontend from `apps/web/dist` |
 | `API_TOKEN` | — | Bearer token for API authentication |
+| `INGEST_API_TOKEN` | — | Required bearer token for `/api/inbox/*` agent ingestion routes |
+
+### Reminders
+
+Reminders are stored in SQLite as Kanban-owned task metadata. They do not write back to Markdown files.
+
+Supported API surface:
+
+- `GET /api/reminders?board_id=...` — list reminders for a board
+- `GET /api/reminders?card_id=...` — list reminders for a card
+- `GET /api/reminders/due?before=...&channel=macos` — polling-friendly due lookup
+- `POST /api/reminders` — create a reminder for a card
+- `POST /api/reminders/:id/snooze` — postpone an active reminder
+- `POST /api/reminders/:id/dismiss` — stop showing a reminder
+- `POST /api/reminders/:id/fire` — mark delivery by a notification agent
+
+`trigger_at` values must be timezone-aware ISO datetimes (`Z` or explicit offset). See [Reminders](docs/reminders.md).
+
+Delivery channels:
+
+- `In app` shows badges, counts, and reminder panel state inside Kanban.
+- `Browser notification` works while the Kanban web app is open and browser notification permission is granted.
+- `macOS notification`, `Calendar event`, and `Email via Mail.app` require the local macOS agent. Calendar reminders are marked fired after handoff to Calendar.app:
+
+```bash
+KANBAN_API_URL=http://127.0.0.1:4000 \
+KANBAN_APP_URL=http://127.0.0.1:4000 \
+KANBAN_REMINDER_CALENDAR_NAME="Sergi Sinyugin" \
+KANBAN_REMINDER_EMAIL_TO=you@example.com \
+pnpm reminders:macos:install
+```
+
+Mail.app delivery from `launchd` requires macOS Automation permission for the Node/osascript process to control Mail. If the log shows `Not authorised to send Apple events to Mail. (-1743)`, grant that permission in System Settings > Privacy & Security > Automation or run `pnpm reminders:agent` from an interactive user session for one-off delivery.
 
 ### Board Columns
 
@@ -247,6 +304,12 @@ You can also configure `doneColumns` per board for custom done-state column name
 ```bash
 lsof -ti:4000 | xargs kill
 ```
+
+**Desktop agent cannot create tasks?**
+- Confirm the API process was started with `INGEST_API_TOKEN`
+- Confirm the MCP process has `KANBAN_API_TOKEN` set to the same value
+- Rebuild MCP after code changes: `pnpm --filter @kanban/mcp build`
+- Restart the API after editing `config.routing.json`
 
 ## Tech Stack
 

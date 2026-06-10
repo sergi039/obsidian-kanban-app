@@ -1,0 +1,37 @@
+{
+  "defaultBoard": "private",
+  "clarifyBelowConfidence": 0.85,
+  "clarifyWithinMargin": 0.2,
+  "rules": [
+    {
+      "boardId": "vs",
+      "domain": "work",
+      "column": "Backlog",
+      "aliases": ["virto", "virtosoftware", "vs", "работа", "рабочее", "клиент", "код", "релиз"]
+    },
+    {
+      "boardId": "vp",
+      "domain": "work",
+      "column": "Backlog",
+      "aliases": ["vp", "virto property", "virtoproperty", "property catalog", "8085", "virto catalog"]
+    },
+    {
+      "boardId": "private",
+      "domain": "personal",
+      "column": "Backlog",
+      "aliases": ["private", "personal", "личное", "личный", "дом", "семья", "здоровье", "покупки", "купить"]
+    },
+    {
+      "boardId": "cervantes",
+      "domain": "property",
+      "column": "Backlog",
+      "aliases": ["cervantes", "cervantes 50", "property", "недвижимость", "ремонт"]
+    },
+    {
+      "boardId": "arrecife-reconstruction",
+      "domain": "property",
+      "column": "Backlog",
+      "aliases": ["arrecife", "arrecife reconstruction", "reconstruction", "property", "недвижимость", "ремонт"]
+    }
+  ]
+}

@@ -28,8 +28,8 @@
   <key>RunAtLoad</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/tmp/obsidian-kanban.out.log</string>
+  <string>/Users/ss/obsidian-kanban-app/logs/api.stdout.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/obsidian-kanban.err.log</string>
+  <string>/Users/ss/obsidian-kanban-app/logs/api.stderr.log</string>
 </dict>
 </plist>

@@ -1,16 +1,15 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, renameSync } from 'node:fs';
-import path from 'node:path';
 import { getDb } from '../db.js';
 import { DEFAULT_PRIORITIES, loadConfig } from '../config.js';
-import { writeBackDoneState, writeBackPriority, writeBackColumn } from '../writeback.js';
+import { writeBackDoneState, writeBackPriority, writeBackColumn, writeBackTitle } from '../writeback.js';
 import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
-import { allocateUniqueKbId, injectKbId, isDoneColumn } from '../parser.js';
+import { isDoneColumn } from '../parser.js';
 import { fireEvent } from '../automations.js';
 import { formatCard } from '../utils.js';
+import { ingestCard, IngestError } from '../ingest.js';
 import type Database from 'better-sqlite3';
 
 const cards = new Hono();
@@ -22,6 +21,7 @@ const CreateCardSchema = z.object({
 });
 
 const PatchCardSchema = z.object({
+  title: z.string().trim().min(1).max(500).optional(),
   column_name: z.string().optional(),
   position: z.number().int().optional(),
   labels: z.array(z.string()).optional(),
@@ -137,67 +137,28 @@ cards.post('/', async (c) => {
   const parsed = CreateCardSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
 
-  const { board_id, title, column } = parsed.data;
-  const config = loadConfig();
-  const board = config.boards.find((b) => b.id === board_id);
-  if (!board) return c.json({ error: 'Board not found' }, 404);
-
-  const filePath = path.join(config.vaultRoot, board.file);
-  const colName = column || 'Backlog';
-
-  // Column validation
-  if (!board.columns.includes(colName)) {
-    return c.json({ error: `Column "${colName}" not in board` }, 400);
-  }
-
-  // Append task to .md file with stable kb:id
-  suppressWatcher();
   try {
-    const content = readFileSync(filePath, 'utf-8');
-    const db = getDb();
-    const id = allocateUniqueKbId((candidate) =>
-      !!(db.prepare('SELECT 1 FROM cards WHERE id = ?').get(candidate)),
-    );
-    const newLine = injectKbId(`- [ ] ${title}`, id);
-    const newContent = content.endsWith('\n')
-      ? content + newLine + '\n'
-      : content + '\n' + newLine + '\n';
-
-    const tmpPath = filePath + '.tmp';
-    writeFileSync(tmpPath, newContent, 'utf-8');
-    renameSync(tmpPath, filePath);
-
-    const lines = newContent.split('\n');
-    const lineNumber = lines.length - 1; // last non-empty line
-
-    // Insert into DB
-    const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ?').get(board_id, colName) as { mp: number | null }).mp ?? -1;
-
-    // Get next seq_id for this board
-    const maxSeqRow = db.prepare('SELECT COALESCE(MAX(seq_id), 0) as max_seq FROM cards WHERE board_id = ?').get(board_id) as { max_seq: number };
-    const nextSeqId = maxSeqRow.max_seq + 1;
-
-    db.prepare(`
-      INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done, priority, labels, sub_items, source_fingerprint, seq_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, null, '[]', '[]', ?, ?)
-    `).run(id, board_id, colName, maxPos + 1, title, newLine, lineNumber, createHash('sha256').update(newLine).digest('hex').slice(0, 16), nextSeqId);
-
-    const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
-
-    broadcast({ type: 'board-updated', boardId: board_id, timestamp: new Date().toISOString() });
-
-    // Fire automations for card.created
-    try {
-      fireEvent({ type: 'card.created', cardId: id, boardId: board_id, column: colName, title });
-    } catch (err) {
-      console.warn('[automations] Error on card.created:', err);
+    const result = ingestCard({
+      boardId: parsed.data.board_id,
+      title: parsed.data.title,
+      column: parsed.data.column,
+      source: 'manual',
+    });
+    if (!result.created) {
+      if ('needsClarification' in result) {
+        if (result.route.reasonCode === 'explicit_board_not_found') {
+          return c.json({ error: 'Board not found' }, 404);
+        }
+        return c.json({ error: result.question, route: result.route }, 400);
+      }
+      return c.json({ error: 'Unable to create card', route: result.route ?? null }, 400);
     }
-
-    return c.json(formatCard(card), 201);
+    return c.json(result.card, result.duplicate ? 200 : 201);
   } catch (err) {
+    if (err instanceof IngestError) {
+      return c.json({ error: err.message, code: err.code }, err.status as 400 | 409);
+    }
     return c.json({ error: `Failed to create card: ${err}` }, 500);
-  } finally {
-    unsuppressWatcher();
   }
 });
 
@@ -243,7 +204,7 @@ cards.patch('/:id', async (c) => {
 
   const columnChanging = fields.column_name !== undefined && fields.column_name !== existing.column_name;
   const positionChanging = fields.position !== undefined;
-  const hasMetadataChanges = fields.labels !== undefined || fields.priority !== undefined ||
+  const hasMetadataChanges = fields.title !== undefined || fields.labels !== undefined || fields.priority !== undefined ||
     fields.due_date !== undefined || fields.description !== undefined || fields.checklist !== undefined ||
     fields.links !== undefined;
 
@@ -310,6 +271,22 @@ cards.patch('/:id', async (c) => {
     db.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   }
 
+  let writeBackWarning: string | undefined;
+
+  // Write back title to .md file (writeBackTitle also updates title/raw_line/links in DB).
+  if (fields.title !== undefined) {
+    suppressWatcher();
+    try {
+      const result = writeBackTitle(id, fields.title);
+      if (!result.success) {
+        writeBackWarning = result.error;
+        console.warn(`[writeback] Title failed for card ${id}: ${result.error}`);
+      }
+    } finally {
+      unsuppressWatcher();
+    }
+  }
+
   // Write back priority to .md file
   if (fields.priority !== undefined) {
     suppressWatcher();
@@ -365,7 +342,11 @@ cards.patch('/:id', async (c) => {
     }
   }
 
-  return c.json(formatCard(updated));
+  const response = formatCard(updated);
+  if (writeBackWarning) {
+    return c.json({ ...response, _writeBackWarning: writeBackWarning });
+  }
+  return c.json(response);
 });
 
 // POST /api/cards/:id/move — move card to column + position (atomic transaction)

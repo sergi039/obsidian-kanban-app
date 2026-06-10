@@ -40,6 +40,34 @@ export function apiTokenAuth(): MiddlewareHandler {
     // Allow health check
     if (c.req.path === '/api/health') return next();
 
+    // Ingest routes have a stricter fail-closed middleware with INGEST_API_TOKEN fallback.
+    if (c.req.path.startsWith('/api/inbox/')) return next();
+
+    const authHeader = c.req.header('Authorization');
+    if (!authHeader) {
+      return c.json({ error: 'Authorization header required' }, 401);
+    }
+
+    const parts = authHeader.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer' || !safeTokenCompare(parts[1], token)) {
+      return c.json({ error: 'Invalid token' }, 401);
+    }
+
+    return next();
+  };
+}
+
+/**
+ * Ingest routes are intended for external agents and fail closed.
+ * They require a dedicated INGEST_API_TOKEN.
+ */
+export function ingestTokenAuth(): MiddlewareHandler {
+  return async (c, next) => {
+    const token = process.env.INGEST_API_TOKEN;
+    if (!token) {
+      return c.json({ error: 'INGEST_API_TOKEN is required for ingest routes' }, 401);
+    }
+
     const authHeader = c.req.header('Authorization');
     if (!authHeader) {
       return c.json({ error: 'Authorization header required' }, 401);

@@ -31,6 +31,7 @@ const QUALIFIER_DEFS: { value: string; desc: string }[] = [
   { value: 'priority:', desc: 'Filter by priority' },
   { value: 'label:', desc: 'Filter by label' },
   { value: 'due:', desc: 'Due date filter' },
+  { value: 'reminder:', desc: 'Reminder filter' },
   { value: 'done:', desc: 'Completion status' },
   { value: 'has:', desc: 'Has property' },
 ];
@@ -55,7 +56,17 @@ const HAS_VALUES: SuggestionItem[] = [
   { value: 'comments', display: 'comments', desc: 'Has comments' },
   { value: 'labels', display: 'labels', desc: 'Has labels' },
   { value: 'due', display: 'due', desc: 'Has due date' },
+  { value: 'reminder', display: 'reminder', desc: 'Has active reminder' },
   { value: 'priority', display: 'priority', desc: 'Has priority' },
+];
+
+const REMINDER_VALUES: SuggestionItem[] = [
+  { value: 'due', display: 'due', desc: 'Due now or overdue' },
+  { value: 'overdue', display: 'overdue', desc: 'Past reminder date' },
+  { value: 'today', display: 'today', desc: 'Reminder today' },
+  { value: 'upcoming', display: 'upcoming', desc: 'Future reminder' },
+  { value: 'none', display: 'none', desc: 'No active reminder' },
+  { value: 'any', display: 'any', desc: 'Has active reminder' },
 ];
 
 function getTokenAtCursor(query: string, cursorPos: number): TokenContext | null {
@@ -156,7 +167,7 @@ function getSuggestions(
     return qualifiers.filter((q) => q.display.toLowerCase().startsWith(lp) || q.display.slice(prefix.length).toLowerCase().startsWith(lp));
   }
 
-  const KNOWN = new Set(['status', 'priority', 'label', 'due', 'done', 'has']);
+  const KNOWN = new Set(['status', 'priority', 'label', 'due', 'reminder', 'done', 'has']);
   if (!KNOWN.has(ctx.qualifier)) return [];
 
   switch (ctx.qualifier) {
@@ -190,6 +201,8 @@ function getSuggestions(
       );
     case 'due':
       return filter(DUE_VALUES, ctx.partial);
+    case 'reminder':
+      return filter(REMINDER_VALUES, ctx.partial);
     case 'done':
       return filter(DONE_VALUES, ctx.partial);
     case 'has':
@@ -365,6 +378,7 @@ export function Filters({ filterQuery, onFilterChange, columns, priorities, cate
       priority: 'priority values',
       label: 'label values',
       due: 'due date values',
+      reminder: 'reminder values',
       done: 'done values',
       has: 'has values',
     };

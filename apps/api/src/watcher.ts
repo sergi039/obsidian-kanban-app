@@ -70,6 +70,20 @@ export function startWatcher(config: AppConfig): FSWatcher {
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
   });
 
+  watcher.on('error', (err) => {
+    console.error('[watcher] Watch error:', err);
+  });
+
+  watcher.on('ready', () => {
+    const watched = watcher?.getWatched() ?? {};
+    if (Object.keys(watched).length === 0) {
+      console.error(
+        '[watcher] WARNING: no files are being watched — vault paths are likely wrong. ' +
+          'Check vaultRoot and board file paths in config.boards.json.',
+      );
+    }
+  });
+
   watcher.on('change', (filePath) => {
     if (suppressCount > 0) {
       console.log(`[watcher] Queued change during suppression: ${filePath}`);

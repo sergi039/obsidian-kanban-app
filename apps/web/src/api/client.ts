@@ -13,6 +13,10 @@ import type {
   AutomationAction,
   PriorityDef,
   CategoryDef,
+  Reminder,
+  CreateReminderRequest,
+  UpdateReminderRequest,
+  SnoozeReminderRequest,
 } from '../types';
 export { clearApiToken, getApiToken, setApiToken } from './auth';
 import { getApiToken } from './auth';
@@ -218,6 +222,54 @@ export async function deleteComment(cardId: string, commentId: string): Promise<
   return request<{ ok: boolean }>(`/cards/${cardId}/comments/${commentId}`, {
     method: 'DELETE',
   });
+}
+
+// Reminders API
+export async function fetchBoardReminders(boardId: string): Promise<Reminder[]> {
+  return request<Reminder[]>(`/reminders?board_id=${encodeURIComponent(boardId)}`);
+}
+
+export async function fetchCardReminders(cardId: string): Promise<Reminder[]> {
+  return request<Reminder[]>(`/reminders?card_id=${encodeURIComponent(cardId)}`);
+}
+
+export async function fetchDueReminders(filters?: {
+  board_id?: string;
+  channel?: string;
+  before?: string;
+  limit?: number;
+}): Promise<Reminder[]> {
+  const params = new URLSearchParams();
+  if (filters?.board_id) params.set('board_id', filters.board_id);
+  if (filters?.channel) params.set('channel', filters.channel);
+  if (filters?.before) params.set('before', filters.before);
+  if (filters?.limit) params.set('limit', String(filters.limit));
+  const qs = params.toString();
+  return request<Reminder[]>(`/reminders/due${qs ? `?${qs}` : ''}`);
+}
+
+export async function createReminder(data: CreateReminderRequest): Promise<Reminder> {
+  return request<Reminder>('/reminders', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateReminder(reminderId: string, patch: UpdateReminderRequest): Promise<Reminder> {
+  return request<Reminder>(`/reminders/${reminderId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
+export async function snoozeReminder(reminderId: string, data: SnoozeReminderRequest): Promise<Reminder> {
+  return request<Reminder>(`/reminders/${reminderId}/snooze`, { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function dismissReminder(reminderId: string): Promise<Reminder> {
+  return request<Reminder>(`/reminders/${reminderId}/dismiss`, { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function fireReminder(reminderId: string): Promise<Reminder> {
+  return request<Reminder>(`/reminders/${reminderId}/fire`, { method: 'POST', body: JSON.stringify({}) });
+}
+
+export async function deleteReminder(reminderId: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>(`/reminders/${reminderId}`, { method: 'DELETE' });
 }
 
 // Views API
