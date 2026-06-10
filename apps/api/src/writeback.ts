@@ -26,6 +26,19 @@ function escapeRegExp(text: string): string {
 }
 
 /**
+ * Update sync_state.file_hash for a file after a write-back modifies it.
+ * Hashes the exact bytes written so the value matches what reconciler computes
+ * (createHash('sha256').update(content)), preventing a redundant re-reconcile of
+ * our own change. `content` MUST be the post-write file content.
+ */
+export function updateSyncStateHash(filePath: string, content: string): void {
+  const hash = createHash('sha256').update(content).digest('hex');
+  getDb()
+    .prepare(`INSERT OR REPLACE INTO sync_state (file_path, file_hash, last_synced) VALUES (?, ?, datetime('now'))`)
+    .run(filePath, hash);
+}
+
+/**
  * Normalize a line for fuzzy matching: strip whitespace, checkbox state, and case.
  */
 function normalizeForMatch(line: string): string {
@@ -128,7 +141,9 @@ export function writeBackDoneState(
       }
 
       lines[found] = `${foundMatch[1]}${isDone ? 'x' : ' '}${foundMatch[3]}`;
-      atomicWrite(filePath, lines.join('\n'));
+      const foundContent = lines.join('\n');
+      atomicWrite(filePath, foundContent);
+      updateSyncStateHash(filePath, foundContent);
 
       // Update line_number in DB
       db.prepare('UPDATE cards SET line_number = ? WHERE id = ?').run(found + 1, cardId);
@@ -145,7 +160,9 @@ export function writeBackDoneState(
     const newMark = isDone ? 'x' : ' ';
     lines[lineIdx] = `${checkboxMatch[1]}${newMark}${checkboxMatch[3]}`;
 
-    atomicWrite(filePath, lines.join('\n'));
+    const updatedContent = lines.join('\n');
+    atomicWrite(filePath, updatedContent);
+    updateSyncStateHash(filePath, updatedContent);
 
     return { success: true, changed: true, lineNumber: card.line_number };
   } catch (err) {
@@ -247,7 +264,9 @@ export function writeBackPriority(
     }
 
     lines[lineIdx] = line;
-    atomicWrite(filePath, lines.join('\n'));
+    const updatedContent = lines.join('\n');
+    atomicWrite(filePath, updatedContent);
+    updateSyncStateHash(filePath, updatedContent);
 
     // Update raw_line and line_number in DB
     db.prepare('UPDATE cards SET raw_line = ?, line_number = ? WHERE id = ?').run(line, lineIdx + 1, cardId);
@@ -311,7 +330,9 @@ export function writeBackColumn(
     }
 
     lines[lineIdx] = updatedLine;
-    atomicWrite(filePath, lines.join('\n'));
+    const updatedContent = lines.join('\n');
+    atomicWrite(filePath, updatedContent);
+    updateSyncStateHash(filePath, updatedContent);
 
     // Update raw_line in DB to keep in sync
     db.prepare('UPDATE cards SET raw_line = ?, line_number = ? WHERE id = ?').run(updatedLine, lineIdx + 1, cardId);
@@ -376,9 +397,9 @@ export function stampAllColumns(): number {
     if (changed) {
       suppressWatcher();
       try {
-        atomicWrite(filePath, lines.join('\n'));
-        const newHash = createHash('sha256').update(lines.join('\n')).digest('hex');
-        db.prepare(`INSERT OR REPLACE INTO sync_state (file_path, file_hash, last_synced) VALUES (?, ?, datetime('now'))`).run(filePath, newHash);
+        const updatedContent = lines.join('\n');
+        atomicWrite(filePath, updatedContent);
+        updateSyncStateHash(filePath, updatedContent);
       } finally {
         unsuppressWatcher();
       }

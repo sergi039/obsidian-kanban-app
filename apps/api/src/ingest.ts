@@ -7,6 +7,7 @@ import { allocateUniqueKbId, injectKbId } from './parser.js';
 import { routeTask, type RouteTaskResult } from './routing.js';
 import { broadcast } from './ws.js';
 import { suppressWatcher, unsuppressWatcher } from './watcher.js';
+import { updateSyncStateHash } from './writeback.js';
 import { fireEvent } from './automations.js';
 import { formatCard } from './utils.js';
 
@@ -305,6 +306,7 @@ export function ingestCard(input: IngestCardInput, config: AppConfig = loadConfi
     const tmpPath = filePath + '.tmp';
     writeFileSync(tmpPath, newContent, 'utf-8');
     renameSync(tmpPath, filePath);
+    updateSyncStateHash(filePath, newContent);
 
     const lines = newContent.split('\n');
     const lineNumber = lines.length - 1;
