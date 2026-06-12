@@ -74,7 +74,7 @@ export function BulkActionsBar({ count, columns, onMove, onClear }: Props) {
         disabled={busy}
         onClick={onClear}
         className="px-2.5 h-7 text-xs rounded-md text-board-text-muted hover:text-board-text hover:bg-board-column transition-colors disabled:opacity-50"
-        title="Clear selection (Esc)"
+        title="Clear selection"
       >
         ✕ Clear
       </button>

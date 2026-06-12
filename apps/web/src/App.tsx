@@ -359,18 +359,6 @@ export default function App() {
     });
   }, [allCards]);
 
-  // Esc clears the card selection (unless a modal is open — it handles Esc itself)
-  useEffect(() => {
-    if (selectedCardIds.size === 0) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !selectedCard && !showAutomations && !showReminders) {
-        clearCardSelection();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedCardIds.size, selectedCard, showAutomations, showReminders, clearCardSelection]);
-
   useEffect(() => {
     const cardParam = new URLSearchParams(window.location.search).get('card');
     if (!cardParam || openedCardParamRef.current === cardParam || allCards.length === 0) return;
