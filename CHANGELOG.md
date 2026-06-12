@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-12
+
+### Stability
+- API now backs up `config.boards.json` to `data/config.boards.backup-<ts>.json` on every successful boot (keeps last 3, skips when unchanged) — the gitignored config previously had no recovery path when it went missing.
+- Missing or unparsable `config.boards.json` at boot now logs a clear restore hint (latest backup path + `config.boards.example.json`) and exits cleanly instead of crash-looping on a raw ENOENT stack trace.
+- Oversized LaunchAgent logs (`logs/api.stderr.log` / `api.stdout.log` over 5 MB) are rotated to `<name>.1` at boot — a past crash loop had grown stderr to ~222k lines.
+
 ## 2026-06-04
 
 ### Reminders
