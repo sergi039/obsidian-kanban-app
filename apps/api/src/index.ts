@@ -7,6 +7,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { loadConfig } from './config.js';
+import type { AppConfig } from './config.js';
+import {
+  backupConfigFile,
+  buildMissingConfigMessage,
+  findLatestConfigBackup,
+  rotateLogIfOversized,
+} from './boot-resilience.js';
 import { getDb } from './db.js';
 import { reconcileAll } from './reconciler.js';
 import { startWatcher } from './watcher.js';
@@ -105,13 +112,60 @@ if (process.env.NODE_ENV === 'production' || process.env.SERVE_STATIC) {
 }
 
 // --- Bootstrap ---
-const config = loadConfig();
-const db = getDb();
-
-// Backup DB on startup (keeps last 3 backups)
 import { copyFileSync, existsSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { PROJECT_ROOT } from './config.js';
-const DB_PATH = path.join(PROJECT_ROOT, 'data', 'kanban.db');
+
+const CONFIG_PATH = path.join(PROJECT_ROOT, 'config.boards.json');
+const DATA_DIR = path.join(PROJECT_ROOT, 'data');
+
+// Rotate oversized LaunchAgent logs — a crash loop can grow them unbounded
+for (const logName of ['api.stderr.log', 'api.stdout.log']) {
+  const logPath = path.join(PROJECT_ROOT, 'logs', logName);
+  try {
+    if (rotateLogIfOversized(logPath)) {
+      console.log(`[boot] Rotated oversized log: ${logName} → ${logName}.1`);
+    }
+  } catch (err) {
+    console.warn(`[boot] Log rotation failed for ${logName}:`, err);
+  }
+}
+
+function loadConfigOrExit(): AppConfig {
+  if (!existsSync(CONFIG_PATH)) {
+    console.error(buildMissingConfigMessage({
+      configPath: CONFIG_PATH,
+      backupDir: DATA_DIR,
+      examplePath: path.join(PROJECT_ROOT, 'config.boards.example.json'),
+    }));
+    process.exit(1);
+  }
+  try {
+    return loadConfig();
+  } catch (err) {
+    console.error(`[boot] FATAL: could not load ${CONFIG_PATH}: ${err instanceof Error ? err.message : String(err)}`);
+    const latestBackup = findLatestConfigBackup(DATA_DIR);
+    if (latestBackup) {
+      console.error(`[boot] A known-good backup may exist: ${latestBackup}`);
+    }
+    process.exit(1);
+  }
+}
+
+const config = loadConfigOrExit();
+const db = getDb();
+
+// Backup config on startup (keeps last 3, skips if unchanged since last backup)
+try {
+  const configBackup = backupConfigFile(CONFIG_PATH, DATA_DIR);
+  if (configBackup) {
+    console.log(`[boot] Config backup: ${path.basename(configBackup)}`);
+  }
+} catch (err) {
+  console.warn(`[boot] Config backup failed:`, err);
+}
+
+// Backup DB on startup (keeps last 3 backups)
+const DB_PATH = path.join(DATA_DIR, 'kanban.db');
 try {
   if (existsSync(DB_PATH)) {
     const backupDir = path.dirname(DB_PATH);
