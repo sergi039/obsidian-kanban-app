@@ -50,6 +50,11 @@ const MoveCardSchema = z.object({
   position: z.number().int(),
 });
 
+const BulkMoveSchema = z.object({
+  card_ids: z.array(z.string().min(1)).min(1).max(200),
+  column: z.string(),
+});
+
 
 async function safeParseJson(c: { req: { json: () => Promise<unknown> } }): Promise<unknown | null> {
   try {
@@ -160,6 +165,147 @@ cards.post('/', async (c) => {
     }
     return c.json({ error: `Failed to create card: ${err}` }, 500);
   }
+});
+
+// POST /api/cards/bulk-move — move multiple cards to a column (appended to the end, current order preserved)
+cards.post('/bulk-move', async (c) => {
+  const body = await safeParseJson(c);
+  if (body === null) return c.json({ error: 'Invalid JSON body' }, 400);
+  const parsed = BulkMoveSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const cardIds = [...new Set(parsed.data.card_ids)];
+  const { column } = parsed.data;
+
+  const db = getDb();
+  const placeholders = cardIds.map(() => '?').join(', ');
+  const rows = db
+    .prepare(`SELECT * FROM cards WHERE id IN (${placeholders})`)
+    .all(...cardIds) as Array<Record<string, unknown>>;
+
+  if (rows.length !== cardIds.length) {
+    const found = new Set(rows.map((r) => r.id as string));
+    const missing = cardIds.filter((id) => !found.has(id));
+    return c.json({ error: `Cards not found: ${missing.join(', ')}` }, 404);
+  }
+
+  const boardIds = new Set(rows.map((r) => r.board_id as string));
+  if (boardIds.size > 1) {
+    return c.json({ error: 'All cards must belong to the same board' }, 400);
+  }
+  const boardId = rows[0].board_id as string;
+
+  const config = loadConfig();
+  const board = config.boards.find((b) => b.id === boardId);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+  if (!board.columns.includes(column)) {
+    return c.json({ error: `Column "${column}" not in board` }, 400);
+  }
+
+  // Cards already in the target column stay put; the rest are appended
+  // to the end of the target in board-column order, then by position.
+  const columnRank = new Map(board.columns.map((name, i) => [name, i]));
+  const moving = rows
+    .filter((r) => r.column_name !== column)
+    .sort((a, b) => {
+      const colA = columnRank.get(a.column_name as string) ?? 0;
+      const colB = columnRank.get(b.column_name as string) ?? 0;
+      if (colA !== colB) return colA - colB;
+      return (a.position as number) - (b.position as number);
+    });
+
+  const transitions: Array<{
+    id: string;
+    fromColumn: string;
+    movingToDone: boolean;
+    movingFromDone: boolean;
+  }> = [];
+
+  const bulkTransaction = db.transaction(() => {
+    const maxPos = (db
+      .prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ?')
+      .get(boardId, column) as { mp: number | null }).mp;
+    let nextPos = (maxPos ?? -1) + 1;
+    const sourceColumns = new Set<string>();
+
+    for (const row of moving) {
+      const fromColumn = row.column_name as string;
+      sourceColumns.add(fromColumn);
+
+      db.prepare(
+        "UPDATE cards SET column_name = ?, position = ?, updated_at = datetime('now') WHERE id = ?",
+      ).run(column, nextPos++, row.id);
+
+      const movingToDone = isDoneColumn(column, board) && !isDoneColumn(fromColumn, board);
+      const movingFromDone = !isDoneColumn(column, board) && isDoneColumn(fromColumn, board);
+      if (movingToDone) {
+        db.prepare('UPDATE cards SET is_done = 1 WHERE id = ?').run(row.id);
+      } else if (movingFromDone) {
+        db.prepare('UPDATE cards SET is_done = 0 WHERE id = ?').run(row.id);
+      }
+      transitions.push({ id: row.id as string, fromColumn, movingToDone, movingFromDone });
+    }
+
+    for (const sourceColumn of sourceColumns) {
+      normalizePositions(db, boardId, sourceColumn);
+    }
+    normalizePositions(db, boardId, column);
+  });
+
+  bulkTransaction();
+
+  // Write back done state and column to .md per moved card
+  const writeBackWarnings: string[] = [];
+  if (transitions.length > 0) {
+    suppressWatcher();
+    try {
+      for (const t of transitions) {
+        if (t.movingToDone || t.movingFromDone) {
+          const result = writeBackDoneState(t.id, t.movingToDone);
+          if (!result.success) {
+            writeBackWarnings.push(`done state for ${t.id}: ${result.error}`);
+            console.warn(`[writeback] Done state failed for card ${t.id}: ${result.error}`);
+          }
+        }
+        const colResult = writeBackColumn(t.id, column);
+        if (!colResult.success) {
+          writeBackWarnings.push(`column for ${t.id}: ${colResult.error}`);
+          console.warn(`[writeback] Column failed for card ${t.id}: ${colResult.error}`);
+        }
+      }
+    } finally {
+      unsuppressWatcher();
+    }
+  }
+
+  if (transitions.length > 0) {
+    broadcast({
+      type: 'card-moved',
+      boardId,
+      timestamp: new Date().toISOString(),
+    });
+
+    for (const t of transitions) {
+      try {
+        fireEvent({ type: 'card.moved', cardId: t.id, boardId, fromColumn: t.fromColumn, toColumn: column });
+      } catch (err) {
+        console.warn('[automations] Error on card.moved:', err);
+      }
+    }
+  }
+
+  const updated = db
+    .prepare(`SELECT * FROM cards WHERE id IN (${placeholders})`)
+    .all(...cardIds) as Array<Record<string, unknown>>;
+  const response: Record<string, unknown> = {
+    ok: true,
+    moved: transitions.length,
+    cards: updated.map(formatCard),
+  };
+  if (writeBackWarnings.length > 0) {
+    response._writeBackWarnings = writeBackWarnings;
+  }
+  return c.json(response);
 });
 
 // PATCH /api/cards/:id — update card metadata (unified move path for column/position changes)

@@ -9,9 +9,11 @@ interface Props {
   categories?: CategoryDef[];
   reminders?: Reminder[];
   onClick: () => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export function DraggableCard({ card, priorities, categories, reminders, onClick }: Props) {
+export function DraggableCard({ card, priorities, categories, reminders, onClick, selected, onToggleSelect }: Props) {
   const {
     attributes,
     listeners,
@@ -33,7 +35,15 @@ export function DraggableCard({ card, priorities, categories, reminders, onClick
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <KanbanCard card={card} priorities={priorities} categories={categories} reminders={reminders} onClick={onClick} />
+      <KanbanCard
+        card={card}
+        priorities={priorities}
+        categories={categories}
+        reminders={reminders}
+        onClick={onClick}
+        selected={selected}
+        onToggleSelect={onToggleSelect}
+      />
     </div>
   );
 }

@@ -16,6 +16,8 @@ interface Props {
   boardId: string;
   sortableId: string;
   isSorted?: boolean;
+  selectedCardIds?: Set<string>;
+  onToggleSelect?: (cardId: string) => void;
   onCardClick: (card: Card) => void;
   onCardAdd: (title: string, column: string) => Promise<void>;
   onColumnRename: (oldName: string, newName: string) => Promise<void>;
@@ -59,6 +61,8 @@ export function Column({
   boardId,
   sortableId,
   isSorted,
+  selectedCardIds,
+  onToggleSelect,
   onCardClick,
   onCardAdd,
   onColumnRename,
@@ -128,6 +132,8 @@ export function Column({
               categories={categories}
               reminders={remindersByCard?.get(card.id)}
               onClick={() => onCardClick(card)}
+              selected={selectedCardIds?.has(card.id) ?? false}
+              onToggleSelect={onToggleSelect ? () => onToggleSelect(card.id) : undefined}
             />
           ))}
         </SortableContext>

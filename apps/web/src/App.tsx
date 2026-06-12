@@ -16,6 +16,7 @@ import {
   fetchBoardReminders,
   fetchDueReminders,
   fireReminder,
+  bulkMoveCards,
 } from './api/client';
 import type { BoardSummary, BoardDetail, Field, PriorityDef, CategoryDef, Reminder } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
@@ -31,6 +32,7 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { AutomationsPanel } from './components/AutomationsPanel';
 import { RemindersPanel } from './components/RemindersPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { BulkActionsBar } from './components/BulkActionsBar';
 import { BoardSort } from './components/BoardSort';
 import type { BoardSortField } from './components/BoardSort';
 import type { Card } from './types';
@@ -101,6 +103,7 @@ export default function App() {
   const [showReminders, setShowReminders] = useState(false);
   const [boardSortField, setBoardSortField] = useState<BoardSortField>('position');
   const [boardReminders, setBoardReminders] = useState<Reminder[]>([]);
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission>(() =>
     typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'denied',
   );
@@ -205,6 +208,41 @@ export default function App() {
     setFilterQuery('');
     setBoardReminders([]);
     setShowReminders(false);
+    setSelectedCardIds(new Set());
+  };
+
+  const toggleCardSelection = useCallback((cardId: string) => {
+    setSelectedCardIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cardId)) next.delete(cardId);
+      else next.add(cardId);
+      return next;
+    });
+  }, []);
+
+  const clearCardSelection = useCallback(() => setSelectedCardIds(new Set()), []);
+
+  const handleLayoutChange = (newLayout: 'board' | 'table') => {
+    setLayout(newLayout);
+    setSelectedCardIds(new Set());
+  };
+
+  const handleBulkMove = async (column: string) => {
+    if (selectedCardIds.size === 0) return;
+    try {
+      await bulkMoveCards([...selectedCardIds], column);
+    } catch (err) {
+      if (isAuthError(err)) {
+        clearApiToken();
+        setAuthRequired(true);
+        return;
+      }
+      throw err;
+    }
+    setSelectedCardIds(new Set());
+    await loadBoard();
+    const updatedBoards = await fetchBoards();
+    setBoards(updatedBoards);
   };
 
   const handleReload = async () => {
@@ -310,6 +348,28 @@ export default function App() {
     () => boardReminders.filter((reminder) => isDueReminder(reminder)).length,
     [boardReminders],
   );
+
+  // Drop selection entries for cards that no longer exist after a reload
+  useEffect(() => {
+    setSelectedCardIds((prev) => {
+      if (prev.size === 0) return prev;
+      const existing = new Set(allCards.map((card) => card.id));
+      const next = new Set([...prev].filter((id) => existing.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [allCards]);
+
+  // Esc clears the card selection (unless a modal is open — it handles Esc itself)
+  useEffect(() => {
+    if (selectedCardIds.size === 0) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !selectedCard && !showAutomations && !showReminders) {
+        clearCardSelection();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedCardIds.size, selectedCard, showAutomations, showReminders, clearCardSelection]);
 
   useEffect(() => {
     const cardParam = new URLSearchParams(window.location.search).get('card');
@@ -572,7 +632,7 @@ export default function App() {
             priorities={boardPriorities}
             categories={boardDetail?.categories ?? []}
           />
-          <ViewSwitcher layout={layout} onLayoutChange={setLayout} />
+          <ViewSwitcher layout={layout} onLayoutChange={handleLayoutChange} />
           {layout === 'board' && (
             <BoardSort value={boardSortField} onChange={setBoardSortField} />
           )}
@@ -638,6 +698,8 @@ export default function App() {
               sortField={boardSortField}
               filterCards={filterCards}
               remindersByCard={remindersByCard}
+              selectedCardIds={selectedCardIds}
+              onToggleSelect={toggleCardSelection}
               onCardMove={handleCardMove}
               onCardClick={setSelectedCard}
               onCardAdd={handleCardAdd}
@@ -664,6 +726,16 @@ export default function App() {
           <div className="text-board-text-muted text-center mt-20">Select a board</div>
         )}
       </main>
+
+      {/* Bulk actions bar (board view, while cards are selected) */}
+      {layout === 'board' && selectedCardIds.size > 0 && boardDetail && (
+        <BulkActionsBar
+          count={selectedCardIds.size}
+          columns={boardDetail.columns.map((c) => c.name)}
+          onMove={handleBulkMove}
+          onClear={clearCardSelection}
+        />
+      )}
 
       {/* Card detail modal */}
       {selectedCard && (

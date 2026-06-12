@@ -8,6 +8,8 @@ interface Props {
   categories?: CategoryDef[];
   reminders?: Reminder[];
   onClick: () => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 function escapeRegExp(text: string): string {
@@ -27,7 +29,7 @@ function cleanTitle(title: string, priorities: PriorityDef[]): string {
 
 const MAX_VISIBLE_BADGES = 3;
 
-export function KanbanCard({ card, priorities, categories = [], reminders = [], onClick }: Props) {
+export function KanbanCard({ card, priorities, categories = [], reminders = [], onClick, selected = false, onToggleSelect }: Props) {
   const linkCount = card.links.length > 0 ? card.links.length : extractLinks(card.title).length;
   const displayTitle = cleanTitle(card.title, priorities);
   const priorityDef = card.priority ? priorities.find((p) => p.id === card.priority) : undefined;
@@ -42,9 +44,22 @@ export function KanbanCard({ card, priorities, categories = [], reminders = [], 
   const shownCategories = visibleCategories.slice(0, MAX_VISIBLE_BADGES);
   const extraCount = visibleCategories.length - MAX_VISIBLE_BADGES;
 
+  const handleClick = (e: React.MouseEvent) => {
+    if ((e.metaKey || e.ctrlKey) && onToggleSelect) {
+      e.preventDefault();
+      onToggleSelect();
+      return;
+    }
+    onClick();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
+      if ((e.metaKey || e.ctrlKey) && onToggleSelect) {
+        onToggleSelect();
+        return;
+      }
       onClick();
     }
   };
@@ -53,14 +68,33 @@ export function KanbanCard({ card, priorities, categories = [], reminders = [], 
     <div
       role="button"
       tabIndex={0}
-      onClick={onClick}
+      onClick={handleClick}
       onKeyDown={handleKeyDown}
       aria-label={`${card.is_done ? 'Done: ' : ''}${displayTitle}${priorityDef ? `, ${priorityDef.label} priority` : ''}`}
-      className={`group relative bg-board-card hover:bg-board-card-hover border border-board-border hover:border-board-border-hover rounded-lg px-3 py-2.5 cursor-pointer transition-all focus:outline-none ${
+      className={`group relative bg-board-card hover:bg-board-card-hover border rounded-lg px-3 py-2.5 cursor-pointer transition-all focus:outline-none ${
         card.is_done ? 'opacity-50' : ''
+      } ${
+        selected
+          ? 'border-blue-500 ring-1 ring-blue-500/60'
+          : 'border-board-border hover:border-board-border-hover'
       }`}
-      style={{ ['--tw-ring-color' as string]: 'var(--board-accent-ring)' }}
+      style={{ ['--tw-ring-color' as string]: selected ? undefined : 'var(--board-accent-ring)' }}
     >
+      {/* Selection checkbox (visible on hover or when selected) */}
+      {onToggleSelect && (
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          aria-label={`Select card: ${displayTitle}`}
+          className={`absolute right-2 top-2 h-4 w-4 cursor-pointer accent-blue-500 transition-opacity ${
+            selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+          }`}
+        />
+      )}
       {/* Priority left border */}
       {showPriority && (
         <div

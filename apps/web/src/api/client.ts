@@ -156,6 +156,16 @@ export async function moveCard(cardId: string, move: MoveCardRequest): Promise<C
   });
 }
 
+export async function bulkMoveCards(
+  cardIds: string[],
+  column: string,
+): Promise<{ ok: boolean; moved: number; cards: Card[] }> {
+  return request<{ ok: boolean; moved: number; cards: Card[] }>('/cards/bulk-move', {
+    method: 'POST',
+    body: JSON.stringify({ card_ids: cardIds, column }),
+  });
+}
+
 export async function patchCard(cardId: string, patch: PatchCardRequest): Promise<Card> {
   return request<Card>(`/cards/${cardId}`, {
     method: 'PATCH',

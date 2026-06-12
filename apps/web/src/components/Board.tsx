@@ -28,6 +28,8 @@ interface Props {
   sortField: BoardSortField;
   filterCards: (cards: Card[]) => Card[];
   remindersByCard?: Map<string, Reminder[]>;
+  selectedCardIds?: Set<string>;
+  onToggleSelect?: (cardId: string) => void;
   onCardMove: () => Promise<void>;
   onCardClick: (card: Card) => void;
   onCardAdd: (title: string, column: string) => Promise<void>;
@@ -88,6 +90,8 @@ export function Board({
   sortField,
   filterCards,
   remindersByCard,
+  selectedCardIds,
+  onToggleSelect,
   onCardMove,
   onCardClick,
   onCardAdd,
@@ -354,6 +358,8 @@ export function Board({
               remindersByCard={remindersByCard}
               boardId={board.id}
               isSorted={isSorted}
+              selectedCardIds={selectedCardIds}
+              onToggleSelect={onToggleSelect}
               onCardClick={onCardClick}
               onCardAdd={onCardAdd}
               onColumnRename={onColumnRename}
