@@ -21,6 +21,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Comments** — full CRUD with linkified URLs, author avatars, timestamps
 - **Reminders** — per-card reminder records with due/upcoming badges, snooze/dismiss, and polling-friendly API state
 - **Custom fields** — TEXT, NUMBER, DATE, SINGLE_SELECT, ITERATION types per board
+- **Bulk actions** — select multiple cards and move or close them at once
 - **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance
 
 **Organization**
@@ -34,6 +35,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Real-time updates** — WebSocket push, multiple tabs stay in sync
 - **Dark mode** — system-aware theme switching
 - **Board management** — create, archive, rename, delete boards from the UI
+- **Boot resilience** — config and DB are backed up to `data/` on every boot (last 3 kept); a missing `config.boards.json` prints an exact restore command instead of crashing, and oversized logs rotate automatically
 - **Docker ready** — multi-stage Dockerfile + docker-compose
 
 ## 🚀 Quick Start
@@ -164,7 +166,7 @@ KANBAN_API_URL=http://127.0.0.1:4000
 KANBAN_API_TOKEN=...
 ```
 
-Routing rules live in `config.routing.json`. Agents auto-create only when routing is confident; otherwise they return clarification options so the user can choose work, personal, or another board.
+Routing rules live in `config.routing.json` (gitignored — copy `config.routing.example.json` to start; sensible defaults are derived from your boards if the file is absent). Agents auto-create only when routing is confident; otherwise they return clarification options so the user can choose work, personal, or another board.
 
 See [Desktop MCP setup](docs/desktop-mcp.md) for Claude/OpenAI/Codex configuration and agent instructions.
 
@@ -173,11 +175,13 @@ See [Desktop MCP setup](docs/desktop-mcp.md) for Claude/OpenAI/Codex configurati
 ```
 obsidian-kanban-app/
 ├── config.boards.json       ← Board configuration (edit this!)
-├── config.routing.json      ← Desktop agent routing rules
+├── config.routing.json      ← Desktop agent routing rules (gitignored, copy from example)
 ├── docker-compose.yml       ← Docker deployment
 ├── Dockerfile               ← Multi-stage production build
 ├── data/
-│   └── kanban.db            ← SQLite database (auto-created)
+│   ├── kanban.db            ← SQLite database (auto-created)
+│   ├── kanban.backup-*.db   ← DB backups, last 3 (auto-created on boot)
+│   └── config.boards.backup-*.json ← Config backups, last 3 (auto-created on boot)
 ├── apps/
 │   ├── api/                 ← Backend (Hono + SQLite + file watcher)
 │   │   └── src/
@@ -269,7 +273,7 @@ Delivery channels:
 ```bash
 KANBAN_API_URL=http://127.0.0.1:4000 \
 KANBAN_APP_URL=http://127.0.0.1:4000 \
-KANBAN_REMINDER_CALENDAR_NAME="Sergi Sinyugin" \
+KANBAN_REMINDER_CALENDAR_NAME="My Calendar" \
 KANBAN_REMINDER_EMAIL_TO=you@example.com \
 pnpm reminders:macos:install
 ```
@@ -285,6 +289,11 @@ Columns are defined per board in `config.boards.json`. The special column name *
 You can also configure `doneColumns` per board for custom done-state column names.
 
 ## 🔧 Troubleshooting
+
+**Server exits with "config file not found"?**
+- `config.boards.json` is gitignored — every successful boot backs it up to `data/config.boards.backup-<timestamp>.json`
+- The boot error prints the exact `cp` command to restore from the latest backup
+- No backups yet? Copy `config.boards.example.json` and edit `vaultRoot` and `boards`
 
 **Empty board after startup?**
 - Check that `vaultRoot` and `file` paths in `config.boards.json` are correct

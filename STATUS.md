@@ -63,7 +63,7 @@
 Card cross-column DnD may not persist correctly in some cases. The `dragOriginRef` fix was deployed but user hasn't fully confirmed. The DnD test component (`🧪 Test` button) is still in UI for debugging.
 
 ### Architect-GPT Subagent
-GPT 5.3 Codex tends to loop on file reads without producing analysis. Multiple code review attempts timed out. Config set to `thinkingDefault: high` for the agent. SOUL.md updated with anti-loop instructions. Issue filed in `/Users/ss/openclaw-codex-issue.md`.
+GPT 5.3 Codex tends to loop on file reads without producing analysis. Multiple code review attempts timed out. Config set to `thinkingDefault: high` for the agent. SOUL.md updated with anti-loop instructions. Issue filed separately.
 
 ## Running the App
 

@@ -4,24 +4,23 @@
 Standalone web app that reads existing Obsidian markdown checklist files and displays them as GitHub Projects-style Kanban boards with drag-and-drop.
 
 ## Source Files (READ-ONLY except checkbox toggling)
-Vault: `/Users/ss/Desktop/Private/Obsidian/Notes/Notes/`
+Vault: `/path/to/your/Obsidian/Vault/`
 
-4 task files:
-1. `Business/VS/Tasks VirtoSoftware.md` — ~25 tasks (VS business)
-2. `Private/Tasks Private.md` — ~8 tasks (personal)
-3. `Property/Cervantes 50/Task List Cervantes.md` — ~9 tasks (property renovation)
-4. `Business/VP/Tasks VP.md` — 1 task
+Example task files (one Markdown file per board):
+1. `Business/Tasks Work.md` — work tasks
+2. `Private/Tasks Private.md` — personal tasks
+3. `Property/Task List Renovation.md` — property renovation tasks
 
-### Real Task Format Examples
+### Task Format Examples (format observed in real files)
 ```markdown
-- [ ] MS Case - EU Commission - track 
-- [ ] Marketing plan with Olga and Kri - till 1st June. How to measure
-- [ ] https://sam.gov/ 🔺 - delayed because of the passports 
-- [ ] Docs Page for Admins - template and what to put on it ⏫ 
-- [x] BMW color - ordered ➕ 2025-10-15
-- [ ] Led barbacoa 25 1 sm depth 1 sm wide 
+- [ ] Prepare quarterly report - track 
+- [ ] Marketing plan with the team - till 1st June. How to measure
+- [ ] https://example.gov/ 🔺 - delayed because of paperwork 
+- [ ] Docs page for admins - template and what to put on it ⏫ 
+- [x] Order placed ➕ 2025-10-15
+- [ ] Garden bench 25 1 cm depth 1 cm wide 
 	- sub-items with indentation
-- [ ] Замена автоматизации полива - https://www.hunterirrigation.com/...
+- [ ] Замена автоматизации полива - https://www.example.com/...
 ```
 
 Key observations:
@@ -32,7 +31,7 @@ Key observations:
 - Mixed languages (EN/RU)
 - Free-form text with dates (`till 1st June`)
 - Non-task content mixed in (headings, paragraphs, images)
-- Files may have duplicate frontmatter blocks (Cervantes file has two)
+- Files may have duplicate frontmatter blocks (one source file has two)
 
 ## Tech Stack
 - **Backend**: Node.js + Hono + TypeScript
@@ -89,12 +88,12 @@ obsidian-kanban-app/
 ## config.boards.json
 ```json
 {
-  "vaultRoot": "/Users/ss/Desktop/Private/Obsidian/Notes/Notes",
+  "vaultRoot": "/path/to/your/Obsidian/Vault",
   "boards": [
     {
-      "id": "vs",
-      "name": "VirtoSoftware",
-      "file": "Business/VS/Tasks VirtoSoftware.md",
+      "id": "work",
+      "name": "Work",
+      "file": "Business/Tasks Work.md",
       "columns": ["Backlog", "In Progress", "Blocked", "Done"]
     },
     {
@@ -104,16 +103,10 @@ obsidian-kanban-app/
       "columns": ["Backlog", "In Progress", "Blocked", "Done"]
     },
     {
-      "id": "cervantes",
-      "name": "Cervantes 50",
-      "file": "Property/Cervantes 50/Task List Cervantes.md",
+      "id": "renovation",
+      "name": "Renovation",
+      "file": "Property/Task List Renovation.md",
       "columns": ["Backlog", "In Progress", "Blocked", "Done"]
-    },
-    {
-      "id": "vp",
-      "name": "VP",
-      "file": "Business/VP/Tasks VP.md",
-      "columns": ["Backlog", "In Progress", "Done"]
     }
   ],
   "defaultColumns": ["Backlog", "In Progress", "Blocked", "Done"]

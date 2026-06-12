@@ -7,6 +7,7 @@ dist/
 .env
 .DS_Store
 config.boards.json
+config.routing.json
 .task/
 logs/
 *.tsbuildinfo

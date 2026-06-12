@@ -11,59 +11,58 @@ import {
   stripKbIdFromTitle,
 } from '../src/parser.js';
 
-// ─── Real content from VirtoSoftware file ─────────────────────
-const VS_CONTENT = `---
+// ─── Work board fixture (format mirrors real-world files) ─────
+const WORK_CONTENT = `---
 tags:
-  - vs
+  - work
 ---
-- [ ] MS Case - EU Commission - track
-- [ ] MS Case - Letter to lawyers - see typingmind research
-- [ ] faq Calendar - ss
+- [ ] Legal case - regulator inquiry - track
+- [ ] Legal case - letter to lawyers - see research notes
+- [ ] faq Calendar - docs
 \t    - настройки для браузеров
-- [ ] VS DB - plan and share for Alisa
-- [ ] Alert app for Admins - simple notifications - AL
-- [ ] Marketing plan with Olga and Kri - till 1st June. How to measure
-- [ ] Marketing VS - Reddit, Quora - KS
- - [ ] Privacy and other docs - monitor task for KS - to plan
+- [ ] Internal DB - plan and share with the team
+- [ ] Alert app for admins - simple notifications
+- [ ] Marketing plan with the team - till 1st June. How to measure
+- [ ] Marketing - Reddit, Quora
+ - [ ] Privacy and other docs - monitor task - to plan
 
-- [ ] https://sam.gov/ 🔺 - delayed because of the passports
-- [ ] [Your support request 2510150040002749 has been created. A support advocate will contact you during our](https://learn.microsoft.com/partner-center/support/support-hours) [support business hours](https://learn.microsoft.com/partner-center/support/support-hours) at the **email address you provided** in your request. - virtoway.com tenant
-- [ ] Alerts - M365 Assessment Tool - check if its's suitable for alerts
+- [ ] https://example.gov/ 🔺 - delayed because of paperwork
+- [ ] [Your support request 0000000000000000 has been created. A support advocate will contact you during our](https://learn.microsoft.com/partner-center/support/support-hours) [support business hours](https://learn.microsoft.com/partner-center/support/support-hours) at the **email address you provided** in your request. - example.com tenant
+- [ ] Alerts - assessment tool - check if its's suitable for alerts
 - [ ] Calendar Time Zones visualisation - like Outlook
 - [ ] Calendar Zoom + Google
 - [ ] Onprem Calendar
 - [ ] AD apps to release - data?
 - [ ] Online Upload app - date?
-- [ ] India's Employee - research
+- [ ] New hire - research
 - [ ] SharePoint Companies List - ideas?
 
-- [ ] Lost Deals - email and contact - [Lost Deals 2024-2025.xlsx](https://virtosoftware370.sharepoint.com/:x:/s/demo-Alisascalendar/EYxvh5wPZXRGm07-pTCU4XUBndw7CKFkJiyU4yY_aA6PyA?e=FRQb6V)
+- [ ] Lost Deals - email and contact - [Lost Deals 2024-2025.xlsx](https://contoso.sharepoint.com/:x:/s/demo-calendar/EXAMPLE0000000000000000000000000000000?e=EXAMPLE)
 
 - [ ] Docs Page for Admins - template and what to put on it ⏫
 - [ ] Built summ https://transloadit.com/devtips/hashing-files-with-curl-a-developer-s-guide/?utm_source=chatgpt.com
 
 - [ ] List of Subscriptions to Check
-- [ ] VirtoOne Page License - add more description
+- [ ] One Page License - add more description
 
 - [ ] One Major Update for Every on-premises component
-- [ ] Pittsburgh Case - Alisa control - AK?
-- [ ] VirtoSoftware Shared Calendar - permissions - AL
+- [ ] Customer case follow-up - control
+- [ ] Shared Calendar - permissions
 
-General plan for Onpremises web parts - https://virtosoftware370-my.sharepoint.com/:w:/r/personal/s_virtosoftware_com/_layouts/15/Doc.aspx
+General plan for Onpremises web parts - https://contoso-my.sharepoint.com/:w:/r/personal/example_user/_layouts/15/Doc.aspx
 
 ##### New NCAGE Request Success!
 
-**NCAGE kodu 0273R.**
+**NCAGE kodu 00000.**
 
-Your request REF LT25265466625 has been pre-recorded and a VALIDATION Email transmitted to your mailbox.
+Your request REF EXAMPLE000000 has been pre-recorded and a VALIDATION Email transmitted to your mailbox.
 
-https://eportal.nspa.nato.int/vendorregistration/private/registration - in progress ![[Screenshot 2025-09-25 at 11.27.15.png]]`;
+https://eportal.nspa.example.org/vendorregistration/private/registration - in progress ![[Screenshot 2025-09-25 at 11.27.15.png]]`;
 
-// ─── Real content from Private file ──────────────────────────
+// ─── Personal board fixture ──────────────────────────────────
 const PRIVATE_CONTENT = `---
 tags:
-  - bank
-  - car/bmw
+  - car
   - contacts
   - finance/expense
   - personal
@@ -72,64 +71,64 @@ tags:
 
 ---
 
-https://app.houdiniswap.com/order-details?houdiniId=q3dEQEn38q65BWw3TBheuN
+https://app.example-swap.com/order-details?id=EXAMPLE0000000000000000
 
-- [x] BMW color - ordered ➕ 2025-10-15  https://www.ebay.es/ItemNotReceived/5368990195?itemId=192476173508&transactionId=10076089921204
+- [x] Car color - ordered ➕ 2025-10-15  https://www.ebay.es/ItemNotReceived/0000000000?itemId=000000000000&transactionId=00000000000000
 \t
-- [ ] Oleg расчет
-- [ ] VC Case - date of answer 🔺
-- [ ] Agreement with a new Director - check amil and ask Anna for support
-- [ ] Singvest shares to answer??? Check email🔺
-- [ ] VP debt - personal + VS - date to pay?
-- [ ] Invest VP - see details and talk to Solo, Sobol and Olga
-- [ ] Cache забрать у Юли Аликанте - среда? `;
+- [ ] Contractor расчет
+- [ ] Court case - date of answer 🔺
+- [ ] Agreement with a new director - check email and ask for support
+- [ ] Shares to answer??? Check email🔺
+- [ ] Debt - personal - date to pay?
+- [ ] Investment - see details and talk to partners
+- [ ] Забрать документы в офисе - среда? `;
 
-// ─── Real content from Cervantes file (duplicate frontmatter) ─
-const CERVANTES_CONTENT = `---
+// ─── Renovation board fixture (duplicate frontmatter) ────────
+const RENOVATION_CONTENT = `---
 type: general
-tags: property/cervantes
+tags: property/renovation
 ---
 
 ---
 tags:
   - property
-  - property/cervantes
+  - property/renovation
   - spain
 
 - [ ] Вода - труба для дренажа
 - [ ] Доводчик
 
-- [x] Подкраска - кухня, офис, гест рум, спальня
+- [x] Подкраска - кухня, офис, гостевая, спальня
 \t
-- [ ] Led barbacoa 25 1 sm depth 1 sm wide
-- [ ] электрика - схема на участке, дом, барбакоа
+- [ ] Led-подсветка 25 1 см глубина 1 см ширина
+- [ ] электрика - схема на участке, дом, терраса
 - [ ] электрика - схема на шкаф
 - [ ] Вода план/схема
 
-- [ ] Электрика барбакоа - проверить
+- [ ] Электрика терраса - проверить
 
-- [ ] Замена автоматизации полива - https://www.hunterirrigation.com/en-metric/irrigation-product/controllers/node-bt - отправлен запрос в испанскую компанию https://riegopro.com/
+- [ ] Замена автоматизации полива - https://www.example.com/irrigation/controllers/node-bt - отправлен запрос https://example.es/
 
 `;
 
-// ─── Real content from VP file ───────────────────────────────
-const VP_CONTENT = `
-- [ ] Analysis https://8080-i8n2bgxmipjtxgnkrg37t-bef15db2.us2.manus.computer/`;
+// ─── Minimal board fixture (no frontmatter) ───────────────────
+const MINIMAL_CONTENT = `
+- [ ] Analysis https://sandbox.example.dev/preview/`;
 
 // ═══════════════════════════════════════════════════════════════
 // Tests
 // ═══════════════════════════════════════════════════════════════
 
 describe('parseMarkdownTasks', () => {
-  describe('VirtoSoftware file', () => {
-    const tasks = parseMarkdownTasks(VS_CONTENT);
+  describe('Work file', () => {
+    const tasks = parseMarkdownTasks(WORK_CONTENT);
 
     it('parses all tasks (skipping frontmatter, headings, paragraphs)', () => {
       expect(tasks.length).toBe(26);
     });
 
     it('parses simple unchecked task', () => {
-      expect(tasks[0].title).toBe('MS Case - EU Commission - track');
+      expect(tasks[0].title).toBe('Legal case - regulator inquiry - track');
       expect(tasks[0].isDone).toBe(false);
       expect(tasks[0].priority).toBeNull();
       expect(tasks[0].lineNumber).toBe(5);
@@ -149,9 +148,9 @@ describe('parseMarkdownTasks', () => {
     });
 
     it('extracts urgent priority from 🔺 emoji', () => {
-      const samTask = tasks.find((t) => t.title.includes('sam.gov'));
-      expect(samTask).toBeDefined();
-      expect(samTask!.priority).toBe('urgent');
+      const govTask = tasks.find((t) => t.title.includes('example.gov'));
+      expect(govTask).toBeDefined();
+      expect(govTask!.priority).toBe('urgent');
     });
 
     it('extracts high priority from ⏫ emoji', () => {
@@ -175,9 +174,9 @@ describe('parseMarkdownTasks', () => {
     });
 
     it('extracts bare URLs', () => {
-      const samTask = tasks.find((t) => t.title.includes('sam.gov'));
-      expect(samTask).toBeDefined();
-      expect(samTask!.urls).toContain('https://sam.gov/');
+      const govTask = tasks.find((t) => t.title.includes('example.gov'));
+      expect(govTask).toBeDefined();
+      expect(govTask!.urls).toContain('https://example.gov/');
     });
 
     it('extracts sharepoint link from Lost Deals task', () => {
@@ -199,7 +198,7 @@ describe('parseMarkdownTasks', () => {
       // None of these should be parsed as tasks:
       // - "General plan for Onpremises..."
       // - "##### New NCAGE Request Success!"
-      // - "**NCAGE kodu 0273R.**"
+      // - "**NCAGE kodu 00000.**"
       // - bare URL lines
       // - image embeds
       const titles = tasks.map((t) => t.title);
@@ -221,8 +220,8 @@ describe('parseMarkdownTasks', () => {
       expect(tasks.length).toBe(8);
     });
 
-    it('detects done task (BMW color)', () => {
-      expect(tasks[0].title).toContain('BMW color');
+    it('detects done task (Car color)', () => {
+      expect(tasks[0].title).toContain('Car color');
       expect(tasks[0].isDone).toBe(true);
     });
 
@@ -231,38 +230,38 @@ describe('parseMarkdownTasks', () => {
       expect(tasks[0].urls[0]).toContain('ebay.es');
     });
 
-    it('skips bare URL line (houdiniswap) before tasks', () => {
+    it('skips bare URL line before tasks', () => {
       const titles = tasks.map((t) => t.title);
-      expect(titles.some((t) => t.includes('houdiniswap'))).toBe(false);
+      expect(titles.some((t) => t.includes('example-swap'))).toBe(false);
     });
 
     it('does not capture tab-only line as sub-item', () => {
-      // After BMW task there's a line with just a tab
+      // After the Car color task there's a line with just a tab
       expect(tasks[0].subItems).toHaveLength(0);
     });
 
-    it('detects urgent priority in VC Case', () => {
-      const vcTask = tasks.find((t) => t.title.includes('VC Case'));
-      expect(vcTask).toBeDefined();
-      expect(vcTask!.priority).toBe('urgent');
+    it('detects urgent priority in Court case', () => {
+      const courtTask = tasks.find((t) => t.title.includes('Court case'));
+      expect(courtTask).toBeDefined();
+      expect(courtTask!.priority).toBe('urgent');
     });
 
     it('detects urgent priority when emoji is adjacent to text (no space)', () => {
-      // "Singvest shares to answer??? Check email🔺"
-      const singvest = tasks.find((t) => t.title.includes('Singvest'));
-      expect(singvest).toBeDefined();
-      expect(singvest!.priority).toBe('urgent');
+      // "Shares to answer??? Check email🔺"
+      const sharesTask = tasks.find((t) => t.title.includes('Shares to answer'));
+      expect(sharesTask).toBeDefined();
+      expect(sharesTask!.priority).toBe('urgent');
     });
 
     it('handles mixed language tasks', () => {
-      const olegTask = tasks.find((t) => t.title.includes('Oleg'));
-      expect(olegTask).toBeDefined();
-      expect(olegTask!.title).toContain('расчет');
+      const contractorTask = tasks.find((t) => t.title.includes('Contractor'));
+      expect(contractorTask).toBeDefined();
+      expect(contractorTask!.title).toContain('расчет');
     });
   });
 
-  describe('Cervantes file (duplicate frontmatter)', () => {
-    const tasks = parseMarkdownTasks(CERVANTES_CONTENT);
+  describe('Renovation file (duplicate frontmatter)', () => {
+    const tasks = parseMarkdownTasks(RENOVATION_CONTENT);
 
     it('parses all 9 tasks despite duplicate frontmatter blocks', () => {
       expect(tasks.length).toBe(9);
@@ -284,9 +283,9 @@ describe('parseMarkdownTasks', () => {
       expect(irrigationTask).toBeDefined();
       expect(irrigationTask!.urls.length).toBe(2);
       expect(irrigationTask!.urls).toContain(
-        'https://www.hunterirrigation.com/en-metric/irrigation-product/controllers/node-bt',
+        'https://www.example.com/irrigation/controllers/node-bt',
       );
-      expect(irrigationTask!.urls).toContain('https://riegopro.com/');
+      expect(irrigationTask!.urls).toContain('https://example.es/');
     });
 
     it('does not include YAML list items as tasks or sub-items', () => {
@@ -296,8 +295,8 @@ describe('parseMarkdownTasks', () => {
     });
   });
 
-  describe('VP file (no frontmatter, minimal)', () => {
-    const tasks = parseMarkdownTasks(VP_CONTENT);
+  describe('minimal file (no frontmatter)', () => {
+    const tasks = parseMarkdownTasks(MINIMAL_CONTENT);
 
     it('parses single task', () => {
       expect(tasks.length).toBe(1);
@@ -306,7 +305,7 @@ describe('parseMarkdownTasks', () => {
     it('extracts URL from task title', () => {
       expect(tasks[0].title).toContain('Analysis');
       expect(tasks[0].urls.length).toBe(1);
-      expect(tasks[0].urls[0]).toContain('manus.computer');
+      expect(tasks[0].urls[0]).toContain('sandbox.example.dev');
     });
 
     it('has no priority', () => {

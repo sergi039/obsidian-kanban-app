@@ -42,7 +42,7 @@ Add an MCP server entry that points to the built server:
   "mcpServers": {
     "obsidian-kanban": {
       "command": "node",
-      "args": ["/Users/ss/obsidian-kanban-app/apps/mcp/dist/server.js"],
+      "args": ["/path/to/obsidian-kanban-app/apps/mcp/dist/server.js"],
       "env": {
         "KANBAN_API_URL": "http://127.0.0.1:4000",
         "KANBAN_API_TOKEN": "replace-with-token"
@@ -74,7 +74,7 @@ For local Codex-style use, expose the same command:
 ```json
 {
   "command": "node",
-  "args": ["/Users/ss/obsidian-kanban-app/apps/mcp/dist/server.js"],
+  "args": ["/path/to/obsidian-kanban-app/apps/mcp/dist/server.js"],
   "env": {
     "KANBAN_API_URL": "http://127.0.0.1:4000",
     "KANBAN_API_TOKEN": "replace-with-token"

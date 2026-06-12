@@ -39,7 +39,7 @@ beforeEach(() => {
 describe('fetchBoards', () => {
   it('returns list of boards', async () => {
     const boards = [
-      { id: 'vs', name: 'VirtoSoftware', totalCards: 26, columnCounts: { Backlog: 26 } },
+      { id: 'work', name: 'Work', totalCards: 26, columnCounts: { Backlog: 26 } },
     ];
     mockFetch.mockResolvedValueOnce(mockResponse(boards));
 
