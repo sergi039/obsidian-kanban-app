@@ -180,7 +180,7 @@ export async function findBacklinks(
         if ((await stat(abs)).size > MAX_NOTE_BYTES) return;
         const content = await readFile(abs, 'utf-8');
         if (!content.includes('card=')) return;
-        for (const ref of cardLinksInText(content, trustedHosts)) {
+        for (const ref of cardLinksInText(withoutClosedTitles(content), trustedHosts)) {
           const board = boardOf.get(ref.card);
           if (board === undefined || (ref.board !== null && ref.board !== board)) continue;
           found.set(ref.card, (found.get(ref.card) ?? new Set()).add(note));
@@ -196,23 +196,54 @@ export async function findBacklinks(
 
 // ---------------------------------------------------------------- note update
 
+const CLOSED_LINE_RE = /^- \d{4}-\d{2}-\d{2} ✅ Карточка закрыта: «/;
+const TITLE_END = '» — ';
+
+/** A closing line written for a card: `line` is the whole line, `tail` (`— <card ref>`) identifies the card. */
+export interface ClosedEntry {
+  line: string;
+  tail: string;
+}
+
+/** Note text with the «title» of every closing line blanked: a card link quoted in a title references nothing. */
+function withoutClosedTitles(content: string): string {
+  return content
+    .split('\n')
+    .map((l) => (CLOSED_LINE_RE.test(l.trimStart()) && l.includes(TITLE_END) ? l.slice(l.lastIndexOf(TITLE_END)) : l))
+    .join('\n');
+}
+
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
 /** Calendar date in the server's time zone: the line is read by the owner, in their day. */
 export function localDate(now: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-export function closedLine(
+/** Local ISO datetime with offset, for an `updated:` value that already carried a time. */
+export function localDateTime(now: Date): string {
+  const offset = -now.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const zone = `${sign}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`;
+  return `${localDate(now)}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}${zone}`;
+}
+
+export function closedEntry(
   card: Pick<ClosedCard, 'id' | 'board_id' | 'seq_id' | 'title'>,
   boardName: string,
   date: string,
   publicUrl: string | undefined,
-): string {
+): ClosedEntry {
   const chars = Array.from(card.title.replace(/\s+/g, ' ').trim()); // code points: never split an emoji
-  const title = chars.length > MAX_TITLE_CHARS ? `${chars.slice(0, MAX_TITLE_CHARS - 1).join('').trimEnd()}…` : chars.join('');
+  const cut = chars.length > MAX_TITLE_CHARS ? `${chars.slice(0, MAX_TITLE_CHARS - 1).join('').trimEnd()}…` : chars.join('');
+  // The title is quoted, not markup: no live [[links]] or #tags in the note.
+  const title = cut.replace(/\[\[/g, '\\[\\[').replace(/(^|\s)#(?=[^\s#])/g, '$1\\#');
   const label = card.seq_id ? `${boardName} #${card.seq_id}` : boardName;
-  const ref = publicUrl ? `[${label}](${cardUrl(publicUrl, card.board_id, card.id)})` : label;
-  return `- ${date} ✅ Карточка закрыта: «${title}» — ${ref}`;
+  // The tail always carries the card id (inside the link, or after the label), so it names exactly one card.
+  const tail = `— ${publicUrl ? `[${label}](${cardUrl(publicUrl, card.board_id, card.id)})` : `${label} (${card.id})`}`;
+  return { line: `- ${date} ✅ Карточка закрыта: «${title}» ${tail}`, tail };
 }
 
 /** Per line: true inside a fenced code block (``` or ~~~), delimiters included. */
@@ -232,20 +263,34 @@ function fencedLines(lines: string[]): boolean[] {
 }
 
 /**
- * The note with `line` added at the end of its "## Канбан" section (created at the end
- * of the note when missing) and frontmatter `updated:` set to `date`. Headings inside code
- * fences do not count. Lines outside the insert keep their bytes, line endings included;
- * only blank lines at the very end of a note without the section are folded into one
- * separator. Null when the note already has this exact line, so a repeated close on the
- * same day changes nothing.
+ * The note with the card's closing line: an earlier closing line of the same card (same
+ * `tail`) is replaced, so a note holds one line per card with its latest close; otherwise
+ * the line goes to the end of the "## Канбан" section (created at the end of the note when
+ * missing). Frontmatter `updated:` is set to `now`. Headings inside code fences do not
+ * count. Lines outside the edit keep their bytes, line endings included; only blank lines
+ * at the very end of a note without the section are folded into one separator. Null when
+ * the note already has this exact line.
  */
-export function withClosedLine(content: string, line: string, date: string): string | null {
+export function withClosedLine(content: string, entry: ClosedEntry, now: Date): string | null {
   // Split on LF only: a CRLF line keeps its \r, so untouched lines keep their own ending.
   const lines = content.split('\n');
   const text = (l: string) => (l.endsWith('\r') ? l.slice(0, -1) : l);
-  if (lines.some((l) => text(l).trim() === line)) return null;
+  const { line } = entry;
   const cr = content.includes('\r\n') ? '\r' : '';
   const fenced = fencedLines(lines.map(text));
+
+  const isOwn = (l: string, i: number) => !fenced[i] && CLOSED_LINE_RE.test(text(l).trim()) && text(l).trimEnd().endsWith(entry.tail);
+  const own = lines.findIndex(isOwn);
+  if (own !== -1) {
+    const extra = lines.filter((l, i) => i > own && isOwn(l, i)).length;
+    if (text(lines[own]).trim() === line && extra === 0) return null;
+    // Replace in place, keeping the indent; older duplicates of the same card fold into this line.
+    const indent = /^\s*/.exec(text(lines[own]))![0];
+    lines[own] = indent + line + (lines[own].endsWith('\r') ? '\r' : '');
+    const kept = lines.filter((l, i) => i <= own || !isOwn(l, i));
+    return setFrontmatterUpdated(kept, now, cr).join('\n');
+  }
+  if (lines.some((l) => text(l).trim() === line)) return null;
 
   // Up to 3 spaces of indent, as in CommonMark; 4+ is an indented code block, not a heading.
   const headingIdx = lines.findIndex((l, i) => !fenced[i] && /^ {0,3}##\s+Канбан\s*$/i.test(text(l)));
@@ -272,22 +317,29 @@ export function withClosedLine(content: string, line: string, date: string): str
       lines.splice(insertAt, 0, line + cr);
     }
   }
-  return setFrontmatterUpdated(lines, date, cr).join('\n');
+  return setFrontmatterUpdated(lines, now, cr).join('\n');
 }
 
-/** Set `updated:` in an existing frontmatter block (added when absent); a note without frontmatter keeps none. */
-function setFrontmatterUpdated(lines: string[], date: string, cr: string): string[] {
+/**
+ * Set `updated:` in an existing frontmatter block (added when absent); a note without
+ * frontmatter keeps none. The value keeps its quoting, a trailing `# comment`, and its
+ * precision: a date stays a date, a datetime becomes the local datetime.
+ */
+function setFrontmatterUpdated(lines: string[], now: Date, cr: string): string[] {
   const text = (l: string) => (l.endsWith('\r') ? l.slice(0, -1) : l);
   if (text(lines[0] ?? '').trim() !== '---') return lines;
   const close = lines.findIndex((l, i) => i > 0 && text(l).trim() === '---');
   if (close === -1) return lines;
   const idx = lines.findIndex((l, i) => i > 0 && i < close && /^updated:/.test(l));
   if (idx === -1) {
-    lines.splice(close, 0, `updated: '${date}'${cr}`);
+    lines.splice(close, 0, `updated: '${localDate(now)}'${cr}`);
     return lines;
   }
-  const quote = /^updated:\s*(['"])/.exec(lines[idx])?.[1] ?? '';
-  lines[idx] = `updated: ${quote}${date}${quote}${lines[idx].endsWith('\r') ? '\r' : ''}`;
+  const m = /^updated:\s*(?:(['"])(.*?)\1|([^#]*?))(\s+#.*)?\s*$/.exec(text(lines[idx]));
+  const quote = m?.[1] ?? '';
+  const old = m?.[2] ?? m?.[3] ?? '';
+  const value = /^\d{4}-\d{2}-\d{2}[T ]\d/.test(old) ? localDateTime(now) : localDate(now);
+  lines[idx] = `updated: ${quote}${value}${quote}${m?.[4] ?? ''}${lines[idx].endsWith('\r') ? '\r' : ''}`;
   return lines;
 }
 
@@ -299,9 +351,18 @@ interface CardOutcome {
   problems: string[];
 }
 
-function updateNote(vaultRoot: string, note: string, line: string, date: string): 'updated' | 'unchanged' {
+const UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+function updateNote(vaultRoot: string, note: string, entry: ClosedEntry, now: Date): 'updated' | 'unchanged' {
   const abs = path.join(vaultRoot, note);
-  const next = withClosedLine(readFileSync(abs, 'utf-8'), line, date);
+  let content: string;
+  try {
+    content = UTF8.decode(readFileSync(abs)); // a BOM stays in the text, so it is written back
+  } catch (err) {
+    if (err instanceof TypeError) throw new Error('файл не в UTF-8, не изменён');
+    throw err;
+  }
+  const next = withClosedLine(content, entry, now);
   if (next === null) return 'unchanged';
   atomicWrite(abs, next);
   return 'updated';
@@ -312,6 +373,13 @@ function commentFor(outcome: CardOutcome): string | null {
   if (outcome.updated.length > 0) parts.push(`Obsidian: контекст обновлён — ${outcome.updated.join(', ')}`);
   for (const problem of outcome.problems) parts.push(`Obsidian: ${problem}`);
   return parts.length > 0 ? parts.join('\n') : null;
+}
+
+function lastComment(cardId: string): string | null {
+  const row = getDb()
+    .prepare('SELECT text FROM comments WHERE card_id = ? AND author = ? ORDER BY created_at DESC, rowid DESC LIMIT 1')
+    .get(cardId, COMMENT_AUTHOR) as { text: string } | undefined;
+  return row?.text ?? null;
 }
 
 function addComment(cardId: string, text: string): void {
@@ -347,7 +415,6 @@ export async function updateContextForClosedCards(
   const index = buildVaultIndex(allNotes);
   const notes = allNotes.filter((note) => !boardFiles.has(key(note)));
   const backlinks = await findBacklinks(config.vaultRoot, notes, cards, trustedHostsFor(config));
-  const date = localDate(now);
 
   for (const [i, card] of cards.entries()) {
     if (!active()) {
@@ -355,7 +422,7 @@ export async function updateContextForClosedCards(
       break;
     }
     try {
-      outcomes.set(card.id, updateCardContext(card, config, index, backlinks, boardFiles, date));
+      outcomes.set(card.id, updateCardContext(card, config, index, backlinks, boardFiles, now));
     } catch (err) {
       console.error(`[obsidian-context] Card ${card.id}: context update failed:`, err);
     }
@@ -369,7 +436,7 @@ function updateCardContext(
   index: VaultIndex,
   backlinks: Map<string, Set<string>>,
   boardFiles: Set<string>,
-  date: string,
+  now: Date,
 ): CardOutcome {
   const outcome: CardOutcome = { updated: [], unchanged: [], problems: [] };
   const targets = new Set(backlinks.get(card.id) ?? []);
@@ -381,10 +448,10 @@ function updateCardContext(
   }
 
   const boardName = config.boards.find((board) => board.id === card.board_id)?.name ?? card.board_id;
-  const line = closedLine(card, boardName, date, config.publicUrl);
+  const entry = closedEntry(card, boardName, localDate(now), config.publicUrl);
   for (const note of [...targets].sort()) {
     try {
-      outcome[updateNote(config.vaultRoot, note, line, date) === 'updated' ? 'updated' : 'unchanged'].push(note);
+      outcome[updateNote(config.vaultRoot, note, entry, now) === 'updated' ? 'updated' : 'unchanged'].push(note);
     } catch (err) {
       outcome.problems.push(`не удалось обновить «${note}»: ${(err as Error).message}`);
       console.error(`[obsidian-context] Card ${card.id}: failed to update ${note}:`, err);
@@ -395,7 +462,9 @@ function updateCardContext(
     `[obsidian-context] Card ${card.id}: ${outcome.updated.length} updated, ${outcome.unchanged.length} already current, ${outcome.problems.length} problems`,
   );
   const comment = commentFor(outcome);
-  if (comment) {
+  // Nothing written and the same problems as last time: the card already says so.
+  const repeated = outcome.updated.length === 0 && comment !== null && comment === lastComment(card.id);
+  if (comment && !repeated) {
     addComment(card.id, comment);
     broadcast({ type: 'card-updated', cardId: card.id, boardId: card.board_id, timestamp: new Date().toISOString() });
   }

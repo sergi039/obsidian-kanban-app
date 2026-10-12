@@ -2,6 +2,12 @@
 
 ## 2026-10-12
 
+### Obsidian context: fewer surprises
+- A note keeps one closing line per card: closing the card again on a later day (or a DB restored from a backup) moves the date in that line instead of adding a second one.
+- Backlinks written as Markdown links — `[карточка](https://…/?board=…&card=…)` — are now recognised; the closing `)` used to be read as part of the card id. Calendar links in event bodies benefit the same way.
+- The card title in the line is quoted: `[[…]]` and `#tags` from a title no longer become live links or tags, and a card link inside a title no longer ties the note to that other card.
+- `updated:` keeps a trailing YAML comment and its time when it had one; a note that is not UTF-8 is left untouched and named on the card; a "note not found" comment is not repeated on every close.
+
 ### Obsidian context on close
 - Closing a card now updates its context in Obsidian: each note the card links to (`obsidian://` link or `[[wikilink]]`) or that links back to the card gets a dated `✅ Карточка закрыта: «…» — [Board #N](card link)` line in its `## Канбан` section and a fresh frontmatter `updated:` date. The card gets an `obsidian` comment listing the notes, or the references that did not resolve.
 - Works for every way of closing: drag to Done, the card checkbox, the table view, bulk close, and `[x]` typed in Obsidian.

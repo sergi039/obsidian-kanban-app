@@ -123,69 +123,109 @@ describe('resolving a target to a note', () => {
 });
 
 describe('writing the closing line', () => {
-  const line = '- 2026-10-12 ✅ Карточка закрыта: «Pay» — [Cervantes #7](https://kanban.example/?board=b1&card=abc)';
+  const tail = '— [Cervantes #7](https://kanban.example/?board=b1&card=abc)';
+  const line = `- 2026-10-12 ✅ Карточка закрыта: «Pay» ${tail}`;
+  const entry = { line, tail };
 
   it('appends to an existing Канбан section, before the next heading', () => {
     const note = '# Note\n\n## Канбан\n- 2026-10-01 ✅ Карточка закрыта: «Old»\n\n## Другое\ntext\n';
-    expect(ctx.withClosedLine(note, line, DATE)).toBe(
+    expect(ctx.withClosedLine(note, entry, NOW)).toBe(
       `# Note\n\n## Канбан\n- 2026-10-01 ✅ Карточка закрыта: «Old»\n${line}\n\n## Другое\ntext\n`,
     );
   });
 
   it('creates the section at the end and keeps the trailing newline', () => {
-    expect(ctx.withClosedLine('# Note\nbody\n\n\n', line, DATE)).toBe(`# Note\nbody\n\n## Канбан\n${line}\n`);
-    expect(ctx.withClosedLine('# Note\nbody', line, DATE)).toBe(`# Note\nbody\n\n## Канбан\n${line}`);
+    expect(ctx.withClosedLine('# Note\nbody\n\n\n', entry, NOW)).toBe(`# Note\nbody\n\n## Канбан\n${line}\n`);
+    expect(ctx.withClosedLine('# Note\nbody', entry, NOW)).toBe(`# Note\nbody\n\n## Канбан\n${line}`);
   });
 
   it('sets frontmatter updated: in its quote style, adds it when absent, never creates frontmatter', () => {
     const quoted = "---\ntitle: x\nupdated: '2026-10-10'\n---\nbody\n";
-    expect(ctx.withClosedLine(quoted, line, DATE)).toBe(`---\ntitle: x\nupdated: '2026-10-12'\n---\nbody\n\n## Канбан\n${line}\n`);
-    expect(ctx.withClosedLine('---\nupdated: 2026-10-10\n---\nb\n', line, DATE)).toContain('\nupdated: 2026-10-12\n');
-    expect(ctx.withClosedLine('---\ntitle: x\n---\nb\n', line, DATE)).toBe(`---\ntitle: x\nupdated: '2026-10-12'\n---\nb\n\n## Канбан\n${line}\n`);
-    expect(ctx.withClosedLine('no frontmatter\n', line, DATE)).toBe(`no frontmatter\n\n## Канбан\n${line}\n`);
+    expect(ctx.withClosedLine(quoted, entry, NOW)).toBe(`---\ntitle: x\nupdated: '2026-10-12'\n---\nbody\n\n## Канбан\n${line}\n`);
+    expect(ctx.withClosedLine('---\nupdated: 2026-10-10\n---\nb\n', entry, NOW)).toContain('\nupdated: 2026-10-12\n');
+    expect(ctx.withClosedLine('---\ntitle: x\n---\nb\n', entry, NOW)).toBe(`---\ntitle: x\nupdated: '2026-10-12'\n---\nb\n\n## Канбан\n${line}\n`);
+    expect(ctx.withClosedLine('no frontmatter\n', entry, NOW)).toBe(`no frontmatter\n\n## Канбан\n${line}\n`);
   });
 
   it('never writes inside a code fence', () => {
     const fencedSection = '## Канбан\n```bash\n# deploy\n./run.sh\n```\n\n## Next\n';
-    expect(ctx.withClosedLine(fencedSection, line, DATE)).toBe(`## Канбан\n\`\`\`bash\n# deploy\n./run.sh\n\`\`\`\n${line}\n\n## Next\n`);
+    expect(ctx.withClosedLine(fencedSection, entry, NOW)).toBe(`## Канбан\n\`\`\`bash\n# deploy\n./run.sh\n\`\`\`\n${line}\n\n## Next\n`);
     const fencedHeading = '```md\n## Канбан\n```\n';
-    expect(ctx.withClosedLine(fencedHeading, line, DATE)).toBe(`\`\`\`md\n## Канбан\n\`\`\`\n\n## Канбан\n${line}\n`);
+    expect(ctx.withClosedLine(fencedHeading, entry, NOW)).toBe(`\`\`\`md\n## Канбан\n\`\`\`\n\n## Канбан\n${line}\n`);
   });
 
   it('treats ```inline``` code at the start of a line as text, so the section is found on every close', () => {
     const note = '```npm ci``` — сначала\n\n## Канбан\n- 2026-10-01 ✅ old\n\n## Заметки\ntext\n';
-    const lineB = line.replace('2026-10-12', '2026-10-13');
-    const twice = ctx.withClosedLine(ctx.withClosedLine(note, line, DATE)!, lineB, '2026-10-13');
+    const tailB = '— [Cervantes #8](https://kanban.example/?board=b1&card=def)';
+    const lineB = `- 2026-10-12 ✅ Карточка закрыта: «Other» ${tailB}`;
+    const twice = ctx.withClosedLine(ctx.withClosedLine(note, entry, NOW)!, { line: lineB, tail: tailB }, NOW);
     expect(twice).toBe(`\`\`\`npm ci\`\`\` — сначала\n\n## Канбан\n- 2026-10-01 ✅ old\n${line}\n${lineB}\n\n## Заметки\ntext\n`);
   });
 
   it('a heading indented 4+ spaces is code, not the section', () => {
-    expect(ctx.withClosedLine('    ## Канбан\n', line, DATE)).toBe(`    ## Канбан\n\n## Канбан\n${line}\n`);
-    expect(ctx.withClosedLine('   ## Канбан\n', line, DATE)).toBe(`   ## Канбан\n${line}\n`);
+    expect(ctx.withClosedLine('    ## Канбан\n', entry, NOW)).toBe(`    ## Канбан\n\n## Канбан\n${line}\n`);
+    expect(ctx.withClosedLine('   ## Канбан\n', entry, NOW)).toBe(`   ## Канбан\n${line}\n`);
   });
 
   it('keeps every existing line ending in a mixed LF/CRLF note', () => {
-    expect(ctx.withClosedLine('a\nb\r\nc\n', line, DATE)).toBe(`a\nb\r\nc\n\r\n## Канбан\r\n${line}\r\n`);
-    expect(ctx.withClosedLine('## Канбан\r\n- old\nrest', line, DATE)).toBe(`## Канбан\r\n- old\nrest\r\n${line}`);
-    expect(ctx.withClosedLine("---\r\nupdated: '2026-10-10'\r\n---\nbody\n", line, DATE))
+    expect(ctx.withClosedLine('a\nb\r\nc\n', entry, NOW)).toBe(`a\nb\r\nc\n\r\n## Канбан\r\n${line}\r\n`);
+    expect(ctx.withClosedLine('## Канбан\r\n- old\nrest', entry, NOW)).toBe(`## Канбан\r\n- old\nrest\r\n${line}`);
+    expect(ctx.withClosedLine("---\r\nupdated: '2026-10-10'\r\n---\nbody\n", entry, NOW))
       .toBe(`---\r\nupdated: '2026-10-12'\r\n---\nbody\n\r\n## Канбан\r\n${line}\r\n`);
   });
 
   it('changes nothing when the note already has the line, and keeps CRLF', () => {
-    const once = ctx.withClosedLine('a\r\nb\r\n', line, DATE)!;
+    const once = ctx.withClosedLine('a\r\nb\r\n', entry, NOW)!;
     expect(once).toBe(`a\r\nb\r\n\r\n## Канбан\r\n${line}\r\n`);
-    expect(ctx.withClosedLine(once, line, DATE)).toBeNull();
+    expect(ctx.withClosedLine(once, entry, NOW)).toBeNull();
   });
 
   it('builds the line with the card link and a shortened title', () => {
     const long = 'x'.repeat(200);
-    const built = ctx.closedLine({ id: 'abc', board_id: 'b1', seq_id: 7, title: `⚪  ${long}` }, 'Cervantes', DATE, PUBLIC_URL);
+    const built = ctx.closedEntry({ id: 'abc', board_id: 'b1', seq_id: 7, title: `⚪  ${long}` }, 'Cervantes', DATE, PUBLIC_URL).line;
     expect(built).toMatch(/^- 2026-10-12 ✅ Карточка закрыта: «⚪ x+…» — \[Cervantes #7\]\(https:\/\/kanban\.example\/\?board=b1&card=abc\)$/);
     expect(built.length).toBeLessThan(220);
-    const emoji = ctx.closedLine({ id: 'abc', board_id: 'b1', seq_id: 7, title: '😀'.repeat(150) }, 'Cervantes', DATE, undefined);
+    const emoji = ctx.closedEntry({ id: 'abc', board_id: 'b1', seq_id: 7, title: '😀'.repeat(150) }, 'Cervantes', DATE, undefined).line;
     expect(emoji).not.toContain('\uFFFD');
     expect(emoji).toContain(`«${'😀'.repeat(119)}…»`);
-    expect(ctx.closedLine({ id: 'abc', board_id: 'b1', seq_id: null, title: 'T' }, 'Cervantes', DATE, undefined)).toBe('- 2026-10-12 ✅ Карточка закрыта: «T» — Cervantes');
+    expect(ctx.closedEntry({ id: 'abc', board_id: 'b1', seq_id: null, title: 'T' }, 'Cervantes', DATE, undefined))
+      .toEqual({ line: '- 2026-10-12 ✅ Карточка закрыта: «T» — Cervantes (abc)', tail: '— Cervantes (abc)' });
+  });
+
+  it('keeps one line per card: a later close replaces the earlier line, other cards stay', () => {
+    const other = '- 2026-10-01 ✅ Карточка закрыта: «Other» — [Cervantes #8](https://kanban.example/?board=b1&card=def)';
+    const note = `---\nupdated: '2026-10-01'\n---\n## Канбан\n- 2026-10-01 ✅ Карточка закрыта: «Pay (old title)» ${tail}\n${other}\n`;
+    expect(ctx.withClosedLine(note, entry, NOW)).toBe(`---\nupdated: '2026-10-12'\n---\n## Канбан\n${line}\n${other}\n`);
+  });
+
+  it('without a public URL two cards with no number still get separate lines', () => {
+    const a = ctx.closedEntry({ id: 'c1', board_id: 'b1', seq_id: null, title: 'A' }, 'Cervantes', '2026-10-01', undefined);
+    const b = ctx.closedEntry({ id: 'c2', board_id: 'b1', seq_id: null, title: 'B' }, 'Cervantes', DATE, undefined);
+    const note = `## Канбан\n${a.line}\n`;
+    expect(ctx.withClosedLine(note, b, NOW)).toBe(`## Канбан\n${a.line}\n${b.line}\n`);
+  });
+
+  it('keeps the indent of a replaced line and folds older duplicates of the same card', () => {
+    const old1 = `  - 2026-10-01 ✅ Карточка закрыта: «Pay» ${tail}`;
+    const old2 = `- 2026-10-05 ✅ Карточка закрыта: «Pay» ${tail}`;
+    const other = '- 2026-10-02 ✅ Карточка закрыта: «Other» — [Cervantes #8](https://kanban.example/?board=b1&card=def)';
+    expect(ctx.withClosedLine(`## Канбан\n${old1}\n${other}\n${old2}\n`, entry, NOW)).toBe(`## Канбан\n  ${line}\n${other}\n`);
+    expect(ctx.withClosedLine(`## Канбан\n${line}\n${old2}\n`, entry, NOW)).toBe(`## Канбан\n${line}\n`);
+  });
+
+  it('keeps quotes when a quoted updated: value contains #', () => {
+    expect(ctx.withClosedLine('---\nupdated: "2026-10-10 #x" # note\n---\nb\n', entry, NOW)).toContain('\nupdated: "2026-10-12" # note\n');
+  });
+
+  it('keeps the time and the comment of a datetime updated:', () => {
+    const note = '---\nupdated: 2026-10-10T09:00 # by hand\n---\nb\n';
+    expect(ctx.withClosedLine(note, entry, NOW)).toContain(`\nupdated: ${ctx.localDateTime(NOW)} # by hand\n`);
+    expect(ctx.localDateTime(NOW)).toMatch(/^2026-10-12T12:00:00[+-]\d{2}:\d{2}$/);
+  });
+
+  it('quotes the title: no live [[links]] or #tags', () => {
+    const { line: quoted } = ctx.closedEntry({ id: 'abc', board_id: 'b1', seq_id: 7, title: '#urgent see [[Note]] and c# code' }, 'Cervantes', DATE, undefined);
+    expect(quoted).toBe('- 2026-10-12 ✅ Карточка закрыта: «\\#urgent see \\[\\[Note]] and c# code» — Cervantes #7 (abc)');
   });
 });
 
@@ -304,6 +344,55 @@ describe('closing a card updates its context notes', () => {
       chmodSync(path.join(vaultRoot, 'Locked'), 0o755);
     }
     await expect(ctx.listVaultNotes(path.join(vaultRoot, 'missing'))).rejects.toThrow();
+  });
+
+  it('a card link quoted in another card\'s closing line is not a backlink', async () => {
+    const quotedLink = `${PUBLIC_URL}/?board=b1&card=c2`;
+    writeNote('Note.md', `- 2026-10-01 ✅ Карточка закрыта: «see ${quotedLink} today» — [Cervantes #1](${PUBLIC_URL}/?board=b1&card=c1)\n`);
+    const found = await ctx.findBacklinks(vaultRoot, ['Note.md'], [{ id: 'c1', board_id: 'b1' }, { id: 'c2', board_id: 'b1' }], new Set(['kanban.example']));
+    expect(found.get('c1')).toEqual(new Set(['Note.md']));
+    expect(found.has('c2')).toBe(false);
+  });
+
+  it('finds a backlink written as a Markdown link', async () => {
+    writeNote('Note.md', `Задача: [карточка](${PUBLIC_URL}/?board=b1&card=c1), детали ниже\n`);
+    const found = await ctx.findBacklinks(vaultRoot, ['Note.md'], [{ id: 'c1', board_id: 'b1' }], new Set(['kanban.example']));
+    expect(found.get('c1')).toEqual(new Set(['Note.md']));
+  });
+
+  it('leaves a note that is not UTF-8 untouched and says so; a BOM survives', async () => {
+    writeFileSync(path.join(vaultRoot, 'Latin.md'), Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]));
+    writeFileSync(path.join(vaultRoot, 'Bom.md'), '\uFEFFbody\n', 'utf-8');
+    seedCard('c1', { description: '[[Latin]] [[Bom]]' });
+
+    const outcome = (await ctx.updateContextForClosedCards(['c1'], NOW)).get('c1');
+
+    expect(readFileSync(path.join(vaultRoot, 'Latin.md'))).toEqual(Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x0a]));
+    expect(outcome?.problems).toEqual(['не удалось обновить «Latin.md»: файл не в UTF-8, не изменён']);
+    expect(outcome?.updated).toEqual(['Bom.md']);
+    expect(readFileSync(path.join(vaultRoot, 'Bom.md')).subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]));
+  });
+
+  it('does not repeat the same problems comment when nothing was written', async () => {
+    seedCard('c1', { description: '[[Missing]]' });
+
+    await ctx.updateContextForClosedCards(['c1'], NOW);
+    await ctx.updateContextForClosedCards(['c1'], NOW);
+
+    expect(comments('c1')).toEqual([{ author: 'obsidian', text: 'Obsidian: заметка «Missing» не найдена' }]);
+  });
+
+  it('a later close moves the date in the same line instead of adding one', async () => {
+    writeNote('Note.md', 'body\n');
+    seedCard('c1', { description: '[[Note]]' });
+
+    await ctx.updateContextForClosedCards(['c1'], NOW);
+    await ctx.updateContextForClosedCards(['c1'], new Date(2026, 9, 14, 9, 0, 0));
+
+    const note = readNote('Note.md');
+    expect(note.match(/Карточка закрыта/g)).toHaveLength(1);
+    expect(note).toContain('- 2026-10-14 ✅ Карточка закрыта: «Task c1»');
+    expect(comments('c1')).toHaveLength(2);
   });
 
   it('does nothing until started', async () => {
