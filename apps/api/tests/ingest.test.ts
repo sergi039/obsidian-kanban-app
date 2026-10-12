@@ -183,4 +183,25 @@ describe('ingestCard', () => {
       sourceUid: 'claude-message-2',
     }, config)).toThrow(IngestError);
   });
+
+  it('puts a new card at the top of its column and shifts only live cards', async () => {
+    const { ingestCard } = await import('../src/ingest.js');
+    const config = createConfig(vaultRoot);
+    const insert = testDb.prepare(
+      "INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, deleted_at) VALUES (?, 'private', ?, ?, ?, '', 0, ?)",
+    );
+    insert.run('old-a', 'Backlog', 0, 'Old A', null);
+    insert.run('old-b', 'Backlog', 1, 'Old B', null);
+    insert.run('binned', 'Backlog', 7, 'Binned', '2026-10-12T10:00:00Z');
+    insert.run('done-a', 'Done', 0, 'Done A', null);
+
+    const result = ingestCard({ boardId: 'private', title: 'Fresh task', column: 'Backlog' }, config);
+    if (!result.created) throw new Error('expected card creation');
+
+    const positions = Object.fromEntries(
+      (testDb.prepare('SELECT id, position FROM cards').all() as Array<{ id: string; position: number }>)
+        .map((row) => [row.id, row.position]),
+    );
+    expect(positions).toEqual({ [result.card.id]: 0, 'old-a': 1, 'old-b': 2, binned: 7, 'done-a': 0 });
+  });
 });
