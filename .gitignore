@@ -11,3 +11,6 @@ config.routing.json
 .task/
 logs/
 *.tsbuildinfo
+__pycache__/
+*.pyc
+.pytest_cache/
