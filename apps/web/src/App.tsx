@@ -42,6 +42,7 @@ import type { Card } from './types';
 import { activeReminders, isDueReminder, reminderState } from './lib/reminder-utils';
 import { doneTargetColumn, openTargetColumn, toggleDoneTargetColumn } from './lib/done-utils';
 import { CalendarSettingsContext, NO_CALENDAR_SETTINGS, type CalendarSettings } from './lib/calendar-context';
+import { dropDeepLinkParams, loadActiveBoard, pickInitialBoard, storeActiveBoard } from './lib/active-board';
 
 const FALLBACK_PRIORITIES: PriorityDef[] = [
   { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
@@ -50,7 +51,7 @@ const FALLBACK_PRIORITIES: PriorityDef[] = [
 
 const BROWSER_NOTIFIED_STORAGE_KEY = 'kanban:browser-reminders:notified';
 
-function browserNotificationStorage(): Storage | undefined {
+function browserStorage(): Storage | undefined {
   try {
     return typeof window !== 'undefined' ? window.localStorage : undefined;
   } catch {
@@ -76,7 +77,7 @@ function storeBrowserNotifiedIds(storage: Storage | undefined, ids: Set<string>)
 }
 
 function claimBrowserNotification(reminderId: string, fallback: Set<string>): boolean {
-  const storage = browserNotificationStorage();
+  const storage = browserStorage();
   const ids = loadBrowserNotifiedIds(storage);
   if (ids.has(reminderId) || fallback.has(reminderId)) return false;
   ids.add(reminderId);
@@ -86,7 +87,7 @@ function claimBrowserNotification(reminderId: string, fallback: Set<string>): bo
 }
 
 function releaseBrowserNotification(reminderId: string, fallback: Set<string>): void {
-  const storage = browserNotificationStorage();
+  const storage = browserStorage();
   const ids = loadBrowserNotifiedIds(storage);
   ids.delete(reminderId);
   fallback.delete(reminderId);
@@ -117,7 +118,7 @@ export default function App() {
   const [apiTokenInput, setApiTokenInput] = useState('');
   const openSettingsRef = useRef<(() => void) | null>(null);
   const openedCardParamRef = useRef<string | null>(null);
-  const browserNotifiedRef = useRef<Set<string>>(loadBrowserNotifiedIds(browserNotificationStorage()));
+  const browserNotifiedRef = useRef<Set<string>>(loadBrowserNotifiedIds(browserStorage()));
   const { theme, cycleTheme } = useTheme();
 
   // Load boards list
@@ -128,7 +129,7 @@ export default function App() {
       setActiveBoardId((current) => {
         if (current) return current;
         const boardParam = new URLSearchParams(window.location.search).get('board');
-        return data.find((board) => board.id === boardParam)?.id ?? data[0]?.id ?? null;
+        return pickInitialBoard(data.map((board) => board.id), boardParam, loadActiveBoard(browserStorage()));
       });
       setAuthRequired(false);
       setError(null);
@@ -149,6 +150,11 @@ export default function App() {
   useEffect(() => {
     loadBoardsList();
   }, [loadBoardsList]);
+
+  // Remember the open board so a reload returns to it
+  useEffect(() => {
+    if (activeBoardId) storeActiveBoard(browserStorage(), activeBoardId);
+  }, [activeBoardId]);
 
   // Load active board detail + fields + reminders
   const loadBoard = useCallback(async (): Promise<BoardDetail | null> => {
@@ -210,6 +216,7 @@ export default function App() {
   }, []);
 
   const handleBoardChange = (boardId: string) => {
+    dropDeepLinkParams(window);
     setActiveBoardId(boardId);
     setFilterQuery('');
     setBoardReminders([]);

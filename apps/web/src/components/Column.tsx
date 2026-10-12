@@ -119,6 +119,11 @@ export function Column({
         </div>
       </div>
 
+      {/* Add card — new cards land at the top of the column */}
+      <div className="px-1 pb-2">
+        <AddCard boardId={boardId} columnName={name} onAdd={(title) => onCardAdd(title, name)} />
+      </div>
+
       {/* Cards list */}
       <div
         ref={setDropRef}
@@ -148,11 +153,6 @@ export function Column({
             No items
           </div>
         )}
-      </div>
-
-      {/* Add card */}
-      <div className="px-1 pb-3">
-        <AddCard boardId={boardId} columnName={name} onAdd={(title) => onCardAdd(title, name)} />
       </div>
     </div>
   );

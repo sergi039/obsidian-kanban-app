@@ -8,6 +8,8 @@
 - The account comes from the link (Google `eid` email) or the board default (`calendarAccount` per board, `calendarAccounts` in `config.boards.json`); it is stored per event and can be changed when attaching. The card detail adds a Calendar section: paste a link, optional title/time, remove, plus "New event" (prefilled with the card title, due date and a link back to the card) and "Open calendar" for the chosen account.
 
 ### Board
+- New cards land at the top of their column instead of the bottom — from the board, the table view, MCP and inbox captures alike; "+ Add item" moved above the cards to match. Tasks typed directly into the `.md` file in Obsidian still join the end of their column.
+- A reload reopens the board you were on (remembered per browser) instead of always jumping to the first board. A `?board=`/`?card=` deep link still wins, and switching boards clears it from the address bar so the next reload follows the switch.
 - The checkbox on a board card now marks it done: ticking moves the card to `Done` (and writes `[x]` to Markdown), unticking moves it back to `Backlog`. It used to only select the card for the bulk bar, so ticking it never closed anything. Bulk selection stays on Cmd/Ctrl-click; the table view's Done checkbox shares the same column logic.
 
 ### Cards

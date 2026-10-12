@@ -310,12 +310,15 @@ export function ingestCard(input: IngestCardInput, config: AppConfig = loadConfi
 
     const lines = newContent.split('\n');
     const lineNumber = lines.length - 1;
-    const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL').get(board.id, column) as { mp: number | null }).mp ?? -1;
     const maxSeqRow = db.prepare('SELECT COALESCE(MAX(seq_id), 0) as max_seq FROM cards WHERE board_id = ?').get(board.id) as { max_seq: number };
     const nextSeqId = maxSeqRow.max_seq + 1;
     const srcFp = createHash('sha256').update(newLine).digest('hex').slice(0, 16);
 
+    // New cards go to the top of their column: shift the live cards down one slot.
     const insert = db.transaction(() => {
+      db.prepare(
+        'UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL',
+      ).run(board.id, column);
       db.prepare(`
         INSERT INTO cards (
           id, board_id, column_name, position, title, raw_line, line_number,
@@ -327,7 +330,7 @@ export function ingestCard(input: IngestCardInput, config: AppConfig = loadConfi
         id,
         board.id,
         column,
-        maxPos + 1,
+        0,
         title,
         newLine,
         lineNumber,
