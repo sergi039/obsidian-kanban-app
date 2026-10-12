@@ -20,7 +20,8 @@ export function decodeEntities(text: string): string {
 /** Card ids referenced from text through a Kanban card link on a trusted host. */
 export function cardLinksInText(text: string, trustedHosts: Set<string>): CardLinkRef[] {
   const refs: CardLinkRef[] = [];
-  for (const match of decodeEntities(text).matchAll(/https?:\/\/[^\s"'<>]+/g)) {
+  // `)` and `]` end the URL: board and card ids never contain them, a Markdown link `[x](url)` does.
+  for (const match of decodeEntities(text).matchAll(/https?:\/\/[^\s"'<>)\]]+/g)) {
     let url: URL;
     try {
       url = new URL(match[0]);
