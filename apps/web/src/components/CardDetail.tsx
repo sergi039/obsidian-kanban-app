@@ -852,7 +852,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               </div>
 
               {/* Calendar events */}
-              <CalendarEventsSection card={card} title={displayTitle} dueDate={dueDate || null} onSaved={onUpdate} />
+              <CalendarEventsSection card={card} title={displayTitle} dueDate={dueDate || null} />
 
               {/* Sub-items */}
               {card.sub_items.length > 0 && (

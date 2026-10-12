@@ -4,6 +4,8 @@ import path from 'node:path';
 import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { getDb } from '../db.js';
+import type { CalendarAccount } from '../config.js';
+import { publicCalendarAccount } from '../calendar-events.js';
 import { parseMarkdownTasks } from '../parser.js';
 import {
   DEFAULT_PRIORITIES,
@@ -25,6 +27,10 @@ import { formatCard } from '../utils.js';
 import { listTrash } from '../trash.js';
 
 const boards = new Hono();
+
+function publicOrNull(account: CalendarAccount | undefined) {
+  return account ? publicCalendarAccount(account) : null;
+}
 
 // GET /api/boards — list boards with task counts
 // ?archived=true to include archived, ?archived=only for archived only
@@ -188,8 +194,9 @@ boards.get('/:id', (c) => {
     name: board.name,
     priorities: board.priorities ?? DEFAULT_PRIORITIES,
     categories: board.categories ?? [],
-    calendarAccount: calendarAccounts.find((account) => account.id === board.calendarAccount) ?? null,
-    calendarAccounts,
+    calendarAccount: publicOrNull(calendarAccounts.find((account) => account.id === board.calendarAccount)),
+    calendarAccounts: calendarAccounts.map(publicCalendarAccount),
+    publicUrl: config.publicUrl ?? null,
     columns,
     trashCount,
   });

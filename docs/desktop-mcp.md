@@ -102,3 +102,14 @@ For local Codex-style use, expose the same command:
 - The API stores `source_uid`, `source_url`, bounded `source_meta`, and an `inbox_captures` row for idempotency and auditability.
 - Replays with the same payload return the existing card; replays with the same capture key and different payload are rejected.
 - Failed writes can be retried with the same capture key after the underlying file/API issue is fixed.
+
+## Calendar events for a task
+
+When an agent creates a calendar event for a Kanban task, it puts the card link in the event's description:
+
+```text
+Kanban: https://kanban.cervantes50.com/?board=<board_id>&card=<card_id>
+```
+
+`kanban_capture_task` returns the card with `id` and `board_id`. Within 10 minutes the API's calendar sync links the event to the card (work events through Microsoft Graph, personal ones through Google Calendar), and the card shows it. No other step is needed; titles are not matched.
+

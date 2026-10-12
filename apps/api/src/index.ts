@@ -18,6 +18,7 @@ import { getDb } from './db.js';
 import { reconcileAll } from './reconciler.js';
 import { startWatcher } from './watcher.js';
 import { stampAllColumns } from './writeback.js';
+import { getCalendarSyncStatus, startCalendarSync, stopCalendarSync } from './calendar-sync.js';
 import { createWsServer } from './ws.js';
 import { apiTokenAuth, bodyLimit, getCorsOrigins, securityHeaders } from './middleware/security.js';
 import boardRoutes from './routes/boards.js';
@@ -68,7 +69,7 @@ function buildHealth() {
     }
     return { id: board.id, file: board.file, exists, mtime };
   });
-  return { ok: true, vaultRoot: cfg.vaultRoot, boards };
+  return { ok: true, vaultRoot: cfg.vaultRoot, boards, calendar: getCalendarSyncStatus() };
 }
 
 app.get('/api/health', (c) => c.json(buildHealth()));
@@ -216,6 +217,9 @@ if (stamped > 0) {
 // File watcher
 startWatcher(config);
 
+// Calendar events → cards (after reconciliation so links see the current cards)
+startCalendarSync();
+
 // HTTP + WebSocket server
 const PORT = Number(process.env.PORT) || 4000;
 
@@ -292,6 +296,7 @@ import { stopWatcher } from './watcher.js';
 function shutdown(signal: string) {
   console.log(`\n[shutdown] ${signal} received, closing…`);
   stopWatcher();
+  stopCalendarSync();
   try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* ok */ }
   try { db.close(); } catch { /* ok */ }
   server.close(() => {

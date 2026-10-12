@@ -19,8 +19,11 @@
     }
   ],
   "defaultColumns": ["Backlog", "In Progress", "Done"],
+  "publicUrl": "https://kanban.example.com",
   "calendarAccounts": [
-    { "id": "work", "label": "Work", "provider": "outlook", "email": "you@company.example" },
-    { "id": "personal", "label": "Personal", "provider": "google", "email": "you@gmail.example" }
+    { "id": "work", "label": "Work", "provider": "outlook", "email": "you@company.example",
+      "credentials": { "type": "graph-app", "envFile": "/path/to/m365.env" } },
+    { "id": "personal", "label": "Personal", "provider": "google", "email": "you@gmail.example",
+      "credentials": { "type": "google-oauth", "clientEnvFile": "/path/to/google-client.env", "tokenFile": "~/.config/obsidian-kanban/google-personal-token.json" } }
   ]
 }

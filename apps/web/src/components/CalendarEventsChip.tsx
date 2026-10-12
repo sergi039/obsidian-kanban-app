@@ -19,14 +19,14 @@ const isolate = {
  * expands the full list inline (it wraps onto its own row of the meta flex row).
  */
 export function CalendarEventsChip({ events }: Props) {
-  const { accounts, defaultAccountId } = useCalendarSettings();
+  const { accounts } = useCalendarSettings();
   const [expanded, setExpanded] = useState(false);
   if (events.length === 0) return null;
 
   const sorted = sortEvents(events);
   const next = sorted[0];
   const describe = (event: CalendarEvent) => {
-    const account = resolveAccount(event, accounts, defaultAccountId);
+    const account = resolveAccount(event, accounts);
     return {
       href: eventOpenUrl(event, account),
       label: eventLabel(event),
