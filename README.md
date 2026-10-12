@@ -10,6 +10,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Board view** — drag & drop cards between columns (Backlog → In Progress → Done)
 - **Table view** — spreadsheet-style with inline editing
 - **Saved views** — custom filter/sort/group configurations per board
+- **Collapsible columns** — the board fits the window and each column scrolls on its own; « in a column header folds it (e.g. a long Done) into a narrow strip with its card count, remembered per board in this browser; cards can still be dropped on the strip
 - **Board sorting** — sort cards by priority, category, due date, title, or last updated
 - **Filtering** — context-aware autocomplete with dynamic value suggestions
 

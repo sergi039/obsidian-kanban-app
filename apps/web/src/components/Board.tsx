@@ -22,6 +22,8 @@ import { Column } from './Column';
 import { KanbanCard } from './Card';
 import { AddColumnButton } from './ColumnManager';
 import { BoardSettingsModal } from './BoardSettings';
+import { browserStorage } from '../lib/browser-storage';
+import { loadCollapsedColumns, storeCollapsedColumns, toggleCollapsedColumn } from '../lib/collapsed-columns';
 
 interface Props {
   board: BoardDetail;
@@ -109,6 +111,21 @@ export function Board({
   const [localColumns, setLocalColumns] = useState<BoardDetail['columns'] | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   if (openSettingsRef) openSettingsRef.current = () => setShowSettings(true);
+  const [collapsed, setCollapsed] = useState(() => ({
+    boardId: board.id,
+    columns: loadCollapsedColumns(browserStorage(), board.id),
+  }));
+  let collapsedColumns = collapsed.columns;
+  if (collapsed.boardId !== board.id) {
+    // Switching boards swaps in that board's remembered layout.
+    collapsedColumns = loadCollapsedColumns(browserStorage(), board.id);
+    setCollapsed({ boardId: board.id, columns: collapsedColumns });
+  }
+  const toggleCollapse = (columnName: string) => {
+    const next = toggleCollapsedColumn(collapsedColumns, columnName);
+    storeCollapsedColumns(browserStorage(), board.id, next);
+    setCollapsed({ boardId: board.id, columns: next });
+  };
   const dragOriginRef = useRef<{ columnName: string } | null>(null);
   const priorities = Array.isArray(board.priorities) ? board.priorities : [];
   const boardCategories = Array.isArray(board.categories) ? board.categories : [];
@@ -226,10 +243,13 @@ export function Board({
       const activeIndex = srcCards.findIndex((c) => c.id === String(active.id));
       if (activeIndex === -1) return current;
 
-      // Determine insert position
+      // Determine insert position. A collapsed column shows no cards to aim
+      // between, so a card dropped on it goes to the top, like a closed card into Done.
       const overId = String(over.id);
       const overCardIndex = dstCards.findIndex((c) => c.id === overId);
-      const insertIndex = overCardIndex >= 0 ? overCardIndex : dstCards.length;
+      const insertIndex = collapsedColumns.has(overContainer)
+        ? 0
+        : overCardIndex >= 0 ? overCardIndex : dstCards.length;
 
       const [movedCard] = srcCards.splice(activeIndex, 1);
       const updatedCard = { ...movedCard, column_name: overContainer };
@@ -346,7 +366,7 @@ export function Board({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="flex gap-4 h-full min-h-[calc(100vh-120px)]">
+      <div className="flex gap-4 h-full">
         <SortableContext items={columnSortableIds} strategy={horizontalListSortingStrategy}>
           {columns.map((col, i) => (
             <Column
@@ -360,6 +380,8 @@ export function Board({
               remindersByCard={remindersByCard}
               boardId={board.id}
               isSorted={isSorted}
+              collapsed={collapsedColumns.has(col.name)}
+              onToggleCollapse={() => toggleCollapse(col.name)}
               selectedCardIds={selectedCardIds}
               onToggleSelect={onToggleSelect}
               onToggleDone={onToggleDone}

@@ -43,6 +43,7 @@ import { activeReminders, isDueReminder, reminderState } from './lib/reminder-ut
 import { doneTargetColumn, openTargetColumn, toggleDoneTargetColumn } from './lib/done-utils';
 import { CalendarSettingsContext, NO_CALENDAR_SETTINGS, type CalendarSettings } from './lib/calendar-context';
 import { dropDeepLinkParams, loadActiveBoard, pickInitialBoard, storeActiveBoard } from './lib/active-board';
+import { browserStorage } from './lib/browser-storage';
 
 const FALLBACK_PRIORITIES: PriorityDef[] = [
   { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
@@ -50,14 +51,6 @@ const FALLBACK_PRIORITIES: PriorityDef[] = [
 ];
 
 const BROWSER_NOTIFIED_STORAGE_KEY = 'kanban:browser-reminders:notified';
-
-function browserStorage(): Storage | undefined {
-  try {
-    return typeof window !== 'undefined' ? window.localStorage : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 function loadBrowserNotifiedIds(storage: Storage | undefined): Set<string> {
   if (typeof window === 'undefined') return new Set();
@@ -652,7 +645,8 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <div className="min-h-screen bg-board-bg flex flex-col">
+    {/* Viewport-high page: the board scrolls inside <main>, so a long column never stretches the page */}
+    <div className="h-dvh bg-board-bg flex flex-col">
       {/* Header */}
       <header className="border-b border-board-border px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -756,7 +750,7 @@ export default function App() {
 
       <CalendarSettingsContext.Provider value={calendarSettings}>
       {/* Board */}
-      <main className="flex-1 overflow-x-auto p-6">
+      <main className="flex-1 min-h-0 overflow-auto p-6">
         {boardDetail ? (
           layout === 'board' ? (
             <Board

@@ -2,6 +2,10 @@
 
 ## 2026-10-12
 
+### Collapsible columns, board fits the screen
+- The board is now as tall as the window and each column scrolls on its own, as in Trello and GitHub Projects. Before, a long Done (22 cards on `vs`) stretched the page to three screens, stretched every other column to the same height, and pushed the horizontal scrollbar to the very bottom.
+- Any column, Done included, collapses to a narrow strip with its name and card count (« in the column header; click the strip to expand). The choice is remembered per board in this browser, like Trello's collapsed lists. A card dropped on a collapsed column lands at its top.
+
 ### Obsidian context: fewer surprises
 - A note keeps one closing line per card: closing the card again on a later day (or a DB restored from a backup) moves the date in that line instead of adding a second one.
 - Backlinks written as Markdown links — `[карточка](https://…/?board=…&card=…)` — are now recognised; the closing `)` used to be read as part of the card id. Calendar links in event bodies benefit the same way.
