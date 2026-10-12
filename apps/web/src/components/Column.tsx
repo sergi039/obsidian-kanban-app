@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -5,6 +6,7 @@ import type { Card, PriorityDef, CategoryDef, Reminder } from '../types';
 import { DraggableCard } from './DraggableCard';
 import { AddCard } from './AddCard';
 import { ColumnMenu } from './ColumnManager';
+import { DONE_PAGE_SIZES, parseDonePageSize, type DonePageSize } from '../lib/done-page-size';
 
 interface Props {
   name: string;
@@ -19,6 +21,9 @@ interface Props {
   /** Shown as a narrow strip (name + count) that still accepts dropped cards. */
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  /** Cards shown before "Show more" (`auto` = all); the page-size picker appears only with a handler. */
+  pageSize?: DonePageSize;
+  onPageSizeChange?: (size: DonePageSize) => void;
   selectedCardIds?: Set<string>;
   onToggleSelect?: (cardId: string) => void;
   onToggleDone?: (card: Card) => Promise<void>;
@@ -67,6 +72,8 @@ export function Column({
   isSorted,
   collapsed = false,
   onToggleCollapse,
+  pageSize = 'auto',
+  onPageSizeChange,
   selectedCardIds,
   onToggleSelect,
   onToggleDone,
@@ -75,6 +82,15 @@ export function Column({
   onColumnRename,
   onColumnDelete,
 }: Props) {
+  // "Show more" pages opened in this column; a new page size starts from one page.
+  const [pages, setPages] = useState(1);
+  const shownLimit = pageSize === 'auto' ? null : pageSize * pages;
+  const visibleCards = shownLimit === null ? cards : cards.slice(0, shownLimit);
+  const hiddenCount = cards.length - visibleCards.length;
+  // With cards out of sight there is no "end of the list" to drop at, so a card
+  // dropped on the column itself (not on a card) goes to the top.
+  const dropAtTop = collapsed || hiddenCount > 0;
+
   // Column sortable (for reordering columns via drag)
   const {
     attributes: colAttrs,
@@ -85,16 +101,16 @@ export function Column({
     isDragging: isColDragging,
   } = useSortable({
     id: sortableId,
-    data: { type: 'column', columnName: name },
+    data: { type: 'column', columnName: name, dropAtTop },
   });
 
   // Card drop zone
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `drop:${name}`,
-    data: { type: 'column-drop', columnName: name },
+    data: { type: 'column-drop', columnName: name, dropAtTop },
   });
 
-  const cardIds = cards.map((c) => c.id);
+  const cardIds = visibleCards.map((c) => c.id);
 
   const colStyle: React.CSSProperties = {
     transform: CSS.Transform.toString(colTransform),
@@ -174,8 +190,32 @@ export function Column({
       </div>
 
       {/* Add card — new cards land at the top of the column */}
-      <div className="px-1 pb-2">
-        <AddCard boardId={boardId} columnName={name} onAdd={(title) => onCardAdd(title, name)} />
+      <div className="px-1 pb-2 flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <AddCard boardId={boardId} columnName={name} onAdd={(title) => onCardAdd(title, name)} />
+        </div>
+        {onPageSizeChange && (
+          <label
+            className="shrink-0 flex items-center gap-1 py-2 text-xs text-board-text-muted"
+            title="How many cards to show here; Auto shows them all, as tall as the screen"
+          >
+            Show
+            <select
+              value={String(pageSize)}
+              onChange={(e) => {
+                setPages(1);
+                onPageSizeChange(parseDonePageSize(e.target.value));
+              }}
+              className="bg-transparent text-board-text-muted hover:text-board-text cursor-pointer focus:outline-none"
+              aria-label={`Cards shown in ${name}`}
+            >
+              <option value="auto">Auto</option>
+              {DONE_PAGE_SIZES.map((size) => (
+                <option key={size} value={String(size)}>{size}</option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
       {/* Cards list — scrolls inside the column, which is as tall as the board area */}
@@ -185,7 +225,7 @@ export function Column({
         style={dropHighlight}
       >
         <SortableContext items={cardIds} strategy={verticalListSortingStrategy}>
-          {cards.map((card) => (
+          {visibleCards.map((card) => (
             <DraggableCard
               key={card.id}
               card={card}
@@ -199,6 +239,24 @@ export function Column({
             />
           ))}
         </SortableContext>
+        {typeof pageSize === 'number' && (hiddenCount > 0 || pages > 1) && (
+          <div className="flex items-center justify-center gap-3 py-1 text-xs text-board-text-muted">
+            {hiddenCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setPages((p) => p + 1)}
+                className="hover:text-board-text transition-colors"
+              >
+                Show {Math.min(pageSize, hiddenCount)} more · {hiddenCount} hidden
+              </button>
+            )}
+            {pages > 1 && (
+              <button type="button" onClick={() => setPages(1)} className="hover:text-board-text transition-colors">
+                Show less
+              </button>
+            )}
+          </div>
+        )}
         {cards.length === 0 && !isOver && (
           <div
             className="text-xs text-board-text-muted text-center py-8 border border-dashed rounded-lg"

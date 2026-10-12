@@ -24,6 +24,8 @@ import { AddColumnButton } from './ColumnManager';
 import { BoardSettingsModal } from './BoardSettings';
 import { browserStorage } from '../lib/browser-storage';
 import { loadCollapsedColumns, storeCollapsedColumns, toggleCollapsedColumn } from '../lib/collapsed-columns';
+import { DONE_COLUMN } from '../lib/done-utils';
+import { loadDonePageSize, storeDonePageSize, type DonePageSize } from '../lib/done-page-size';
 
 interface Props {
   board: BoardDetail;
@@ -125,6 +127,11 @@ export function Board({
     const next = toggleCollapsedColumn(collapsedColumns, columnName);
     storeCollapsedColumns(browserStorage(), board.id, next);
     setCollapsed({ boardId: board.id, columns: next });
+  };
+  const [donePageSize, setDonePageSize] = useState<DonePageSize>(() => loadDonePageSize(browserStorage()));
+  const changeDonePageSize = (size: DonePageSize) => {
+    storeDonePageSize(browserStorage(), size);
+    setDonePageSize(size);
   };
   const dragOriginRef = useRef<{ columnName: string } | null>(null);
   const priorities = Array.isArray(board.priorities) ? board.priorities : [];
@@ -243,13 +250,14 @@ export function Board({
       const activeIndex = srcCards.findIndex((c) => c.id === String(active.id));
       if (activeIndex === -1) return current;
 
-      // Determine insert position. A collapsed column shows no cards to aim
-      // between, so a card dropped on it goes to the top, like a closed card into Done.
+      // Determine insert position. A column hiding cards (collapsed, or Done
+      // past its page size) has no visible end to aim at, so a card dropped on
+      // it goes to the top, like a closed card into Done.
       const overId = String(over.id);
       const overCardIndex = dstCards.findIndex((c) => c.id === overId);
-      const insertIndex = collapsedColumns.has(overContainer)
-        ? 0
-        : overCardIndex >= 0 ? overCardIndex : dstCards.length;
+      const insertIndex = overCardIndex >= 0
+        ? overCardIndex
+        : over.data.current?.dropAtTop === true ? 0 : dstCards.length;
 
       const [movedCard] = srcCards.splice(activeIndex, 1);
       const updatedCard = { ...movedCard, column_name: overContainer };
@@ -316,8 +324,11 @@ export function Board({
 
       const oldIndex = col.cards.findIndex((c) => c.id === String(active.id));
       const overId = String(over.id);
-      const newIndex = fromDropId(overId) !== null || fromColId(overId) !== null
-        ? col.cards.length - 1
+      const overColumnArea = fromDropId(overId) !== null || fromColId(overId) !== null;
+      // Dropped below the visible cards of a column that hides the rest: the
+      // real end is out of sight, so the card stays where it was.
+      const newIndex = overColumnArea
+        ? (over.data.current?.dropAtTop === true ? oldIndex : col.cards.length - 1)
         : col.cards.findIndex((c) => c.id === overId);
 
       if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
@@ -370,7 +381,7 @@ export function Board({
         <SortableContext items={columnSortableIds} strategy={horizontalListSortingStrategy}>
           {columns.map((col, i) => (
             <Column
-              key={col.name}
+              key={`${board.id}:${col.name}`}
               name={col.name}
               index={i}
               sortableId={toColId(col.name)}
@@ -382,6 +393,8 @@ export function Board({
               isSorted={isSorted}
               collapsed={collapsedColumns.has(col.name)}
               onToggleCollapse={() => toggleCollapse(col.name)}
+              pageSize={col.name === DONE_COLUMN ? donePageSize : 'auto'}
+              onPageSizeChange={col.name === DONE_COLUMN ? changeDonePageSize : undefined}
               selectedCardIds={selectedCardIds}
               onToggleSelect={onToggleSelect}
               onToggleDone={onToggleDone}

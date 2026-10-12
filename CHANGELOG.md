@@ -2,6 +2,10 @@
 
 ## 2026-10-12
 
+### How many Done cards to show
+- Done has a "Show" picker next to "Add item": Auto (the default — the whole column, as tall as the screen, scrolling inside), 5, 10 or 20. With a number, Done shows that many cards from the top (the newest closed) and "Show N more · M hidden" opens the next page; "Show less" goes back to one. The choice is remembered in this browser.
+- A card dropped on Done's empty area while cards are hidden lands at the top; a Done card dropped there stays where it was, since the real end of the list is out of sight.
+
 ### Collapsible columns, board fits the screen
 - The board is now as tall as the window and each column scrolls on its own, as in Trello and GitHub Projects. Before, a long Done (22 cards on `vs`) stretched the page to three screens, stretched every other column to the same height, and pushed the horizontal scrollbar to the very bottom.
 - Any column, Done included, collapses to a narrow strip with its name and card count (« in the column header; click the strip to expand). The choice is remembered per board in this browser, like Trello's collapsed lists. A card dropped on a collapsed column lands at its top.
