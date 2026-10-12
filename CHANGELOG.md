@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-12
+
+### Board
+- The checkbox on a board card now marks it done: ticking moves the card to `Done` (and writes `[x]` to Markdown), unticking moves it back to `Backlog`. It used to only select the card for the bulk bar, so ticking it never closed anything. Bulk selection stays on Cmd/Ctrl-click; the table view's Done checkbox shares the same column logic.
+
 ## 2026-06-12
 
 ### Stability

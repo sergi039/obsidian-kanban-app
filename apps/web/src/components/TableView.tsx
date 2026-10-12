@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { Card, PriorityDef, CategoryDef } from '../types';
 import { moveCard, patchCard } from '../api/client';
+import { toggleDoneTargetColumn } from '../lib/done-utils';
 
 interface Props {
   cards: Card[];
@@ -126,12 +127,10 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
   };
 
   const handleToggleDone = async (card: Card) => {
+    const target = toggleDoneTargetColumn(card.is_done, columns);
+    if (!target) return;
     try {
-      if (!card.is_done) {
-        await moveCard(card.id, { column: 'Done', position: 0 });
-      } else {
-        await moveCard(card.id, { column: 'Backlog', position: 0 });
-      }
+      await moveCard(card.id, { column: target, position: 0 });
       await onRefresh();
     } catch (err) {
       console.error('Toggle done failed:', err);
@@ -217,6 +216,7 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
           type="checkbox"
           checked={card.is_done}
           onChange={() => handleToggleDone(card)}
+          disabled={toggleDoneTargetColumn(card.is_done, columns) === null}
           className="w-4 h-4 rounded border-board-border cursor-pointer accent-green-500"
           title={card.is_done ? 'Mark as not done' : 'Mark as done'}
         />

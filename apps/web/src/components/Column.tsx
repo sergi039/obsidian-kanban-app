@@ -18,6 +18,7 @@ interface Props {
   isSorted?: boolean;
   selectedCardIds?: Set<string>;
   onToggleSelect?: (cardId: string) => void;
+  onToggleDone?: (card: Card) => Promise<void>;
   onCardClick: (card: Card) => void;
   onCardAdd: (title: string, column: string) => Promise<void>;
   onColumnRename: (oldName: string, newName: string) => Promise<void>;
@@ -63,6 +64,7 @@ export function Column({
   isSorted,
   selectedCardIds,
   onToggleSelect,
+  onToggleDone,
   onCardClick,
   onCardAdd,
   onColumnRename,
@@ -134,6 +136,7 @@ export function Column({
               onClick={() => onCardClick(card)}
               selected={selectedCardIds?.has(card.id) ?? false}
               onToggleSelect={onToggleSelect ? () => onToggleSelect(card.id) : undefined}
+              onToggleDone={onToggleDone ? () => onToggleDone(card) : undefined}
             />
           ))}
         </SortableContext>

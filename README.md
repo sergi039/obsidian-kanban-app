@@ -21,7 +21,8 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Comments** — full CRUD with linkified URLs, author avatars, timestamps
 - **Reminders** — per-card reminder records with due/upcoming badges, snooze/dismiss, and polling-friendly API state
 - **Custom fields** — TEXT, NUMBER, DATE, SINGLE_SELECT, ITERATION types per board
-- **Bulk actions** — select multiple cards and move or close them at once
+- **Done checkbox** — tick the checkbox on a board card to move it to Done (`[x]` in Markdown); untick to send it back to Backlog
+- **Bulk actions** — Cmd/Ctrl-click cards to select several, then move or close them at once
 - **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance
 
 **Organization**
