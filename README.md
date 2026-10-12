@@ -11,7 +11,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Table view** — spreadsheet-style with inline editing
 - **Saved views** — custom filter/sort/group configurations per board
 - **Collapsible columns** — the board fits the window and each column scrolls on its own; « in a column header folds it (e.g. a long Done) into a narrow strip with its card count, remembered per board in this browser; cards can still be dropped on the strip
-- **Done page size** — "Show" next to Done's "Add item": Auto (whole column, fits the screen) or 5 / 10 / 20 newest cards with "Show more"; remembered in this browser
+- **Done page size** — "Show" next to Done's "Add item": 10 newest cards by default, or 5 / 20, each with "Show more", or Auto (whole column, fits the screen); remembered in this browser
 - **Board sorting** — sort cards by priority, category, due date, title, or last updated
 - **Filtering** — context-aware autocomplete with dynamic value suggestions
 
