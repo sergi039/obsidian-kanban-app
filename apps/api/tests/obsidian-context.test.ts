@@ -152,6 +152,18 @@ describe('writing the closing line', () => {
     expect(ctx.withClosedLine(fencedHeading, line, DATE)).toBe(`\`\`\`md\n## Канбан\n\`\`\`\n\n## Канбан\n${line}\n`);
   });
 
+  it('treats ```inline``` code at the start of a line as text, so the section is found on every close', () => {
+    const note = '```npm ci``` — сначала\n\n## Канбан\n- 2026-10-01 ✅ old\n\n## Заметки\ntext\n';
+    const lineB = line.replace('2026-10-12', '2026-10-13');
+    const twice = ctx.withClosedLine(ctx.withClosedLine(note, line, DATE)!, lineB, '2026-10-13');
+    expect(twice).toBe(`\`\`\`npm ci\`\`\` — сначала\n\n## Канбан\n- 2026-10-01 ✅ old\n${line}\n${lineB}\n\n## Заметки\ntext\n`);
+  });
+
+  it('a heading indented 4+ spaces is code, not the section', () => {
+    expect(ctx.withClosedLine('    ## Канбан\n', line, DATE)).toBe(`    ## Канбан\n\n## Канбан\n${line}\n`);
+    expect(ctx.withClosedLine('   ## Канбан\n', line, DATE)).toBe(`   ## Канбан\n${line}\n`);
+  });
+
   it('keeps every existing line ending in a mixed LF/CRLF note', () => {
     expect(ctx.withClosedLine('a\nb\r\nc\n', line, DATE)).toBe(`a\nb\r\nc\n\r\n## Канбан\r\n${line}\r\n`);
     expect(ctx.withClosedLine('## Канбан\r\n- old\nrest', line, DATE)).toBe(`## Канбан\r\n- old\nrest\r\n${line}`);

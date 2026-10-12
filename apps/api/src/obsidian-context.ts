@@ -221,8 +221,10 @@ function fencedLines(lines: string[]): boolean[] {
   return lines.map((l) => {
     const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(l);
     if (fence === null) {
-      if (m) fence = m[1];
-      return m !== null;
+      // CommonMark: a backtick fence's info string has no backtick, so "```npm ci``` text" is inline code.
+      const opens = m !== null && !(m[1][0] === '`' && m[2].includes('`'));
+      if (opens) fence = m[1];
+      return opens;
     }
     if (m && m[1][0] === fence[0] && m[1].length >= fence.length && m[2].trim() === '') fence = null;
     return true;
@@ -245,7 +247,8 @@ export function withClosedLine(content: string, line: string, date: string): str
   const cr = content.includes('\r\n') ? '\r' : '';
   const fenced = fencedLines(lines.map(text));
 
-  const headingIdx = lines.findIndex((l, i) => !fenced[i] && /^##\s+Канбан\s*$/i.test(text(l).trim()));
+  // Up to 3 spaces of indent, as in CommonMark; 4+ is an indented code block, not a heading.
+  const headingIdx = lines.findIndex((l, i) => !fenced[i] && /^ {0,3}##\s+Канбан\s*$/i.test(text(l)));
   if (headingIdx === -1) {
     const endsWithNewline = lines.length === 1 ? lines[0] === '' : lines[lines.length - 1] === '';
     while (lines.length > 0 && text(lines[lines.length - 1]).trim() === '') lines.pop();
