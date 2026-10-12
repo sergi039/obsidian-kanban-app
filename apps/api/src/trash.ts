@@ -7,8 +7,9 @@
  * restore puts back exactly what was there, after the same preceding task.
  *
  * The DB update and the file write run inside one SQLite transaction with the
- * file write last: a failed write rolls the DB back, so the file and the DB
- * never disagree about whether the card is live.
+ * file write last (after the sync_state hash, which is computed from the new
+ * content): any failure before it rolls the DB back with the file untouched,
+ * so the file and the DB never disagree about whether the card is live.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -100,11 +101,12 @@ function restoreIndex(lines: string[], anchorKbId: string | null): number {
   return anchorKbId === null ? taskIdxs[0] : taskBlockEnd(lines, taskIdxs[taskIdxs.length - 1]);
 }
 
+/** Must be the last step of the enclosing transaction: nothing after it may throw. */
 function writeBoardFile(filePath: string, content: string): void {
   suppressWatcher();
   try {
-    atomicWrite(filePath, content);
     updateSyncStateHash(filePath, content);
+    atomicWrite(filePath, content);
   } finally {
     unsuppressWatcher();
   }
@@ -157,6 +159,7 @@ export function restoreCard(cardId: string): Record<string, unknown> {
   const lines = readFileSync(filePath, 'utf-8').split('\n');
   let lineIdx = lines.findIndex((line) => extractKbId(line) === kbId);
   const inserting = lineIdx === -1;
+  let fileChanged = inserting;
   if (inserting) {
     const stored = safeJsonParse<string[]>(card.trashed_lines, []);
     if (!Array.isArray(stored) || stored.length === 0 || extractKbId(stored[0]) !== kbId) {
@@ -164,6 +167,11 @@ export function restoreCard(cardId: string): Record<string, unknown> {
     }
     lineIdx = restoreIndex(lines, card.trashed_after);
     lines.splice(lineIdx, 0, injectKbCol(stored[0], column), ...stored.slice(1));
+  } else {
+    // The line came back before the reconciler saw it; its kb:col may predate a column rename.
+    const stamped = injectKbCol(lines[lineIdx], column);
+    fileChanged = stamped !== lines[lineIdx];
+    lines[lineIdx] = stamped;
   }
 
   db.transaction(() => {
@@ -176,7 +184,7 @@ export function restoreCard(cardId: string): Record<string, unknown> {
           column_name = ?, position = ?, raw_line = ?, line_number = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(column, (maxPos ?? -1) + 1, lines[lineIdx], lineIdx + 1, cardId);
-    if (inserting) writeBoardFile(filePath, lines.join('\n'));
+    if (fileChanged) writeBoardFile(filePath, lines.join('\n'));
   })();
 
   console.log(`[trash] Card ${cardId} restored to ${card.board_id}/${column} at line ${lineIdx + 1}`);

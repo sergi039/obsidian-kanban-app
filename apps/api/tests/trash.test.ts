@@ -188,6 +188,37 @@ describe('card trash', () => {
     expect(cardByTitle('Only').deleted_at).toBeNull();
   });
 
+  it('leaves the file untouched when the sync_state write fails inside the transaction', async () => {
+    writeMd('- [ ] Keep\n- [ ] Bin\n');
+    await reconcile();
+    const before = readMd();
+    const bin = cardByTitle('Bin').id as string;
+    testDb.exec('DROP TABLE sync_state');
+
+    const { trashCard } = await import('../src/trash.js');
+    expect(() => trashCard(bin)).toThrow(/sync_state/);
+    expect(readMd()).toBe(before);
+    expect(cardByTitle('Bin').deleted_at).toBeNull();
+  });
+
+  it('re-stamps kb:col when the line is already back in the file at restore time', async () => {
+    writeMd('- [ ] Keep\n- [ ] Bin\n');
+    await reconcile();
+    const original = readMd();
+    const bin = cardByTitle('Bin').id as string;
+    const { trashCard, restoreCard } = await import('../src/trash.js');
+    trashCard(bin);
+    testDb.prepare("UPDATE cards SET column_name = 'In Progress' WHERE id = ?").run(bin);
+    // Line pasted back before the watcher reconciled it.
+    writeFileSync(path.join(vaultRoot, FILE), original, 'utf-8');
+
+    restoreCard(bin);
+
+    expect(readMd()).toContain(`- [ ] Bin <!-- kb:id=${bin} kb:col=In+Progress -->`);
+    expect(cardByTitle('Bin').raw_line).toBe(`- [ ] Bin <!-- kb:id=${bin} kb:col=In+Progress -->`);
+    expect(syncHash()).toBe(createHash('sha256').update(readMd()).digest('hex'));
+  });
+
   it('rejects trashing twice and restoring a live card', async () => {
     writeMd('- [ ] Once\n');
     await reconcile();
