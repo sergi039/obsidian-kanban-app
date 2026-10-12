@@ -19,6 +19,7 @@ import { reconcileAll } from './reconciler.js';
 import { startWatcher } from './watcher.js';
 import { stampAllColumns } from './writeback.js';
 import { getCalendarSyncStatus, startCalendarSync, stopCalendarSync } from './calendar-sync.js';
+import { startObsidianContext, stopObsidianContext } from './obsidian-context.js';
 import { createWsServer } from './ws.js';
 import { apiTokenAuth, bodyLimit, getCorsOrigins, securityHeaders } from './middleware/security.js';
 import boardRoutes from './routes/boards.js';
@@ -202,6 +203,9 @@ for (const board of config.boards) {
   }
 }
 
+// Context notes of closed cards (before the initial sync, so tasks ticked in Obsidian while the server was down count)
+startObsidianContext();
+
 // Initial sync
 const results = reconcileAll(config.vaultRoot, config.boards);
 for (const r of results) {
@@ -297,6 +301,7 @@ function shutdown(signal: string) {
   console.log(`\n[shutdown] ${signal} received, closing…`);
   stopWatcher();
   stopCalendarSync();
+  stopObsidianContext();
   try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* ok */ }
   try { db.close(); } catch { /* ok */ }
   server.close(() => {

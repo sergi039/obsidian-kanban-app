@@ -2,6 +2,11 @@
 
 ## 2026-10-12
 
+### Obsidian context on close
+- Closing a card now updates its context in Obsidian: each note the card links to (`obsidian://` link or `[[wikilink]]`) or that links back to the card gets a dated `✅ Карточка закрыта: «…» — [Board #N](card link)` line in its `## Канбан` section and a fresh frontmatter `updated:` date. The card gets an `obsidian` comment listing the notes, or the references that did not resolve.
+- Works for every way of closing: drag to Done, the card checkbox, the table view, bulk close, and `[x]` typed in Obsidian.
+- Only explicit references count; a title search was rejected because it matched dozens of unrelated notes in the real vault. Board files and `.trash`/dot-folders are never touched.
+
 ### Closed cards on top
 - A card closed from the card's status field, by a bulk close, or by ticking `[x]` in Obsidian now lands at the top of Done, as the board checkbox already did. Before, the status field and bulk close appended it to the bottom, and a task ticked in Obsidian kept its old position from the column it left. Dragging still drops the card exactly where it is released.
 

@@ -6,6 +6,7 @@ import { broadcast } from './ws.js';
 import { fetchGoogleEvents, fetchGraphEvents, outlookItemId, OUTLOOK_HOSTS, type FetchWindow, type ProviderEvent } from './calendar-providers.js';
 import { MAX_CALENDAR_EVENTS, type CalendarEvent } from './calendar-events.js';
 import { safeJsonParse } from './utils.js';
+import { cardLinksInText, decodeEntities, trustedHostsFor, type CardLinkRef } from './card-links.js';
 
 /**
  * Links calendar events to cards automatically and stores them in `cards.calendar_events`
@@ -22,7 +23,6 @@ const WINDOW_PAST_DAYS = 30;
 const WINDOW_FUTURE_DAYS = 180;
 const RUN_DEADLINE_MS = 120_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost']);
 
 export interface AccountSyncStatus {
   ok: boolean;
@@ -52,26 +52,10 @@ interface LinkedEvent extends ProviderEvent {
 
 // ---------------------------------------------------------------- matching
 
-function decodeEntities(text: string): string {
-  return text.replace(/&amp;/gi, '&').replace(/&#0?38;/g, '&');
-}
-
 /** Card ids referenced from an event's text through a trusted Kanban link or a kb:id marker. */
-export function cardRefsInText(text: string, trustedHosts: Set<string>): Array<{ board: string | null; card: string }> {
-  const refs: Array<{ board: string | null; card: string }> = [];
-  const clean = decodeEntities(text);
-  for (const match of clean.matchAll(/https?:\/\/[^\s"'<>]+/g)) {
-    let url: URL;
-    try {
-      url = new URL(match[0]);
-    } catch {
-      continue;
-    }
-    if (!trustedHosts.has(url.host.toLowerCase()) && !LOCAL_HOSTS.has(url.hostname.toLowerCase())) continue;
-    const card = url.searchParams.get('card');
-    if (card) refs.push({ board: url.searchParams.get('board'), card });
-  }
-  for (const match of clean.matchAll(/\bkb:id=([A-Za-z0-9_-]{1,64})(?![A-Za-z0-9_-])/g)) {
+export function cardRefsInText(text: string, trustedHosts: Set<string>): CardLinkRef[] {
+  const refs = cardLinksInText(text, trustedHosts);
+  for (const match of decodeEntities(text).matchAll(/\bkb:id=([A-Za-z0-9_-]{1,64})(?![A-Za-z0-9_-])/g)) {
     refs.push({ board: null, card: match[1] });
   }
   return refs;
@@ -207,12 +191,6 @@ export function linkEventsToCards(
 }
 
 // ---------------------------------------------------------------- sync run
-
-function trustedHostsFor(config: AppConfig): Set<string> {
-  const hosts = new Set<string>();
-  if (config.publicUrl) hosts.add(new URL(config.publicUrl).host.toLowerCase());
-  return hosts;
-}
 
 async function fetchAccount(account: CalendarAccount, window: FetchWindow): Promise<ProviderEvent[]> {
   return account.provider === 'outlook' ? fetchGraphEvents(account, window) : fetchGoogleEvents(account, window);

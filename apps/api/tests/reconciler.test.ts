@@ -20,6 +20,10 @@ vi.mock('../src/watcher.js', () => ({
   unsuppressWatcher: vi.fn(),
 }));
 
+vi.mock('../src/obsidian-context.js', () => ({
+  notifyCardsClosed: vi.fn(),
+}));
+
 function makeBoard(
   id = 'b1',
   file = 'Tasks/Board.md',
@@ -204,6 +208,20 @@ describe('reconciler', () => {
     cards = getCards();
     expect(cards[0].is_done).toBe(0);
     expect(cards[0].column_name).toBe('Backlog');
+  });
+
+  it('reports tasks ticked [x] in Obsidian as closed, not new or already-done ones', async () => {
+    const board = makeBoard();
+    writeMd('Tasks/Board.md', '- [ ] Open <!-- kb:id=open1234 -->\n- [x] Done <!-- kb:id=done1234 -->\n');
+
+    const { notifyCardsClosed } = await import('../src/obsidian-context.js');
+    const { reconcileBoard } = await import('../src/reconciler.js');
+    reconcileBoard(board, vaultRoot);
+    expect(notifyCardsClosed).toHaveBeenLastCalledWith([]);
+
+    writeMd('Tasks/Board.md', '- [x] Open <!-- kb:id=open1234 -->\n- [x] Done <!-- kb:id=done1234 -->\n- [x] Added done <!-- kb:id=new12345 -->\n');
+    reconcileBoard(board, vaultRoot);
+    expect(notifyCardsClosed).toHaveBeenLastCalledWith(['open1234']);
   });
 
   it('a task ticked [x] in Obsidian goes on top of Done; a done task added in the same sync goes to the end', async () => {

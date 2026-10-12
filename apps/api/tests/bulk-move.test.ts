@@ -56,6 +56,10 @@ vi.mock('../src/automations.js', () => ({
   fireEvent: vi.fn(() => ({ rulesFired: 0, totalActions: 0, errors: [] })),
 }));
 
+vi.mock('../src/obsidian-context.js', () => ({
+  notifyCardsClosed: vi.fn(),
+}));
+
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS cards (
     id TEXT PRIMARY KEY, board_id TEXT NOT NULL, column_name TEXT NOT NULL DEFAULT 'Backlog',
@@ -241,6 +245,44 @@ describe('POST /api/cards/bulk-move', () => {
     const app = await makeApp();
     const res = await bulkMove(app, [], 'Done');
     expect(res.status).toBe(400);
+  });
+
+  it('queues only the cards it closed for the Obsidian context update', async () => {
+    seedCard('a', 'b1', 'Backlog', 0);
+    seedCard('b', 'b1', 'In Progress', 0);
+    seedCard('c', 'b1', 'Done', 0, 1);
+
+    const { notifyCardsClosed } = await import('../src/obsidian-context.js');
+    const app = await makeApp();
+
+    expect((await bulkMove(app, ['a', 'b', 'c'], 'Done')).status).toBe(200);
+    expect(notifyCardsClosed).toHaveBeenCalledTimes(1);
+    expect(notifyCardsClosed).toHaveBeenCalledWith(['a', 'b']);
+
+    vi.mocked(notifyCardsClosed).mockClear();
+    expect((await bulkMove(app, ['a'], 'Backlog')).status).toBe(200);
+    expect(notifyCardsClosed).toHaveBeenCalledWith([]);
+  });
+
+  it('PATCH and move to Done queue the card for the Obsidian context update; other moves do not', async () => {
+    seedCard('a', 'b1', 'Backlog', 0);
+    seedCard('b', 'b1', 'Backlog', 1);
+
+    const { notifyCardsClosed } = await import('../src/obsidian-context.js');
+    const app = await makeApp();
+    const send = (url: string, method: string, body: unknown) => app.request(url, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+
+    expect((await send('/api/cards/a', 'PATCH', { column_name: 'In Progress' })).status).toBe(200);
+    expect((await send('/api/cards/b/move', 'POST', { column: 'In Progress', position: 0 })).status).toBe(200);
+    expect(notifyCardsClosed).not.toHaveBeenCalled();
+
+    expect((await send('/api/cards/a', 'PATCH', { column_name: 'Done' })).status).toBe(200);
+    expect(notifyCardsClosed).toHaveBeenLastCalledWith(['a']);
+    expect((await send('/api/cards/b/move', 'POST', { column: 'Done', position: 0 })).status).toBe(200);
+    expect(notifyCardsClosed).toHaveBeenLastCalledWith(['b']);
+    expect(notifyCardsClosed).toHaveBeenCalledTimes(2);
   });
 
   it('puts closed cards on top of Done in their board order, above the cards already there', async () => {

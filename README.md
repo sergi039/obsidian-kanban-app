@@ -26,6 +26,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Closed cards on top** — a closed card lands at the top of Done, whether it was closed by the checkbox, the card's status, a bulk close, or `[x]` typed in Obsidian; only dragging puts it exactly where it is dropped
 - **Bulk actions** — Cmd/Ctrl-click cards to select several, then move or close them at once
 - **Trash** — delete a card from its detail view; its Markdown lines leave the file, its comments/fields/reminders stay, and the 🗑 panel restores it to the same place in the file
+- **Obsidian context on close** — when a card is closed (board, table, bulk, or `[x]` typed in Obsidian), the notes it is linked with get a dated `✅ Карточка закрыта` line in their `## Канбан` section and a fresh `updated:` date; the card gets an `obsidian` comment naming them
 - **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance
 
 **Organization**
@@ -255,6 +256,7 @@ Obsidian (.md files)  ←→  Reconciler  ←→  SQLite DB  ←→  Web UI
 | DB → `.md` | Done checkbox `[x]`/`[ ]`, priority emoji, column marker |
 | DB only | Column position, labels, categories, custom fields, comments, descriptions, checklists, managed links, reminders |
 | Trash | Deleting a card removes its task block from `.md` and keeps it in the DB; restore writes the same lines back. Re-adding the line in Obsidian also restores it |
+| Context notes | Closing a card appends a dated line to the `## Канбан` section of each linked note and sets its frontmatter `updated:` — see [Obsidian context](#obsidian-context) |
 
 ## 🛠 Configuration Reference
 
@@ -328,6 +330,15 @@ Accounts, credentials and the public URL live in the gitignored `config.boards.j
 - `google-oauth`: the env file holds `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` of a desktop OAuth client; `tokenFile` holds the owner's refresh token (scope `calendar.readonly`, mode 600), created once by an OAuth consent. Without it the account reports `not connected`.
 - Credentials are read at sync time, never logged and never sent to the browser. `/api/health` → `calendar` shows per account `ok`, `lastSyncAt`, `events`, `linked`, `error`. A failing account keeps the events it had.
 - A board's `calendarAccount` (and credentials matching the provider) is validated at boot; restart the API after editing.
+
+### Obsidian Context
+
+When a card is closed, the API looks for its context notes in the vault and records the closing there. A note counts only through an explicit reference — searching the vault for words of the title matched dozens of unrelated notes on real data:
+
+- the card's title, description, sub-items, checklist or links carry an `obsidian://open?vault=<vault>&file=<note>` link or a `[[wikilink]]` to the note (attachments such as PDFs and embeds `![[…]]` are ignored; a bare name must match exactly one note);
+- or the note carries the card link `https://<publicUrl>/?board=<board>&card=<id>`.
+
+Board files are never context, and `kb:id` markers do not count (copies of board files carry them). Each note gets one line at the end of its `## Канбан` section (the section is created at the end of the note when missing) and `updated: '<date>'` in its frontmatter (added if absent; a note without frontmatter keeps none). Nothing else in the note changes, and closing the same card twice on one day writes nothing new. The card gets an `obsidian` comment with the updated notes and any references that did not resolve. The update runs in the background after the close (one vault scan per batch, about 0.3 s for 6.4k notes) and is logged as `[obsidian-context]`.
 
 ### Board Columns
 

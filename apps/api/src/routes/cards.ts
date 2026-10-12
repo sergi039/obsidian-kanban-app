@@ -11,6 +11,7 @@ import { fireEvent } from '../automations.js';
 import { formatCard, normalizePositions } from '../utils.js';
 import { trashCard, restoreCard, TrashError } from '../trash.js';
 import { ingestCard, IngestError } from '../ingest.js';
+import { notifyCardsClosed } from '../obsidian-context.js';
 import type Database from 'better-sqlite3';
 
 const cards = new Hono();
@@ -289,6 +290,7 @@ cards.post('/bulk-move', async (c) => {
         console.warn('[automations] Error on card.moved:', err);
       }
     }
+    notifyCardsClosed(transitions.filter((t) => t.movingToDone).map((t) => t.id));
   }
 
   const updated = db
@@ -487,6 +489,7 @@ cards.patch('/:id', async (c) => {
       console.warn('[automations] Error on card.moved:', err);
     }
   }
+  if (movingToDone) notifyCardsClosed([id]);
 
   const response = formatCard(updated);
   if (writeBackWarning) {
@@ -580,6 +583,7 @@ cards.post('/:id/move', async (c) => {
       console.warn('[automations] Error on card.moved:', err);
     }
   }
+  if (movingToDone) notifyCardsClosed([id]);
 
   const response = formatCard(final);
   if (writeBackError) {
