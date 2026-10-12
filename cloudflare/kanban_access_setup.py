@@ -19,11 +19,14 @@ route, and nothing reaches port 4000 from outside except through that route.
 Invariants (`audit`):
   * exactly one Access app on the host; one policy: allow, include = exactly ALLOWED_EMAILS;
     no bypass / non_identity / service_auth policies;
-  * the app's only login method is the one-time PIN; session SESSION_DURATION;
+  * the app is self_hosted, its only login method is the one-time PIN, OPTIONS preflight does not
+    bypass it; session SESSION_DURATION;
   * the DNS record is a proxied CNAME to this tunnel (grey cloud would skip Access);
   * the tunnel config file equals the canonical text byte for byte (one route + 404);
   * the tunnel carries no other hostnames in ZONE_NAME (checked before the config is written, too);
-  * a dashboard-managed tunnel with our name is refused, never adopted.
+  * a dashboard-managed tunnel with our name is refused, never adopted (and audit flags one that
+    was switched to dashboard config later: remote routes would override the local file);
+  * CONFIG_DIR is 0700 and the credentials and config files are 0600, also when they pre-existed.
 DNS is created only after the Access app passes the audit, so the name is never public unprotected.
 """
 from __future__ import annotations
@@ -285,6 +288,10 @@ def audit(api: Api, acc: str, zid: str, require_dns: bool = True) -> list[str]:
             problems.append(f"login methods {app.get('allowed_idps')} != one-time PIN only")
         if app.get("session_duration") != SESSION_DURATION:
             problems.append(f"session {app.get('session_duration')} != {SESSION_DURATION}")
+        if app.get("type") != "self_hosted":
+            problems.append(f"app type {app.get('type')} != self_hosted")
+        if app.get("options_preflight_bypass"):
+            problems.append("OPTIONS preflight bypasses Access")
         policies = api("GET", f"/accounts/{acc}/access/apps/{app['id']}/policies") or []
         if len(policies) != 1:
             problems.append(f"expected 1 policy, found {len(policies)}")
@@ -294,10 +301,13 @@ def audit(api: Api, acc: str, zid: str, require_dns: bool = True) -> list[str]:
                 problems.append(f"policy {p.get('name')}: decision={p.get('decision')} include={p.get('include')}")
             if p.get("exclude") or p.get("require"):
                 problems.append(f"policy {p.get('name')} has exclude/require rules")
+    problems += permission_problems()
     tunnel = find_tunnel(api, acc)
     if not tunnel:
         problems.append("tunnel missing")
     else:
+        if tunnel.get("remote_config") or tunnel.get("config_src") != "local":
+            problems.append(f"tunnel {TUNNEL_NAME} is managed from the dashboard: its routes override {TUNNEL_CONFIG_FILE}")
         if TUNNEL_CONFIG_FILE.is_file():
             if TUNNEL_CONFIG_FILE.read_text() != render_tunnel_config(tunnel["id"]):
                 problems.append(f"{TUNNEL_CONFIG_FILE} differs from the canonical config")
@@ -313,6 +323,16 @@ def audit(api: Api, acc: str, zid: str, require_dns: bool = True) -> list[str]:
         if other:
             problems.append(f"other hostnames on the tunnel: {other}")
     return problems
+
+
+def permission_problems() -> list[str]:
+    """Secrets stay owner-only even when the directory or files existed before with wider modes.
+
+    lstat, so a symlink in place of a file is reported instead of followed."""
+    expected = ((CONFIG_DIR, 0o700), (CREDENTIALS_FILE, 0o600), (TUNNEL_CONFIG_FILE, 0o600))
+    return [f"{path} has mode {path.lstat().st_mode & 0o777:o}, expected {mode:o}"
+            for path, mode in expected
+            if os.path.lexists(path) and (path.lstat().st_mode & 0o777) != mode]
 
 
 def foreign_hostnames(api: Api, zid: str, tunnel_id: str) -> list[str]:
