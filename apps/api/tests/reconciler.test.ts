@@ -206,6 +206,24 @@ describe('reconciler', () => {
     expect(cards[0].column_name).toBe('Backlog');
   });
 
+  it('a task ticked [x] in Obsidian goes on top of Done; a done task added in the same sync goes to the end', async () => {
+    const board = makeBoard();
+    writeMd('Tasks/Board.md', '- [ ] Open <!-- kb:id=open1234 -->\n- [x] Old done <!-- kb:id=done1234 -->\n');
+
+    const { reconcileBoard } = await import('../src/reconciler.js');
+    reconcileBoard(board, vaultRoot);
+
+    writeMd('Tasks/Board.md', '- [x] Open <!-- kb:id=open1234 -->\n- [x] Old done <!-- kb:id=done1234 -->\n- [x] New done <!-- kb:id=new12345 -->\n');
+    reconcileBoard(board, vaultRoot);
+
+    const done = testDb.prepare("SELECT id, position FROM cards WHERE board_id = 'b1' AND column_name = 'Done' ORDER BY position").all();
+    expect(done).toEqual([
+      { id: 'open1234', position: 0 },
+      { id: 'done1234', position: 1 },
+      { id: 'new12345', position: 2 },
+    ]);
+  });
+
   it('moves unchecked custom done cards to the default open column', async () => {
     const board = makeBoard('b1', 'Tasks/Board.md', ['Todo', 'Doing', 'Complete'], undefined, ['Complete']);
     writeMd('Tasks/Board.md', '- [x] Was done <!-- kb:id=done5678 -->\n');

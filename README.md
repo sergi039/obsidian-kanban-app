@@ -23,6 +23,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Calendar events** — events from the work (Outlook, Microsoft Graph) and personal (Google) calendars appear on their card automatically; the card shows the nearest one as a direct link (`+N` expands the rest) and opens each in the right account
 - **Custom fields** — TEXT, NUMBER, DATE, SINGLE_SELECT, ITERATION types per board
 - **Done checkbox** — tick the checkbox on a board card to move it to Done (`[x]` in Markdown); untick to send it back to Backlog
+- **Closed cards on top** — a closed card lands at the top of Done, whether it was closed by the checkbox, the card's status, a bulk close, or `[x]` typed in Obsidian; only dragging puts it exactly where it is dropped
 - **Bulk actions** — Cmd/Ctrl-click cards to select several, then move or close them at once
 - **Trash** — delete a card from its detail view; its Markdown lines leave the file, its comments/fields/reminders stay, and the 🗑 panel restores it to the same place in the file
 - **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance

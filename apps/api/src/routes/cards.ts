@@ -156,7 +156,8 @@ cards.post('/', async (c) => {
   }
 });
 
-// POST /api/cards/bulk-move — move multiple cards to a column (appended to the end, current order preserved)
+// POST /api/cards/bulk-move — move multiple cards to a column, current order preserved:
+// on top of a done column (closed cards lead it, like new cards lead theirs), at the end of any other
 cards.post('/bulk-move', async (c) => {
   const body = await safeParseJson(c);
   if (body === null) return c.json({ error: 'Invalid JSON body' }, 400);
@@ -191,8 +192,8 @@ cards.post('/bulk-move', async (c) => {
     return c.json({ error: `Column "${column}" not in board` }, 400);
   }
 
-  // Cards already in the target column stay put; the rest are appended
-  // to the end of the target in board-column order, then by position.
+  // Cards already in the target column stay put; the rest go on top of a done column
+  // (or to the end of any other) in board-column order, then by position.
   const columnRank = new Map(board.columns.map((name, i) => [name, i]));
   const moving = rows
     .filter((r) => r.column_name !== column)
@@ -211,10 +212,17 @@ cards.post('/bulk-move', async (c) => {
   }> = [];
 
   const bulkTransaction = db.transaction(() => {
-    const maxPos = (db
-      .prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL')
-      .get(boardId, column) as { mp: number | null }).mp;
-    let nextPos = (maxPos ?? -1) + 1;
+    let nextPos: number;
+    if (isDoneColumn(column, board)) {
+      db.prepare('UPDATE cards SET position = position + ? WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL')
+        .run(moving.length, boardId, column);
+      nextPos = 0;
+    } else {
+      const maxPos = (db
+        .prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL')
+        .get(boardId, column) as { mp: number | null }).mp;
+      nextPos = (maxPos ?? -1) + 1;
+    }
     const sourceColumns = new Set<string>();
 
     for (const row of moving) {
@@ -360,6 +368,9 @@ cards.patch('/:id', async (c) => {
     let toPosition: number;
     if (positionChanging) {
       toPosition = fields.position!;
+    } else if (isDoneColumn(toColumn, board) && !isDoneColumn(fromColumn, board)) {
+      // A card being closed goes on top of the done column, like a new card in its column
+      toPosition = 0;
     } else {
       // Append to end of target column
       const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL').get(existing.board_id, toColumn) as { mp: number | null }).mp;

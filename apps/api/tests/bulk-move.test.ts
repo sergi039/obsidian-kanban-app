@@ -193,10 +193,10 @@ describe('POST /api/cards/bulk-move', () => {
 
     const body = await res.json();
     expect(body.moved).toBe(1);
-    // 'a' stays at its position, 'b' appended after it
+    // 'a' is not moved again; the newly closed 'b' goes on top of it
     expect(getPositions('b1', 'Done')).toEqual([
-      { id: 'a', position: 0 },
-      { id: 'b', position: 1 },
+      { id: 'b', position: 0 },
+      { id: 'a', position: 1 },
     ]);
     expect(fireEvent).toHaveBeenCalledTimes(1);
   });
@@ -241,6 +241,44 @@ describe('POST /api/cards/bulk-move', () => {
     const app = await makeApp();
     const res = await bulkMove(app, [], 'Done');
     expect(res.status).toBe(400);
+  });
+
+  it('puts closed cards on top of Done in their board order, above the cards already there', async () => {
+    seedCard('a', 'b1', 'Backlog', 0);
+    seedCard('b', 'b1', 'Backlog', 1);
+    seedCard('c', 'b1', 'In Progress', 0);
+    seedCard('d', 'b1', 'Done', 0, 1);
+    seedCard('e', 'b1', 'Done', 1, 1);
+
+    const app = await makeApp();
+    expect((await bulkMove(app, ['c', 'b', 'a'], 'Done')).status).toBe(200);
+
+    expect(getPositions('b1', 'Done')).toEqual([
+      { id: 'a', position: 0 },
+      { id: 'b', position: 1 },
+      { id: 'c', position: 2 },
+      { id: 'd', position: 3 },
+      { id: 'e', position: 4 },
+    ]);
+  });
+
+  it('PATCH to Done puts the card on top; PATCH to another column still appends', async () => {
+    seedCard('a', 'b1', 'Backlog', 0);
+    seedCard('b', 'b1', 'Backlog', 1);
+    seedCard('d', 'b1', 'Done', 0, 1);
+    seedCard('p', 'b1', 'In Progress', 0);
+
+    const app = await makeApp();
+    const patch = (id: string, column: string) => app.request(`/api/cards/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ column_name: column }),
+    });
+
+    expect((await patch('a', 'Done')).status).toBe(200);
+    expect(getPositions('b1', 'Done')).toEqual([{ id: 'a', position: 0 }, { id: 'd', position: 1 }]);
+    expect((testDb.prepare('SELECT is_done FROM cards WHERE id = ?').get('a') as { is_done: number }).is_done).toBe(1);
+
+    expect((await patch('b', 'In Progress')).status).toBe(200);
+    expect(getPositions('b1', 'In Progress')).toEqual([{ id: 'p', position: 0 }, { id: 'b', position: 1 }]);
   });
 
   it('deduplicates repeated card ids', async () => {
