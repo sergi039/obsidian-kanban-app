@@ -8,7 +8,8 @@ import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
 import { isDoneColumn } from '../parser.js';
 import { fireEvent } from '../automations.js';
-import { formatCard } from '../utils.js';
+import { formatCard, normalizePositions } from '../utils.js';
+import { trashCard, restoreCard, TrashError } from '../trash.js';
 import { ingestCard, IngestError } from '../ingest.js';
 import { CalendarEventsSchema, validateEventAccounts } from '../calendar-events.js';
 import type Database from 'better-sqlite3';
@@ -67,18 +68,6 @@ async function safeParseJson(c: { req: { json: () => Promise<unknown> } }): Prom
 }
 
 /**
- * Normalize positions in a column to 0,1,2,...,N-1.
- * Called after moves to ensure no gaps.
- */
-function normalizePositions(db: Database.Database, boardId: string, column: string): void {
-  const rows = db.prepare('SELECT id FROM cards WHERE board_id = ? AND column_name = ? ORDER BY position').all(boardId, column) as Array<{ id: string }>;
-  const stmt = db.prepare('UPDATE cards SET position = ? WHERE id = ?');
-  for (let i = 0; i < rows.length; i++) {
-    stmt.run(i, rows[i].id);
-  }
-}
-
-/**
  * Execute a card move (same-column or cross-column) inside a transaction.
  * Handles gap closing, room making, done-state toggling, and position normalization.
  */
@@ -96,19 +85,19 @@ function executeMoveTransaction(
     if (fromColumn === toColumn) {
       if (fromPosition < toPosition) {
         db.prepare(
-          'UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ? AND position <= ? AND id != ?',
+          'UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ? AND position <= ? AND id != ? AND deleted_at IS NULL',
         ).run(boardId, toColumn, fromPosition, toPosition, cardId);
       } else if (fromPosition > toPosition) {
         db.prepare(
-          'UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ? AND position < ? AND id != ?',
+          'UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ? AND position < ? AND id != ? AND deleted_at IS NULL',
         ).run(boardId, toColumn, toPosition, fromPosition, cardId);
       }
     } else {
       db.prepare(
-        'UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ?',
+        'UPDATE cards SET position = position - 1 WHERE board_id = ? AND column_name = ? AND position > ? AND deleted_at IS NULL',
       ).run(boardId, fromColumn, fromPosition);
       db.prepare(
-        'UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ?',
+        'UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND position >= ? AND deleted_at IS NULL',
       ).run(boardId, toColumn, toPosition);
     }
 
@@ -182,7 +171,7 @@ cards.post('/bulk-move', async (c) => {
   const db = getDb();
   const placeholders = cardIds.map(() => '?').join(', ');
   const rows = db
-    .prepare(`SELECT * FROM cards WHERE id IN (${placeholders})`)
+    .prepare(`SELECT * FROM cards WHERE id IN (${placeholders}) AND deleted_at IS NULL`)
     .all(...cardIds) as Array<Record<string, unknown>>;
 
   if (rows.length !== cardIds.length) {
@@ -225,7 +214,7 @@ cards.post('/bulk-move', async (c) => {
 
   const bulkTransaction = db.transaction(() => {
     const maxPos = (db
-      .prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ?')
+      .prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL')
       .get(boardId, column) as { mp: number | null }).mp;
     let nextPos = (maxPos ?? -1) + 1;
     const sourceColumns = new Set<string>();
@@ -323,7 +312,7 @@ cards.patch('/:id', async (c) => {
   }
 
   const db = getDb();
-  const existing = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  const existing = db.prepare('SELECT * FROM cards WHERE id = ? AND deleted_at IS NULL').get(id) as Record<string, unknown> | undefined;
   if (!existing) return c.json({ error: 'Card not found' }, 404);
 
   const config = loadConfig();
@@ -379,7 +368,7 @@ cards.patch('/:id', async (c) => {
       toPosition = fields.position!;
     } else {
       // Append to end of target column
-      const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ?').get(existing.board_id, toColumn) as { mp: number | null }).mp;
+      const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL').get(existing.board_id, toColumn) as { mp: number | null }).mp;
       toPosition = (maxPos ?? -1) + 1;
     }
 
@@ -518,7 +507,7 @@ cards.post('/:id/move', async (c) => {
   }
 
   const db = getDb();
-  const existing = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  const existing = db.prepare('SELECT * FROM cards WHERE id = ? AND deleted_at IS NULL').get(id) as Record<string, unknown> | undefined;
   if (!existing) return c.json({ error: 'Card not found' }, 404);
 
   const config = loadConfig();
@@ -596,6 +585,34 @@ cards.post('/:id/move', async (c) => {
     return c.json({ ...response, _writeBackWarning: writeBackError });
   }
   return c.json(response);
+});
+
+// DELETE /api/cards/:id — move a card to the trash (its lines leave the .md file, its data stays)
+cards.delete('/:id', (c) => {
+  const id = c.req.param('id');
+  try {
+    const card = trashCard(id);
+    broadcast({ type: 'board-updated', cardId: id, boardId: card.board_id as string, timestamp: new Date().toISOString() });
+    return c.json(formatCard(card));
+  } catch (err) {
+    if (err instanceof TrashError) return c.json({ error: err.message }, err.status);
+    console.error(`[trash] Failed to trash card ${id}:`, err);
+    return c.json({ error: 'Failed to move card to trash' }, 500);
+  }
+});
+
+// POST /api/cards/:id/restore — restore a trashed card into its board file and column
+cards.post('/:id/restore', (c) => {
+  const id = c.req.param('id');
+  try {
+    const card = restoreCard(id);
+    broadcast({ type: 'board-updated', cardId: id, boardId: card.board_id as string, timestamp: new Date().toISOString() });
+    return c.json(formatCard(card));
+  } catch (err) {
+    if (err instanceof TrashError) return c.json({ error: err.message }, err.status);
+    console.error(`[trash] Failed to restore card ${id}:`, err);
+    return c.json({ error: 'Failed to restore card' }, 500);
+  }
 });
 
 // GET /api/cards/:id/comments — list comments for a card

@@ -310,7 +310,7 @@ export function ingestCard(input: IngestCardInput, config: AppConfig = loadConfi
 
     const lines = newContent.split('\n');
     const lineNumber = lines.length - 1;
-    const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ?').get(board.id, column) as { mp: number | null }).mp ?? -1;
+    const maxPos = (db.prepare('SELECT MAX(position) as mp FROM cards WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL').get(board.id, column) as { mp: number | null }).mp ?? -1;
     const maxSeqRow = db.prepare('SELECT COALESCE(MAX(seq_id), 0) as max_seq FROM cards WHERE board_id = ?').get(board.id) as { max_seq: number };
     const nextSeqId = maxSeqRow.max_seq + 1;
     const srcFp = createHash('sha256').update(newLine).digest('hex').slice(0, 16);

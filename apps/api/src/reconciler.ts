@@ -66,8 +66,12 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
     title: string;
     source: string | null;
     source_url: string | null;
+    deleted_at: string | null;
   }>;
   const existingById = new Map(existingCards.map((c) => [c.id, c]));
+  // Trashed cards are absent from the file by design: never removed here,
+  // revived only when their kb:id line reappears in the file.
+  const liveCards = existingCards.filter((c) => !c.deleted_at);
 
   const seenIds = new Set<string>();
   let added = 0;
@@ -99,7 +103,7 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
   // New cards are appended within their target column (not the global file index).
   const nextPosByColumn = new Map<string, number>();
   const maxPosRows = db
-    .prepare('SELECT column_name, MAX(position) as max_pos FROM cards WHERE board_id = ? GROUP BY column_name')
+    .prepare('SELECT column_name, MAX(position) as max_pos FROM cards WHERE board_id = ? AND deleted_at IS NULL GROUP BY column_name')
     .all(board.id) as Array<{ column_name: string; max_pos: number }>;
   for (const row of maxPosRows) {
     nextPosByColumn.set(row.column_name, row.max_pos + 1);
@@ -113,6 +117,11 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
       source = CASE WHEN ? IS NOT NULL THEN ? ELSE source END,
       source_url = CASE WHEN ? IS NOT NULL THEN ? ELSE source_url END,
       updated_at = datetime('now')
+    WHERE id = ?
+  `);
+
+  const reviveStmt = db.prepare(`
+    UPDATE cards SET deleted_at = NULL, trashed_lines = NULL, trashed_after = NULL, position = ?
     WHERE id = ?
   `);
 
@@ -152,7 +161,8 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         titleCounts.set(titleKey, collisionIndex + 1);
         const legacyId = computeFingerprint(task.title, board.id, collisionIndex);
 
-        if (existingById.has(legacyId) && !seenIds.has(legacyId)) {
+        const legacyCard = existingById.get(legacyId);
+        if (legacyCard && !legacyCard.deleted_at && !seenIds.has(legacyId)) {
           // Found existing card by legacy ID — migrate it
           id = legacyId;
           needsMarkerStamp = true;
@@ -200,6 +210,12 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
           task.sourceLink?.url ?? null,
           id,
         );
+        if (existing.deleted_at) {
+          const position = nextPosByColumn.get(col) ?? 0;
+          nextPosByColumn.set(col, position + 1);
+          reviveStmt.run(position, id);
+          console.log(`[reconciler] Card ${id} reappeared in ${board.id} — restored from trash`);
+        }
         updated++;
       } else {
         // Use kb:col from .md marker if available, otherwise default by done state
@@ -232,15 +248,15 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
     }
 
     // Remove cards no longer in file — with safety guard
-    const toRemove = existingCards.filter((c) => !seenIds.has(c.id)).map((c) => c.id);
+    const toRemove = liveCards.filter((c) => !seenIds.has(c.id)).map((c) => c.id);
     if (toRemove.length > 0) {
       // Safety: if ALL existing cards would be deleted and we found 0 tasks,
       // something is wrong (empty/truncated file read). Abort deletion.
-      if (toRemove.length === existingCards.length && tasks.length === 0) {
+      if (toRemove.length === liveCards.length && tasks.length === 0) {
         console.error(`[reconciler] 🛡️ SAFETY: Refusing to delete all ${toRemove.length} cards from ${board.id} — file appears empty/corrupt`);
-      } else if (toRemove.length >= existingCards.length * 0.8 && existingCards.length >= 5) {
+      } else if (toRemove.length >= liveCards.length * 0.8 && liveCards.length >= 5) {
         // Also guard against losing >80% of cards at once (likely a bug, not intentional)
-        console.warn(`[reconciler] ⚠️ SAFETY: Would delete ${toRemove.length}/${existingCards.length} cards from ${board.id} — skipping bulk delete. Manual reconcile needed.`);
+        console.warn(`[reconciler] ⚠️ SAFETY: Would delete ${toRemove.length}/${liveCards.length} cards from ${board.id} — skipping bulk delete. Manual reconcile needed.`);
       } else {
         const ph = toRemove.map(() => '?').join(',');
         db.prepare(`DELETE FROM cards WHERE id IN (${ph})`).run(...toRemove);
@@ -310,7 +326,7 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
     ).run(filePath, fileHash);
   }
 
-  const removed = existingCards.filter((c) => !seenIds.has(c.id)).length;
+  const removed = liveCards.filter((c) => !seenIds.has(c.id)).length;
   return { boardId: board.id, added, removed, updated, migrated };
 }
 

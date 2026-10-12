@@ -68,6 +68,8 @@ export interface Card {
   source_uid: string | null;
   source_url: string | null;
   source_meta: Record<string, unknown>;
+  /** ISO UTC timestamp when the card was moved to the trash; null for live cards. */
+  deleted_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -171,6 +173,7 @@ export interface BoardDetail {
   calendarAccount: CalendarAccount | null;
   calendarAccounts: CalendarAccount[];
   columns: Column[];
+  trashCount: number;
 }
 
 export interface View {

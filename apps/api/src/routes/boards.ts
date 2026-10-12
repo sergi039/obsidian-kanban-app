@@ -22,6 +22,7 @@ import { broadcast } from '../ws.js';
 import { writeBackColumn } from '../writeback.js';
 import { suppressWatcher, unsuppressWatcher, rebindWatcher } from '../watcher.js';
 import { formatCard } from '../utils.js';
+import { listTrash } from '../trash.js';
 
 const boards = new Hono();
 
@@ -43,7 +44,7 @@ boards.get('/', (c) => {
   }
 
   const countStmt = db.prepare(
-    'SELECT column_name, COUNT(*) as count FROM cards WHERE board_id = ? GROUP BY column_name',
+    'SELECT column_name, COUNT(*) as count FROM cards WHERE board_id = ? AND deleted_at IS NULL GROUP BY column_name',
   );
 
   const list = filteredBoards.map((board) => {
@@ -170,8 +171,11 @@ boards.get('/:id', (c) => {
 
   const db = getDb();
   const cards = db
-    .prepare('SELECT * FROM cards WHERE board_id = ? ORDER BY position')
+    .prepare('SELECT * FROM cards WHERE board_id = ? AND deleted_at IS NULL ORDER BY position')
     .all(boardId) as Array<Record<string, unknown>>;
+  const trashCount = (db
+    .prepare('SELECT COUNT(*) AS c FROM cards WHERE board_id = ? AND deleted_at IS NOT NULL')
+    .get(boardId) as { c: number }).c;
 
   const columns = board.columns.map((col) => ({
     name: col,
@@ -187,7 +191,16 @@ boards.get('/:id', (c) => {
     calendarAccount: calendarAccounts.find((account) => account.id === board.calendarAccount) ?? null,
     calendarAccounts,
     columns,
+    trashCount,
   });
+});
+
+// GET /api/boards/:id/trash — trashed cards, most recently trashed first
+boards.get('/:id/trash', (c) => {
+  const boardId = c.req.param('id');
+  const board = loadConfig().boards.find((b) => b.id === boardId);
+  if (!board) return c.json({ error: 'Board not found' }, 404);
+  return c.json(listTrash(boardId).map(formatCard));
 });
 
 // GET /api/boards/:id/cards — cards with filter engine
@@ -206,7 +219,7 @@ boards.get('/:id/cards', (c) => {
     const parsed = parseFilterQuery(q);
     const filter = compileFilter(parsed);
 
-    const sql = `SELECT * FROM cards WHERE board_id = ? AND ${filter.where} ORDER BY position`;
+    const sql = `SELECT * FROM cards WHERE board_id = ? AND deleted_at IS NULL AND ${filter.where} ORDER BY position`;
     const params = [boardId, ...filter.params];
     const cards = db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
     return c.json(cards.map(formatCard));
@@ -217,7 +230,7 @@ boards.get('/:id/cards', (c) => {
   const priority = c.req.query('priority');
   const search = c.req.query('search');
 
-  let sql = 'SELECT * FROM cards WHERE board_id = ?';
+  let sql = 'SELECT * FROM cards WHERE board_id = ? AND deleted_at IS NULL';
   const params: unknown[] = [boardId];
 
   if (column) {
@@ -507,7 +520,7 @@ boards.patch('/:id/columns/rename', async (c) => {
   db.prepare('UPDATE cards SET column_name = ? WHERE board_id = ? AND column_name = ?').run(newName, boardId, oldName);
 
   // Sync kb:col markers in .md file
-  const affectedCards = db.prepare('SELECT id FROM cards WHERE board_id = ? AND column_name = ?').all(boardId, newName) as Array<{ id: string }>;
+  const affectedCards = db.prepare('SELECT id FROM cards WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL').all(boardId, newName) as Array<{ id: string }>;
   if (affectedCards.length > 0) {
     suppressWatcher();
     try {
@@ -548,7 +561,7 @@ boards.delete('/:id/columns', async (c) => {
   db.prepare('UPDATE cards SET column_name = ? WHERE board_id = ? AND column_name = ?').run(target, boardId, name);
 
   // Sync kb:col markers in .md file for moved cards
-  const movedCards = db.prepare('SELECT id FROM cards WHERE board_id = ? AND column_name = ?').all(boardId, target) as Array<{ id: string }>;
+  const movedCards = db.prepare('SELECT id FROM cards WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL').all(boardId, target) as Array<{ id: string }>;
   if (movedCards.length > 0) {
     suppressWatcher();
     try {

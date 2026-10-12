@@ -140,6 +140,7 @@ reminders.get('/due', (c) => {
 
   const where = [
     "reminders.status IN ('scheduled', 'snoozed')",
+    'cards.deleted_at IS NULL',
     "CASE WHEN reminders.status = 'snoozed' THEN COALESCE(reminders.snoozed_until, reminders.trigger_at) ELSE reminders.trigger_at END <= ?",
   ];
   const params: unknown[] = [beforeParsed.data];
@@ -189,6 +190,9 @@ reminders.get('/', (c) => {
   if (cardId) {
     where.push('reminders.card_id = ?');
     params.push(cardId);
+  } else {
+    // Board and channel listings skip cards in the trash.
+    where.push('cards.deleted_at IS NULL');
   }
 
   const status = c.req.query('status');

@@ -20,6 +20,9 @@ const {
   dismissReminder,
   fireReminder,
   setApiToken,
+  trashCard,
+  restoreCard,
+  fetchTrash,
 } = await import('../api/client');
 
 function mockResponse(data: unknown, status = 200) {
@@ -109,6 +112,36 @@ describe('moveCard', () => {
     expect(url).toBe('/api/cards/abc/move');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual({ column: 'Done', position: 0 });
+  });
+});
+
+describe('trash', () => {
+  it('trashCard sends DELETE for the card', async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse({ id: 'abc', deleted_at: '2026-10-12T10:00:00.000Z' }));
+    const result = await trashCard('abc');
+    expect(result.deleted_at).toBe('2026-10-12T10:00:00.000Z');
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe('/api/cards/abc');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('restoreCard sends POST to the restore endpoint', async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse({ id: 'abc', deleted_at: null }));
+    await restoreCard('abc');
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe('/api/cards/abc/restore');
+    expect(init.method).toBe('POST');
+  });
+
+  it('fetchTrash reads the board trash list', async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse([{ id: 'abc' }]));
+    expect(await fetchTrash('vs')).toEqual([{ id: 'abc' }]);
+    expect(mockFetch).toHaveBeenCalledWith('/api/boards/vs/trash', expect.anything());
+  });
+
+  it('surfaces the server error when trashing fails', async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse({ error: 'Card is already in trash' }, 409));
+    await expect(trashCard('abc')).rejects.toThrow('Card is already in trash');
   });
 });
 

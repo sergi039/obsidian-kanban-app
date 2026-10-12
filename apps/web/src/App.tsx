@@ -18,6 +18,7 @@ import {
   fireReminder,
   bulkMoveCards,
   moveCard,
+  trashCard,
 } from './api/client';
 import type { BoardSummary, BoardDetail, Field, PriorityDef, CategoryDef, Reminder } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
@@ -32,6 +33,7 @@ import { useTheme } from './hooks/useTheme';
 import { ThemeToggle } from './components/ThemeToggle';
 import { AutomationsPanel } from './components/AutomationsPanel';
 import { RemindersPanel } from './components/RemindersPanel';
+import { TrashPanel } from './components/TrashPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { BulkActionsBar } from './components/BulkActionsBar';
 import { BoardSort } from './components/BoardSort';
@@ -104,6 +106,7 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [showAutomations, setShowAutomations] = useState(false);
   const [showReminders, setShowReminders] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   const [boardSortField, setBoardSortField] = useState<BoardSortField>('position');
   const [boardReminders, setBoardReminders] = useState<Reminder[]>([]);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
@@ -211,6 +214,7 @@ export default function App() {
     setFilterQuery('');
     setBoardReminders([]);
     setShowReminders(false);
+    setShowTrash(false);
     setSelectedCardIds(new Set());
   };
 
@@ -274,6 +278,23 @@ export default function App() {
 
   const boardColumnNames = boardDetail?.columns.map((c) => c.name) ?? [];
   const canToggleDone = doneTargetColumn(boardColumnNames) !== null && openTargetColumn(boardColumnNames) !== null;
+
+  const handleCardTrash = async (cardId: string) => {
+    try {
+      await trashCard(cardId);
+    } catch (err) {
+      if (isAuthError(err)) {
+        clearApiToken();
+        setAuthRequired(true);
+        return;
+      }
+      throw err;
+    }
+    setSelectedCard(null);
+    await loadBoard();
+    const updatedBoards = await fetchBoards();
+    setBoards(updatedBoards);
+  };
 
   const handleReload = async () => {
     setSyncing(true);
@@ -679,6 +700,14 @@ export default function App() {
           >
             ⏰ {dueReminderCount}
           </button>
+          <button
+            onClick={() => setShowTrash((value) => !value)}
+            disabled={!boardDetail}
+            className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
+            title="Trash — deleted cards you can restore"
+          >
+            🗑 {boardDetail?.trashCount ?? 0}
+          </button>
           {'Notification' in window && browserNotificationPermission !== 'granted' && (
             <button
               onClick={requestBrowserNotifications}
@@ -791,6 +820,7 @@ export default function App() {
             setSelectedCard(null);
             setTimeout(() => openSettingsRef.current?.(), 50);
           }}
+          onTrash={() => handleCardTrash(selectedCard.id)}
         />
       )}
 
@@ -803,6 +833,19 @@ export default function App() {
           columns={boardDetail?.columns.map((c) => c.name) || []}
           fields={boardFields}
           onClose={() => setShowAutomations(false)}
+        />
+      )}
+
+      {showTrash && boardDetail && (
+        <TrashPanel
+          boardId={boardDetail.id}
+          trashCount={boardDetail.trashCount}
+          onClose={() => setShowTrash(false)}
+          onRestored={async () => {
+            await loadBoard();
+            const updatedBoards = await fetchBoards();
+            setBoards(updatedBoards);
+          }}
         />
       )}
 

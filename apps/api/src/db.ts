@@ -127,6 +127,7 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_cards_due_date ON cards(due_date)`,
   `CREATE INDEX IF NOT EXISTS idx_cards_source ON cards(source)`,
   `CREATE INDEX IF NOT EXISTS idx_cards_source_uid ON cards(source, source_uid)`,
+  `CREATE INDEX IF NOT EXISTS idx_cards_board_deleted ON cards(board_id, deleted_at)`,
   `CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(card_id)`,
   `CREATE INDEX IF NOT EXISTS idx_fields_board ON fields(board_id, position)`,
   `CREATE INDEX IF NOT EXISTS idx_field_values_card ON field_values(card_id)`,
@@ -240,10 +241,15 @@ const MIGRATIONS = [
   )`,
   // Calendar events attached to a card (JSON array, DB-only like links/checklist)
   `ALTER TABLE cards ADD COLUMN calendar_events TEXT DEFAULT '[]'`,
+  // Trash: a trashed card keeps its row (comments, fields, reminders) while its
+  // Markdown lines are removed from the board file and kept here for restore.
+  `ALTER TABLE cards ADD COLUMN deleted_at TEXT`,
+  `ALTER TABLE cards ADD COLUMN trashed_lines TEXT`,
+  `ALTER TABLE cards ADD COLUMN trashed_after TEXT`,
 	];
 
 /** Columns added by migrations that the code depends on; migration errors are swallowed, so check them. */
-const REQUIRED_CARD_COLUMNS = ['checklist', 'links', 'calendar_events'];
+const REQUIRED_CARD_COLUMNS = ['checklist', 'links', 'calendar_events', 'deleted_at', 'trashed_lines', 'trashed_after'];
 
 function assertCardColumns(database: Database.Database): void {
   const present = new Set(
