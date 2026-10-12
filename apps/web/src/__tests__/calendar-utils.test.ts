@@ -61,6 +61,12 @@ describe('account resolution', () => {
     expect(suggestAccount(GOOGLE_URL, ACCOUNTS, 'work')?.id).toBe('personal');
   });
 
+  it('prefers an explicit authuser email over the calendar owner in the eid', () => {
+    const second: CalendarAccount = { id: 'second', label: 'Second', provider: 'google', email: 'other@home.example' };
+    const shared = `${GOOGLE_URL}&authuser=other@home.example`;
+    expect(suggestAccount(shared, [...ACCOUNTS, second], 'work')?.id).toBe('second');
+  });
+
   it('never files an event under another provider', () => {
     const otherGoogle = `https://calendar.google.com/calendar/event?eid=${b64url('x shared@group.calendar.google.com')}`;
     expect(suggestAccount(otherGoogle, [WORK], 'work')).toBeNull();
@@ -97,6 +103,14 @@ describe('event links', () => {
     const raw = `https://calendar.google.com/calendar/u/0/r/eventedit/${PERSONAL_EID}`;
     const url = new URL(eventOpenUrl(event({ url: raw }), PERSONAL));
     expect(url.pathname).toBe(`/calendar/r/eventedit/${PERSONAL_EID}`);
+    expect(url.searchParams.get('authuser')).toBe('me@home.example');
+  });
+
+  it('keeps an eid-less google link intact apart from the account', () => {
+    const raw = 'https://calendar.google.com/calendar/r/week/2026/10/12?tab=mc';
+    const url = new URL(eventOpenUrl(event({ url: raw }), PERSONAL));
+    expect(url.pathname).toBe('/calendar/r/week/2026/10/12');
+    expect(url.searchParams.get('tab')).toBe('mc');
     expect(url.searchParams.get('authuser')).toBe('me@home.example');
   });
 

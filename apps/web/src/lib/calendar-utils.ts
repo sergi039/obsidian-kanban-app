@@ -59,7 +59,7 @@ function sameEmail(a: string | null | undefined, b: string | null | undefined): 
 
 /**
  * Best account for a pasted event URL: a Google account whose email the link names
- * (eid or authuser), else the board default when it is the same provider, else the
+ * (authuser, then eid), else the board default when it is the same provider, else the
  * only account of that provider. Never returns an account of another provider.
  */
 export function suggestAccount(
@@ -72,13 +72,16 @@ export function suggestAccount(
   if (provider === 'other') return defaultAccount;
 
   if (provider === 'google') {
+    const googleAccounts = accounts.filter((account) => account.provider === 'google');
+    // An explicit authuser is the account the link opens in; it outranks the eid,
+    // which names the calendar owner (possibly someone who shared the event).
+    const authuser = parseUrl(rawUrl)?.searchParams.get('authuser');
+    const byAuthuser = googleAccounts.find((account) => sameEmail(account.email, authuser));
+    if (byAuthuser) return byAuthuser;
     const eid = googleEid(rawUrl);
     const calendarId = eid ? eidCalendarId(eid) : null;
-    const authuser = parseUrl(rawUrl)?.searchParams.get('authuser');
-    const named = accounts.find(
-      (account) => account.provider === 'google' && (sameEmail(account.email, calendarId) || sameEmail(account.email, authuser)),
-    );
-    if (named) return named;
+    const byCalendar = googleAccounts.find((account) => sameEmail(account.email, calendarId));
+    if (byCalendar) return byCalendar;
   }
 
   if (defaultAccount?.provider === provider) return defaultAccount;

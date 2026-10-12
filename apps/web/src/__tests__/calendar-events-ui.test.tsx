@@ -101,7 +101,7 @@ describe('card detail calendar section', () => {
   });
 
   it('attaches a pasted link under the account named in the link', async () => {
-    patchCard.mockResolvedValue({});
+    patchCard.mockImplementation(async (_id: string, patch: { calendar_events: CalendarEvent[] }) => makeCard(patch.calendar_events));
     const onSaved = vi.fn().mockResolvedValue(undefined);
     render(withAccounts(<CalendarEventsSection card={makeCard()} title="Call the client" dueDate={null} onSaved={onSaved} />));
 
@@ -127,6 +127,22 @@ describe('card detail calendar section', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Remove event link: Review' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Unknown calendar account');
     expect(screen.getByRole('link', { name: /Review/ })).toBeInTheDocument();
+  });
+
+  it('keeps the saved list when the save lands but the board refresh fails', async () => {
+    patchCard.mockImplementation(async (_id: string, patch: { calendar_events: CalendarEvent[] }) => makeCard(patch.calendar_events));
+    const onSaved = vi.fn().mockRejectedValue(new Error('network down'));
+    const existing: CalendarEvent = { id: 'e1', url: OUTLOOK_URL, title: 'Review', start: null, account: 'work' };
+    const card = makeCard([existing]);
+    const { rerender } = render(withAccounts(<CalendarEventsSection card={card} title="t" dueDate={null} onSaved={onSaved} />));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove event link: Review' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Saved, but the board did not refresh');
+    expect(screen.queryByRole('link', { name: /Review/ })).toBeNull();
+
+    // A later re-render with the same stale card must not resurrect the removed event.
+    rerender(withAccounts(<CalendarEventsSection card={card} title="t" dueDate={null} onSaved={onSaved} />));
+    expect(screen.queryByRole('link', { name: /Review/ })).toBeNull();
   });
 
   it('offers new-event and open-calendar links for the chosen account', async () => {

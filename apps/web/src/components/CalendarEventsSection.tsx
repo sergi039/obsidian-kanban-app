@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { patchCard } from '../api/client';
 import type { CalendarEvent, Card } from '../types';
 import { normalizeUrl } from '../lib/link-utils';
@@ -43,28 +43,43 @@ export function CalendarEventsSection({ card, title, dueDate, onSaved }: Props) 
   const [newAccountId, setNewAccountId] = useState('');
   const [createAccountId, setCreateAccountId] = useState(defaultAccountId ?? '');
 
-  // Follow server state (board reload, other tabs) unless a save is in flight.
+  // Saves replace the whole list, so only one may run at a time; a ref closes the
+  // window between two clicks before the `saving` state re-renders.
+  const savingRef = useRef(false);
+
+  // Follow server state (board reload, other tabs), but never while a save is in
+  // flight: the PATCH response is authoritative for this card until it lands.
   useEffect(() => {
-    if (!saving) setEvents(card.calendar_events ?? []);
-  }, [card.calendar_events, saving]);
+    if (!savingRef.current) setEvents(card.calendar_events ?? []);
+  }, [card.calendar_events]);
 
   const save = async (next: CalendarEvent[]): Promise<boolean> => {
-    if (saving) return false;
+    if (savingRef.current) return false;
+    savingRef.current = true;
     const previous = events;
     setSaving(true);
     setError(null);
     setEvents(next);
     try {
-      await patchCard(card.id, { calendar_events: next });
-      await onSaved();
-      return true;
+      const updated = await patchCard(card.id, { calendar_events: next });
+      setEvents(updated.calendar_events);
     } catch (err) {
       setEvents(previous);
       setError(err instanceof Error ? err.message : 'Could not save calendar events');
+      savingRef.current = false;
+      setSaving(false);
       return false;
+    }
+    try {
+      await onSaved();
+    } catch (err) {
+      // The events are saved; only the board refresh failed. Keep the saved list.
+      setError(`Saved, but the board did not refresh: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
+    return true;
   };
 
   const normalizedNewUrl = newUrl.trim() ? normalizeUrl(newUrl) : '';
@@ -183,6 +198,7 @@ export function CalendarEventsSection({ card, title, dueDate, onSaved }: Props) 
             }}
             placeholder="Paste a Google or Outlook event link…"
             aria-label="Calendar event link"
+            disabled={saving}
             className="flex-1 text-sm text-board-text bg-board-column border border-board-border rounded-md px-2.5 py-1.5 focus:outline-none placeholder:text-board-text-muted/50"
           />
           {newUrl.trim() && (
@@ -206,6 +222,7 @@ export function CalendarEventsSection({ card, title, dueDate, onSaved }: Props) 
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="Title (optional)"
               aria-label="Event title"
+              disabled={saving}
               className={`${inputClass} flex-1 min-w-[140px]`}
             />
             <input
@@ -213,12 +230,14 @@ export function CalendarEventsSection({ card, title, dueDate, onSaved }: Props) 
               value={newStart}
               onChange={(e) => setNewStart(e.target.value)}
               aria-label="Event start"
+              disabled={saving}
               className={inputClass}
             />
             <label className="flex items-center gap-1 text-[11px] text-board-text-muted">
               <input
                 type="checkbox"
                 checked={allDay}
+                disabled={saving}
                 onChange={(e) => {
                   setAllDay(e.target.checked);
                   setNewStart('');
@@ -231,6 +250,7 @@ export function CalendarEventsSection({ card, title, dueDate, onSaved }: Props) 
                 value={newAccountId}
                 onChange={(e) => setNewAccountId(e.target.value)}
                 aria-label="Calendar account"
+                disabled={saving}
                 className={inputClass}
               >
                 <option value="">No account</option>
