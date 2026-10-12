@@ -29,6 +29,9 @@ export interface FetchWindow {
   signal: AbortSignal;
 }
 
+/** Outlook on the web hosts that serve calendar items; matched exactly, never by prefix. */
+export const OUTLOOK_HOSTS = new Set(['outlook.office.com', 'outlook.office365.com', 'outlook.live.com']);
+
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_PAGES = 40;
 const MAX_RETRIES = 2;
