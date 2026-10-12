@@ -17,6 +17,7 @@ import {
   fetchDueReminders,
   fireReminder,
   bulkMoveCards,
+  moveCard,
 } from './api/client';
 import type { BoardSummary, BoardDetail, Field, PriorityDef, CategoryDef, Reminder } from './types';
 import { BoardSwitcher } from './components/BoardSwitcher';
@@ -37,6 +38,7 @@ import { BoardSort } from './components/BoardSort';
 import type { BoardSortField } from './components/BoardSort';
 import type { Card } from './types';
 import { activeReminders, isDueReminder, reminderState } from './lib/reminder-utils';
+import { doneTargetColumn, openTargetColumn, toggleDoneTargetColumn } from './lib/done-utils';
 
 const FALLBACK_PRIORITIES: PriorityDef[] = [
   { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
@@ -244,6 +246,33 @@ export default function App() {
     const updatedBoards = await fetchBoards();
     setBoards(updatedBoards);
   };
+
+  const handleToggleDone = async (card: Card) => {
+    if (!boardDetail) return;
+    const target = toggleDoneTargetColumn(card.is_done, boardDetail.columns.map((c) => c.name));
+    if (!target) {
+      setError(`Board "${boardDetail.name}" has no column to move this card to.`);
+      return;
+    }
+    try {
+      await moveCard(card.id, { column: target, position: 0 });
+    } catch (err) {
+      console.error('Toggle done failed:', err);
+      if (isAuthError(err)) {
+        clearApiToken();
+        setAuthRequired(true);
+        return;
+      }
+      setError(`Failed to move card to "${target}": ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    await loadBoard();
+    const updatedBoards = await fetchBoards();
+    setBoards(updatedBoards);
+  };
+
+  const boardColumnNames = boardDetail?.columns.map((c) => c.name) ?? [];
+  const canToggleDone = doneTargetColumn(boardColumnNames) !== null && openTargetColumn(boardColumnNames) !== null;
 
   const handleReload = async () => {
     setSyncing(true);
@@ -688,6 +717,7 @@ export default function App() {
               remindersByCard={remindersByCard}
               selectedCardIds={selectedCardIds}
               onToggleSelect={toggleCardSelection}
+              onToggleDone={canToggleDone ? handleToggleDone : undefined}
               onCardMove={handleCardMove}
               onCardClick={setSelectedCard}
               onCardAdd={handleCardAdd}

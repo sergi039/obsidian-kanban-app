@@ -30,6 +30,7 @@ interface Props {
   remindersByCard?: Map<string, Reminder[]>;
   selectedCardIds?: Set<string>;
   onToggleSelect?: (cardId: string) => void;
+  onToggleDone?: (card: Card) => Promise<void>;
   onCardMove: () => Promise<void>;
   onCardClick: (card: Card) => void;
   onCardAdd: (title: string, column: string) => Promise<void>;
@@ -92,6 +93,7 @@ export function Board({
   remindersByCard,
   selectedCardIds,
   onToggleSelect,
+  onToggleDone,
   onCardMove,
   onCardClick,
   onCardAdd,
@@ -360,6 +362,7 @@ export function Board({
               isSorted={isSorted}
               selectedCardIds={selectedCardIds}
               onToggleSelect={onToggleSelect}
+              onToggleDone={onToggleDone}
               onCardClick={onCardClick}
               onCardAdd={onCardAdd}
               onColumnRename={onColumnRename}

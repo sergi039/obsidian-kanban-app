@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Card, PriorityDef, CategoryDef, Reminder } from '../types';
 import { extractLinks } from '../lib/link-utils';
 import { formatReminderTime, isDueReminder, nextActiveReminder } from '../lib/reminder-utils';
@@ -10,6 +11,8 @@ interface Props {
   onClick: () => void;
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** Moves the card into or out of Done; omitted when the board has no Done column. */
+  onToggleDone?: () => Promise<void>;
 }
 
 function escapeRegExp(text: string): string {
@@ -29,7 +32,8 @@ function cleanTitle(title: string, priorities: PriorityDef[]): string {
 
 const MAX_VISIBLE_BADGES = 3;
 
-export function KanbanCard({ card, priorities, categories = [], reminders = [], onClick, selected = false, onToggleSelect }: Props) {
+export function KanbanCard({ card, priorities, categories = [], reminders = [], onClick, selected = false, onToggleSelect, onToggleDone }: Props) {
+  const [togglingDone, setTogglingDone] = useState(false);
   const linkCount = card.links.length > 0 ? card.links.length : extractLinks(card.title).length;
   const displayTitle = cleanTitle(card.title, priorities);
   const priorityDef = card.priority ? priorities.find((p) => p.id === card.priority) : undefined;
@@ -51,6 +55,16 @@ export function KanbanCard({ card, priorities, categories = [], reminders = [], 
       return;
     }
     onClick();
+  };
+
+  const handleToggleDone = async () => {
+    if (!onToggleDone || togglingDone) return;
+    setTogglingDone(true);
+    try {
+      await onToggleDone();
+    } finally {
+      setTogglingDone(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -80,18 +94,21 @@ export function KanbanCard({ card, priorities, categories = [], reminders = [], 
       }`}
       style={{ ['--tw-ring-color' as string]: selected ? undefined : 'var(--board-accent-ring)' }}
     >
-      {/* Selection checkbox (visible on hover or when selected) */}
-      {onToggleSelect && (
+      {/* Done checkbox: checking moves the card to Done, unchecking moves it back.
+          Bulk selection stays on Cmd/Ctrl-click. */}
+      {onToggleDone && (
         <input
           type="checkbox"
-          checked={selected}
-          onChange={onToggleSelect}
+          checked={card.is_done}
+          disabled={togglingDone}
+          onChange={handleToggleDone}
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
-          aria-label={`Select card: ${displayTitle}`}
-          className={`absolute right-2 top-2 h-4 w-4 cursor-pointer accent-blue-500 transition-opacity ${
-            selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+          aria-label={`${card.is_done ? 'Mark as not done' : 'Mark as done'}: ${displayTitle}`}
+          title={card.is_done ? 'Mark as not done' : 'Mark as done'}
+          className={`absolute right-2 top-2 h-4 w-4 cursor-pointer accent-green-500 transition-opacity disabled:cursor-wait ${
+            card.is_done ? 'opacity-100' : 'opacity-40 group-hover:opacity-100 focus-visible:opacity-100'
           }`}
         />
       )}

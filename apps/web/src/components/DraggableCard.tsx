@@ -11,9 +11,10 @@ interface Props {
   onClick: () => void;
   selected?: boolean;
   onToggleSelect?: () => void;
+  onToggleDone?: () => Promise<void>;
 }
 
-export function DraggableCard({ card, priorities, categories, reminders, onClick, selected, onToggleSelect }: Props) {
+export function DraggableCard({ card, priorities, categories, reminders, onClick, selected, onToggleSelect, onToggleDone }: Props) {
   const {
     attributes,
     listeners,
@@ -43,6 +44,7 @@ export function DraggableCard({ card, priorities, categories, reminders, onClick
         onClick={onClick}
         selected={selected}
         onToggleSelect={onToggleSelect}
+        onToggleDone={onToggleDone}
       />
     </div>
   );
