@@ -39,6 +39,7 @@ import type { BoardSortField } from './components/BoardSort';
 import type { Card } from './types';
 import { activeReminders, isDueReminder, reminderState } from './lib/reminder-utils';
 import { doneTargetColumn, openTargetColumn, toggleDoneTargetColumn } from './lib/done-utils';
+import { CalendarSettingsContext, NO_CALENDAR_SETTINGS, type CalendarSettings } from './lib/calendar-context';
 
 const FALLBACK_PRIORITIES: PriorityDef[] = [
   { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444' },
@@ -565,6 +566,13 @@ export default function App() {
     });
   }, [filterQuery, remindersByCard]);
 
+  const calendarSettings = useMemo<CalendarSettings>(
+    () => boardDetail
+      ? { accounts: boardDetail.calendarAccounts ?? [], defaultAccountId: boardDetail.calendarAccount?.id ?? null }
+      : NO_CALENDAR_SETTINGS,
+    [boardDetail],
+  );
+
   const boardPriorities = boardDetail && Array.isArray(boardDetail.priorities)
     ? boardDetail.priorities
     : FALLBACK_PRIORITIES;
@@ -706,6 +714,7 @@ export default function App() {
         </div>
       )}
 
+      <CalendarSettingsContext.Provider value={calendarSettings}>
       {/* Board */}
       <main className="flex-1 overflow-x-auto p-6">
         {boardDetail ? (
@@ -784,6 +793,8 @@ export default function App() {
           }}
         />
       )}
+
+      </CalendarSettingsContext.Provider>
 
       {/* Automations panel */}
       {showAutomations && activeBoardId && (

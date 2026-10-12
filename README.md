@@ -20,6 +20,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Managed links** — add/remove clickable links, stored in DB (auto-normalized URLs)
 - **Comments** — full CRUD with linkified URLs, author avatars, timestamps
 - **Reminders** — per-card reminder records with due/upcoming badges, snooze/dismiss, and polling-friendly API state
+- **Calendar events** — attach Google/Outlook event links to a card; the card shows the nearest one as a direct link (`+N` expands the rest) and opens each in the right account (work or personal)
 - **Custom fields** — TEXT, NUMBER, DATE, SINGLE_SELECT, ITERATION types per board
 - **Done checkbox** — tick the checkbox on a board card to move it to Done (`[x]` in Markdown); untick to send it back to Backlog
 - **Bulk actions** — Cmd/Ctrl-click cards to select several, then move or close them at once
@@ -294,6 +295,28 @@ pnpm reminders:macos:install
 ```
 
 Mail.app delivery from `launchd` requires macOS Automation permission for the Node/osascript process to control Mail. If the log shows `Not authorised to send Apple events to Mail. (-1743)`, grant that permission in System Settings > Privacy & Security > Automation or run `pnpm reminders:agent` from an interactive user session for one-off delivery.
+
+### Calendar Accounts
+
+Cards can link to calendar events (stored in SQLite as `cards.calendar_events`, never written to Markdown). Which calendar a board uses is configured in `config.boards.json` — emails stay in this gitignored file:
+
+```json
+{
+  "calendarAccounts": [
+    { "id": "work", "label": "Work", "provider": "outlook", "email": "you@company.example" },
+    { "id": "personal", "label": "Personal", "provider": "google", "email": "you@gmail.example" }
+  ],
+  "boards": [
+    { "id": "work", "calendarAccount": "work", "...": "..." },
+    { "id": "private", "calendarAccount": "personal", "...": "..." }
+  ]
+}
+```
+
+- `provider` is `google` or `outlook`; a board's `calendarAccount` must name an account id (boot fails otherwise). Restart the API after editing.
+- Google event links open with `authuser=<email>` of the event's account, so personal events do not open in the default signed-in account. Outlook links open as pasted.
+- An event's account is taken from the link when possible (the email inside a Google `eid`), else the board default, and is saved with the event; the API rejects a Google link filed under an Outlook account and vice versa.
+- `PATCH /api/cards/:id` with `calendar_events: [{ id, url, title, start, account }]` replaces the list (https URLs only, `start` is `YYYY-MM-DD` or an ISO datetime with offset, up to 20 events).
 
 ### Board Columns
 

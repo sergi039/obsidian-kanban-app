@@ -24,6 +24,27 @@ export interface LinkItem {
   title: string;
 }
 
+export type CalendarProvider = 'google' | 'outlook';
+
+/** A calendar the owner works in (configured per install in config.boards.json). */
+export interface CalendarAccount {
+  id: string;
+  label: string;
+  provider: CalendarProvider;
+  email: string;
+}
+
+/** An event attached to a card by link; the calendar itself owns the event. */
+export interface CalendarEvent {
+  id: string;
+  url: string;
+  title: string;
+  /** 'YYYY-MM-DD' for all-day, timezone-aware ISO datetime, or null when unknown. */
+  start: string | null;
+  /** Calendar account id; null = derive from the URL / board default. */
+  account: string | null;
+}
+
 export interface Card {
   id: string;
   seq_id: number | null;
@@ -41,6 +62,7 @@ export interface Card {
   description: string;
   checklist: ChecklistItem[];
   links: LinkItem[];
+  calendar_events: CalendarEvent[];
   source_fingerprint: string | null;
   source: string | null;
   source_uid: string | null;
@@ -145,6 +167,9 @@ export interface BoardDetail {
   file: string;
   priorities: PriorityDef[];
   categories: CategoryDef[];
+  /** Board's default calendar account, null when none is configured. */
+  calendarAccount: CalendarAccount | null;
+  calendarAccounts: CalendarAccount[];
   columns: Column[];
 }
 
@@ -243,4 +268,5 @@ export interface PatchCardRequest {
   description?: string;
   checklist?: ChecklistItem[];
   links?: LinkItem[];
+  calendar_events?: CalendarEvent[];
 }

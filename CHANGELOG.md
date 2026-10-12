@@ -2,6 +2,11 @@
 
 ## 2026-10-12
 
+### Calendar events
+- Cards can carry calendar event links (`calendar_events`, DB-only, up to 20 per card). The card face shows the nearest event as a direct link (`📆 Tomorrow 10:00`); with several events a `+N` toggle expands the full list inline instead of growing the card.
+- Each event opens in the right calendar: work events in Outlook (Microsoft 365), personal ones in Google Calendar with `authuser=<email>`, so a personal event no longer opens in the default account and shows "event not found".
+- The account comes from the link (Google `eid` email) or the board default (`calendarAccount` per board, `calendarAccounts` in `config.boards.json`); it is stored per event and can be changed when attaching. The card detail adds a Calendar section: paste a link, optional title/time, remove, plus "New event" (prefilled with the card title, due date and a link back to the card) and "Open calendar" for the chosen account.
+
 ### Board
 - The checkbox on a board card now marks it done: ticking moves the card to `Done` (and writes `[x]` to Markdown), unticking moves it back to `Backlog`. It used to only select the card for the bulk bar, so ticking it never closed anything. Bulk selection stays on Cmd/Ctrl-click; the table view's Done checkbox shares the same column logic.
 

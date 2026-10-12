@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Card, PriorityDef, CategoryDef, Reminder } from '../types';
 import { extractLinks } from '../lib/link-utils';
 import { formatReminderTime, isDueReminder, nextActiveReminder } from '../lib/reminder-utils';
+import { CalendarEventsChip } from './CalendarEventsChip';
 
 interface Props {
   card: Card;
@@ -193,6 +194,7 @@ export function KanbanCard({ card, priorities, categories = [], reminders = [], 
         {card.due_date && (
           <span className="text-[11px] text-board-text-muted">📅 {card.due_date}</span>
         )}
+        <CalendarEventsChip events={card.calendar_events ?? []} />
         {nextReminder && (
           <span
             className={`text-[11px] px-1.5 py-0.5 rounded ${

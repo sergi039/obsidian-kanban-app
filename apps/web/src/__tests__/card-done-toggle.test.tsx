@@ -23,6 +23,7 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     description: '',
     checklist: [],
     links: [],
+    calendar_events: [],
     source_fingerprint: null,
     source: null,
     source_uid: null,
