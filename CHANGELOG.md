@@ -7,6 +7,9 @@
 - Works for every way of closing: drag to Done, the card checkbox, the table view, bulk close, and `[x]` typed in Obsidian.
 - Only explicit references count; a title search was rejected because it matched dozens of unrelated notes in the real vault. Board files and `.trash`/dot-folders are never touched.
 
+### Closed cards on top
+- A card closed from the card's status field, by a bulk close, or by ticking `[x]` in Obsidian now lands at the top of Done, as the board checkbox already did. Before, the status field and bulk close appended it to the bottom, and a task ticked in Obsidian kept its old position from the column it left. Dragging still drops the card exactly where it is released.
+
 ### Calendar events are automatic
 - The card's events now come from the calendars themselves: the API reads the work calendar through Microsoft Graph and the personal one through Google Calendar every 10 minutes and links an event to a card when the event's description carries the card link (or the card quotes the event's link). Nobody pastes links any more — the paste field, account selector and `PATCH calendar_events` are gone.
 - Title similarity is deliberately not used: tried on real data, every candidate it produced was a different task.

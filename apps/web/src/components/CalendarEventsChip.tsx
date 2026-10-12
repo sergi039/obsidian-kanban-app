@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { CalendarEvent } from '../types';
 import { useCalendarSettings } from '../lib/calendar-context';
-import { eventLabel, eventOpenUrl, isPastEvent, resolveAccount, sortEvents } from '../lib/calendar-utils';
+import { eventLabel, eventOpenUrl, isPastEvent, openInWindow, resolveAccount, sortEvents } from '../lib/calendar-utils';
 
 interface Props {
   events: CalendarEvent[];
@@ -44,6 +44,10 @@ export function CalendarEventsChip({ events }: Props) {
         target="_blank"
         rel="noopener noreferrer"
         {...isolate}
+        onClick={(e) => {
+          e.stopPropagation();
+          openInWindow(e, first.href);
+        }}
         title={`${first.accountLabel} · ${first.title}`}
         aria-label={`Open calendar event: ${first.title}, ${first.label}`}
         className={`text-[11px] px-1.5 py-0.5 rounded max-w-[160px] truncate hover:underline ${
@@ -79,6 +83,10 @@ export function CalendarEventsChip({ events }: Props) {
                   target="_blank"
                   rel="noopener noreferrer"
                   {...isolate}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openInWindow(e, item.href);
+                  }}
                   title={`${item.accountLabel} · ${item.title}`}
                   className={`flex items-center gap-1 text-[11px] rounded px-1 py-0.5 hover:bg-board-column ${
                     item.past ? 'text-board-text-muted' : 'text-board-text'

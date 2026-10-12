@@ -123,6 +123,11 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
     WHERE id = ?
   `);
 
+  const shiftDownStmt = db.prepare(
+    'UPDATE cards SET position = position + 1 WHERE board_id = ? AND column_name = ? AND deleted_at IS NULL AND id != ?',
+  );
+  const topStmt = db.prepare('UPDATE cards SET position = 0 WHERE id = ?');
+
   const reviveStmt = db.prepare(`
     UPDATE cards SET deleted_at = NULL, trashed_lines = NULL, trashed_after = NULL, position = ?
     WHERE id = ?
@@ -191,7 +196,8 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
 
       if (existing) {
         let col = existing.column_name;
-        if (task.isDone && !existing.is_done) {
+        const closing = task.isDone && !existing.is_done;
+        if (closing) {
           col = getDefaultDoneColumn(board);
           if (!existing.deleted_at) closedIds.push(id);
         } else if (!task.isDone && existing.is_done && isDoneColumn(existing.column_name, board)) {
@@ -214,6 +220,12 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
           task.sourceLink?.url ?? null,
           id,
         );
+        if (closing && !existing.deleted_at) {
+          // Ticked [x] in Obsidian: the card goes on top of the done column, as when closed on the board.
+          shiftDownStmt.run(board.id, col, id);
+          topStmt.run(id);
+          nextPosByColumn.set(col, (nextPosByColumn.get(col) ?? 0) + 1);
+        }
         if (existing.deleted_at) {
           const position = nextPosByColumn.get(col) ?? 0;
           nextPosByColumn.set(col, position + 1);
