@@ -56,11 +56,21 @@ function key(p: string): string {
 
 // ---------------------------------------------------------------- vault
 
-/** Every `.md` note under the vault root; dot-folders (.obsidian, .trash, .stversions) and symlinks are skipped. */
+/**
+ * Every `.md` note under the vault root; dot-folders (.obsidian, .trash, .stversions) and symlinks
+ * are skipped. An unreadable vault root throws; a subfolder that vanishes mid-walk is logged and skipped.
+ */
 export async function listVaultNotes(vaultRoot: string): Promise<string[]> {
   const notes: string[] = [];
   const walk = async (rel: string): Promise<void> => {
-    const entries = await readdir(path.join(vaultRoot, rel), { withFileTypes: true });
+    let entries;
+    try {
+      entries = await readdir(path.join(vaultRoot, rel), { withFileTypes: true });
+    } catch (err) {
+      if (!rel) throw err;
+      console.warn(`[obsidian-context] Skipped folder ${rel}: ${(err as Error).message}`);
+      return;
+    }
     for (const entry of entries) {
       if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue;
       const child = rel ? `${rel}/${entry.name}` : entry.name;
@@ -198,52 +208,83 @@ export function closedLine(
   date: string,
   publicUrl: string | undefined,
 ): string {
-  const flat = card.title.replace(/\s+/g, ' ').trim();
-  const title = flat.length > MAX_TITLE_CHARS ? `${flat.slice(0, MAX_TITLE_CHARS - 1).trimEnd()}…` : flat;
+  const chars = Array.from(card.title.replace(/\s+/g, ' ').trim()); // code points: never split an emoji
+  const title = chars.length > MAX_TITLE_CHARS ? `${chars.slice(0, MAX_TITLE_CHARS - 1).join('').trimEnd()}…` : chars.join('');
   const label = card.seq_id ? `${boardName} #${card.seq_id}` : boardName;
   const ref = publicUrl ? `[${label}](${cardUrl(publicUrl, card.board_id, card.id)})` : label;
   return `- ${date} ✅ Карточка закрыта: «${title}» — ${ref}`;
 }
 
+/** Per line: true inside a fenced code block (``` or ~~~), delimiters included. */
+function fencedLines(lines: string[]): boolean[] {
+  let fence: string | null = null;
+  return lines.map((l) => {
+    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(l);
+    if (fence === null) {
+      if (m) fence = m[1];
+      return m !== null;
+    }
+    if (m && m[1][0] === fence[0] && m[1].length >= fence.length && m[2].trim() === '') fence = null;
+    return true;
+  });
+}
+
 /**
  * The note with `line` added at the end of its "## Канбан" section (created at the end
- * of the note when missing) and frontmatter `updated:` set to `date`. Null when the note
- * already has this exact line, so a repeated close on the same day changes nothing.
+ * of the note when missing) and frontmatter `updated:` set to `date`. Headings inside code
+ * fences do not count. Lines outside the insert keep their bytes, line endings included;
+ * only blank lines at the very end of a note without the section are folded into one
+ * separator. Null when the note already has this exact line, so a repeated close on the
+ * same day changes nothing.
  */
 export function withClosedLine(content: string, line: string, date: string): string | null {
-  const eol = content.includes('\r\n') ? '\r\n' : '\n';
-  const lines = content.split(/\r?\n/);
-  if (lines.some((l) => l.trim() === line)) return null;
+  // Split on LF only: a CRLF line keeps its \r, so untouched lines keep their own ending.
+  const lines = content.split('\n');
+  const text = (l: string) => (l.endsWith('\r') ? l.slice(0, -1) : l);
+  if (lines.some((l) => text(l).trim() === line)) return null;
+  const cr = content.includes('\r\n') ? '\r' : '';
+  const fenced = fencedLines(lines.map(text));
 
-  const headingIdx = lines.findIndex((l) => /^##\s+Канбан\s*$/i.test(l.trim()));
+  const headingIdx = lines.findIndex((l, i) => !fenced[i] && /^##\s+Канбан\s*$/i.test(text(l).trim()));
   if (headingIdx === -1) {
-    const trailingNewline = lines.length > 1 && lines[lines.length - 1] === '';
-    while (lines.length > 0 && lines[lines.length - 1].trim() === '') lines.pop();
-    if (lines.length > 0) lines.push('');
-    lines.push(CONTEXT_HEADING, line);
-    if (trailingNewline || lines.length === 2) lines.push('');
+    const endsWithNewline = lines.length === 1 ? lines[0] === '' : lines[lines.length - 1] === '';
+    while (lines.length > 0 && text(lines[lines.length - 1]).trim() === '') lines.pop();
+    if (lines.length > 0) {
+      // Only a final line without any newline gets one; a line that had one keeps it as it was.
+      if (!endsWithNewline) lines[lines.length - 1] += cr;
+      lines.push(cr);
+    }
+    lines.push(CONTEXT_HEADING + cr, endsWithNewline ? line + cr : line);
+    if (endsWithNewline) lines.push('');
   } else {
-    let end = lines.findIndex((l, i) => i > headingIdx && /^#{1,2}\s/.test(l));
+    let end = lines.findIndex((l, i) => i > headingIdx && !fenced[i] && /^#{1,2}\s/.test(text(l)));
     if (end === -1) end = lines.length;
     let insertAt = headingIdx + 1;
-    for (let i = headingIdx + 1; i < end; i++) if (lines[i].trim() !== '') insertAt = i + 1;
-    lines.splice(insertAt, 0, line);
+    for (let i = headingIdx + 1; i < end; i++) if (text(lines[i]).trim() !== '') insertAt = i + 1;
+    if (insertAt === lines.length) {
+      // After the last line of a note with no final newline: that line gets one, the note still ends without.
+      if (!lines[insertAt - 1].endsWith('\r')) lines[insertAt - 1] += cr;
+      lines.push(line);
+    } else {
+      lines.splice(insertAt, 0, line + cr);
+    }
   }
-  return setFrontmatterUpdated(lines, date).join(eol);
+  return setFrontmatterUpdated(lines, date, cr).join('\n');
 }
 
 /** Set `updated:` in an existing frontmatter block (added when absent); a note without frontmatter keeps none. */
-function setFrontmatterUpdated(lines: string[], date: string): string[] {
-  if (lines[0]?.trim() !== '---') return lines;
-  const close = lines.findIndex((l, i) => i > 0 && l.trim() === '---');
+function setFrontmatterUpdated(lines: string[], date: string, cr: string): string[] {
+  const text = (l: string) => (l.endsWith('\r') ? l.slice(0, -1) : l);
+  if (text(lines[0] ?? '').trim() !== '---') return lines;
+  const close = lines.findIndex((l, i) => i > 0 && text(l).trim() === '---');
   if (close === -1) return lines;
   const idx = lines.findIndex((l, i) => i > 0 && i < close && /^updated:/.test(l));
   if (idx === -1) {
-    lines.splice(close, 0, `updated: '${date}'`);
+    lines.splice(close, 0, `updated: '${date}'${cr}`);
     return lines;
   }
   const quote = /^updated:\s*(['"])/.exec(lines[idx])?.[1] ?? '';
-  lines[idx] = `updated: ${quote}${date}${quote}`;
+  lines[idx] = `updated: ${quote}${date}${quote}${lines[idx].endsWith('\r') ? '\r' : ''}`;
   return lines;
 }
 
@@ -277,8 +318,16 @@ function addComment(cardId: string, text: string): void {
   db.prepare("UPDATE cards SET updated_at = datetime('now') WHERE id = ?").run(cardId);
 }
 
-/** Update the context notes of cards that are (still) closed; returns what happened per card. */
-export async function updateContextForClosedCards(cardIds: string[], now = new Date()): Promise<Map<string, CardOutcome>> {
+/**
+ * Update the context notes of cards that are (still) closed; returns what happened per card.
+ * `active` is re-checked after every await and before each card, so nothing is written after
+ * stopObsidianContext() (shutdown closes the DB right after it).
+ */
+export async function updateContextForClosedCards(
+  cardIds: string[],
+  now = new Date(),
+  active: () => boolean = () => enabled,
+): Promise<Map<string, CardOutcome>> {
   const config: AppConfig = loadConfig();
   const db = getDb();
   const placeholders = cardIds.map(() => '?').join(', ');
@@ -297,38 +346,57 @@ export async function updateContextForClosedCards(cardIds: string[], now = new D
   const backlinks = await findBacklinks(config.vaultRoot, notes, cards, trustedHostsFor(config));
   const date = localDate(now);
 
-  for (const card of cards) {
-    const outcome: CardOutcome = { updated: [], unchanged: [], problems: [] };
-    const targets = new Set(backlinks.get(card.id) ?? []);
-    for (const target of noteTargetsInCard(card, config.vaultRoot)) {
-      const resolved = resolveNoteTarget(target, index);
-      if (!resolved) continue;
-      if (!('note' in resolved)) outcome.problems.push(resolved.problem);
-      else if (!boardFiles.has(key(resolved.note))) targets.add(resolved.note);
+  for (const [i, card] of cards.entries()) {
+    if (!active()) {
+      console.warn(`[obsidian-context] Stopped; ${cards.length - i} closed cards left without a context update`);
+      break;
     }
-
-    const boardName = config.boards.find((board) => board.id === card.board_id)?.name ?? card.board_id;
-    const line = closedLine(card, boardName, date, config.publicUrl);
-    for (const note of [...targets].sort()) {
-      try {
-        outcome[updateNote(config.vaultRoot, note, line, date) === 'updated' ? 'updated' : 'unchanged'].push(note);
-      } catch (err) {
-        outcome.problems.push(`не удалось обновить «${note}»: ${(err as Error).message}`);
-        console.error(`[obsidian-context] Card ${card.id}: failed to update ${note}:`, err);
-      }
-    }
-
-    outcomes.set(card.id, outcome);
-    console.log(
-      `[obsidian-context] Card ${card.id}: ${outcome.updated.length} updated, ${outcome.unchanged.length} already current, ${outcome.problems.length} problems`,
-    );
-    const comment = commentFor(outcome);
-    if (comment) {
-      addComment(card.id, comment);
-      broadcast({ type: 'card-updated', cardId: card.id, boardId: card.board_id, timestamp: new Date().toISOString() });
+    try {
+      outcomes.set(card.id, updateCardContext(card, config, index, backlinks, boardFiles, date));
+    } catch (err) {
+      console.error(`[obsidian-context] Card ${card.id}: context update failed:`, err);
     }
   }
   return outcomes;
+}
+
+function updateCardContext(
+  card: ClosedCard,
+  config: AppConfig,
+  index: VaultIndex,
+  backlinks: Map<string, Set<string>>,
+  boardFiles: Set<string>,
+  date: string,
+): CardOutcome {
+  const outcome: CardOutcome = { updated: [], unchanged: [], problems: [] };
+  const targets = new Set(backlinks.get(card.id) ?? []);
+  for (const target of noteTargetsInCard(card, config.vaultRoot)) {
+    const resolved = resolveNoteTarget(target, index);
+    if (!resolved) continue;
+    if (!('note' in resolved)) outcome.problems.push(resolved.problem);
+    else if (!boardFiles.has(key(resolved.note))) targets.add(resolved.note);
+  }
+
+  const boardName = config.boards.find((board) => board.id === card.board_id)?.name ?? card.board_id;
+  const line = closedLine(card, boardName, date, config.publicUrl);
+  for (const note of [...targets].sort()) {
+    try {
+      outcome[updateNote(config.vaultRoot, note, line, date) === 'updated' ? 'updated' : 'unchanged'].push(note);
+    } catch (err) {
+      outcome.problems.push(`не удалось обновить «${note}»: ${(err as Error).message}`);
+      console.error(`[obsidian-context] Card ${card.id}: failed to update ${note}:`, err);
+    }
+  }
+
+  console.log(
+    `[obsidian-context] Card ${card.id}: ${outcome.updated.length} updated, ${outcome.unchanged.length} already current, ${outcome.problems.length} problems`,
+  );
+  const comment = commentFor(outcome);
+  if (comment) {
+    addComment(card.id, comment);
+    broadcast({ type: 'card-updated', cardId: card.id, boardId: card.board_id, timestamp: new Date().toISOString() });
+  }
+  return outcome;
 }
 
 // ---------------------------------------------------------------- queue

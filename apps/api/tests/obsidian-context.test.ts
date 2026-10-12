@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, writeFileSync, readFileSync, rmSync, mkdtempSync } from 'node:fs';
+import { chmodSync, mkdirSync, writeFileSync, readFileSync, rmSync, mkdtempSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import Database from 'better-sqlite3';
@@ -145,6 +145,20 @@ describe('writing the closing line', () => {
     expect(ctx.withClosedLine('no frontmatter\n', line, DATE)).toBe(`no frontmatter\n\n## Канбан\n${line}\n`);
   });
 
+  it('never writes inside a code fence', () => {
+    const fencedSection = '## Канбан\n```bash\n# deploy\n./run.sh\n```\n\n## Next\n';
+    expect(ctx.withClosedLine(fencedSection, line, DATE)).toBe(`## Канбан\n\`\`\`bash\n# deploy\n./run.sh\n\`\`\`\n${line}\n\n## Next\n`);
+    const fencedHeading = '```md\n## Канбан\n```\n';
+    expect(ctx.withClosedLine(fencedHeading, line, DATE)).toBe(`\`\`\`md\n## Канбан\n\`\`\`\n\n## Канбан\n${line}\n`);
+  });
+
+  it('keeps every existing line ending in a mixed LF/CRLF note', () => {
+    expect(ctx.withClosedLine('a\nb\r\nc\n', line, DATE)).toBe(`a\nb\r\nc\n\r\n## Канбан\r\n${line}\r\n`);
+    expect(ctx.withClosedLine('## Канбан\r\n- old\nrest', line, DATE)).toBe(`## Канбан\r\n- old\nrest\r\n${line}`);
+    expect(ctx.withClosedLine("---\r\nupdated: '2026-10-10'\r\n---\nbody\n", line, DATE))
+      .toBe(`---\r\nupdated: '2026-10-12'\r\n---\nbody\n\r\n## Канбан\r\n${line}\r\n`);
+  });
+
   it('changes nothing when the note already has the line, and keeps CRLF', () => {
     const once = ctx.withClosedLine('a\r\nb\r\n', line, DATE)!;
     expect(once).toBe(`a\r\nb\r\n\r\n## Канбан\r\n${line}\r\n`);
@@ -156,6 +170,9 @@ describe('writing the closing line', () => {
     const built = ctx.closedLine({ id: 'abc', board_id: 'b1', seq_id: 7, title: `⚪  ${long}` }, 'Cervantes', DATE, PUBLIC_URL);
     expect(built).toMatch(/^- 2026-10-12 ✅ Карточка закрыта: «⚪ x+…» — \[Cervantes #7\]\(https:\/\/kanban\.example\/\?board=b1&card=abc\)$/);
     expect(built.length).toBeLessThan(220);
+    const emoji = ctx.closedLine({ id: 'abc', board_id: 'b1', seq_id: 7, title: '😀'.repeat(150) }, 'Cervantes', DATE, undefined);
+    expect(emoji).not.toContain('\uFFFD');
+    expect(emoji).toContain(`«${'😀'.repeat(119)}…»`);
     expect(ctx.closedLine({ id: 'abc', board_id: 'b1', seq_id: null, title: 'T' }, 'Cervantes', DATE, undefined)).toBe('- 2026-10-12 ✅ Карточка закрыта: «T» — Cervantes');
   });
 });
@@ -170,7 +187,7 @@ describe('closing a card updates its context notes', () => {
 
   afterEach(() => {
     ctx.stopObsidianContext();
-    testDb.close();
+    if (testDb.open) testDb.close();
     rmSync(vaultRoot, { recursive: true, force: true });
   });
 
@@ -237,6 +254,44 @@ describe('closing a card updates its context notes', () => {
 
     expect(outcomes.size).toBe(0);
     expect(readNote('Note.md')).toBe('body\n');
+  });
+
+  it('writes nothing after stop, even when stop lands during the vault scan and the DB closes', async () => {
+    writeNote('Note.md', 'body\n');
+    seedCard('c1', { description: '[[Note]]' });
+
+    ctx.notifyCardsClosed(['c1']);
+    ctx.stopObsidianContext();
+    testDb.close();
+    await ctx.obsidianContextIdle();
+
+    expect(readNote('Note.md')).toBe('body\n');
+  });
+
+  it('a failing card does not stop the rest of the batch', async () => {
+    writeNote('Note.md', 'body\n');
+    seedCard('bad', { description: '[[Note]]' });
+    seedCard('good', { description: '[[Note]]', title: 'Good' });
+    testDb.exec(`CREATE TRIGGER no_bad_comments BEFORE INSERT ON comments WHEN NEW.card_id = 'bad'
+      BEGIN SELECT RAISE(ABORT, 'comment rejected'); END`);
+
+    const outcomes = await ctx.updateContextForClosedCards(['bad', 'good'], NOW);
+
+    expect(outcomes.has('bad')).toBe(false);
+    expect(outcomes.get('good')?.updated).toEqual(['Note.md']);
+    expect(comments('good')).toHaveLength(1);
+  });
+
+  it('skips a folder that cannot be read and still finds the rest of the vault', async () => {
+    writeNote('Note.md', 'body\n');
+    writeNote('Locked/Inner.md', 'x\n');
+    chmodSync(path.join(vaultRoot, 'Locked'), 0o000);
+    try {
+      expect(await ctx.listVaultNotes(vaultRoot)).toEqual(['Note.md']);
+    } finally {
+      chmodSync(path.join(vaultRoot, 'Locked'), 0o755);
+    }
+    await expect(ctx.listVaultNotes(path.join(vaultRoot, 'missing'))).rejects.toThrow();
   });
 
   it('does nothing until started', async () => {
