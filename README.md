@@ -170,6 +170,20 @@ Routing rules live in `config.routing.json` (gitignored — copy `config.routing
 
 See [Desktop MCP setup](docs/desktop-mcp.md) for Claude/OpenAI/Codex configuration and agent instructions.
 
+### Public Address (Cloudflare Access)
+
+`https://kanban.cervantes50.com` reaches the server on the Mac mini through Cloudflare Tunnel `obsidian-kanban` (one route to `127.0.0.1:4000`, any other hostname gets 404) behind Cloudflare Access: a one-time PIN sent only to the addresses in `~/.config/obsidian-kanban-tunnel/allowed_emails`, session 30 days. The server itself still listens on loopback only and runs without `API_TOKEN`, so Access is the only gate. Local clients (MCP server, reminder agent) keep using `http://127.0.0.1:4000`.
+
+```bash
+python3 cloudflare/kanban_access_setup.py verify   # API token + one-time PIN login method
+python3 cloudflare/kanban_access_setup.py apply    # tunnel -> config -> Access app + policy -> audit -> DNS
+python3 cloudflare/kanban_access_setup.py audit    # re-check every invariant, exit 1 on any problem
+cp ops/launchd/com.cloudflare.cloudflared.obsidian-kanban.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cloudflare.cloudflared.obsidian-kanban.plist
+```
+
+The Cloudflare API token is read from `~/.config/vc-site/cloudflare_api_token` (mode 600); tunnel credentials and config live owner-only in `~/.config/obsidian-kanban-tunnel/`. DNS is created only after the Access app passes the audit, so the name is never public unprotected.
+
 ## 📁 Project Structure
 
 ```
