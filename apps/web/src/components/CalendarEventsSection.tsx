@@ -6,6 +6,7 @@ import {
   eventOpenUrl,
   isPastEvent,
   newEventUrl,
+  openInWindow,
   resolveAccount,
   sortEvents,
 } from '../lib/calendar-utils';
@@ -28,6 +29,13 @@ export function CalendarEventsSection({ card, title, dueDate }: Props) {
   const events = sortEvents(card.calendar_events ?? []);
   const boardAccount = accounts.find((account) => account.id === defaultAccountId) ?? null;
   if (events.length === 0 && !boardAccount) return null;
+  const createHref = boardAccount
+    ? newEventUrl(boardAccount, {
+      title,
+      details: `Kanban: ${cardDeepLink(publicUrl ?? window.location.origin, card.board_id, card.id)}`,
+      date: dueDate,
+    })
+    : null;
 
   return (
     <div>
@@ -40,12 +48,14 @@ export function CalendarEventsSection({ card, title, dueDate }: Props) {
           {events.map((event) => {
             const account = resolveAccount(event, accounts);
             const label = eventLabel(event);
+            const href = eventOpenUrl(event, account);
             return (
               <a
                 key={event.id}
-                href={eventOpenUrl(event, account)}
+                href={href}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(e) => openInWindow(e, href)}
                 className={`flex items-center gap-2 py-1 px-2 rounded text-sm hover:bg-board-column hover:underline transition-colors ${
                   isPastEvent(event) ? 'opacity-60' : ''
                 }`}
@@ -67,15 +77,12 @@ export function CalendarEventsSection({ card, title, dueDate }: Props) {
         <div className="text-xs text-board-text-muted mb-2">No calendar events linked to this card.</div>
       )}
 
-      {boardAccount && (
+      {boardAccount && createHref && (
         <a
-          href={newEventUrl(boardAccount, {
-            title,
-            details: `Kanban: ${cardDeepLink(publicUrl ?? window.location.origin, card.board_id, card.id)}`,
-            date: dueDate,
-          })}
+          href={createHref}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={(e) => openInWindow(e, createHref)}
           className="text-[11px] hover:underline"
           style={{ color: 'var(--board-accent)' }}
           title={`Creates an event in ${boardAccount.label}; it links back to this card automatically`}
