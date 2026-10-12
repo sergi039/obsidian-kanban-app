@@ -184,3 +184,19 @@ export function eventLabel(event: CalendarEvent, now = new Date()): string {
   return formatEventTime(event, now) ?? (event.title || 'Event');
 }
 
+/** Calendar pages open in a window of their own (owner's request), not a tab and not inside the card. */
+export const EVENT_WINDOW_FEATURES = 'popup,width=1200,height=860,noopener,noreferrer';
+
+/**
+ * Click handler for calendar links: a plain left click opens the page in a separate
+ * browser window; modified clicks (Cmd/Ctrl/Shift, middle button) keep browser defaults.
+ */
+export function openInWindow(
+  event: { preventDefault(): void; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; button: number },
+  url: string,
+): void {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+  event.preventDefault();
+  window.open(url, '_blank', EVENT_WINDOW_FEATURES);
+}
+

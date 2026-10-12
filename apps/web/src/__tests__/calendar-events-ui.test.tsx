@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -37,6 +37,15 @@ function withAccounts(node: ReactNode, defaultAccountId: string | null = 'work')
   );
 }
 
+let openSpy: ReturnType<typeof vi.fn>;
+beforeEach(() => {
+  openSpy = vi.fn(() => null);
+  vi.stubGlobal('open', openSpy);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe('card face calendar chip', () => {
   it('shows nothing when no event is linked', () => {
     render(withAccounts(<KanbanCard card={makeCard()} priorities={[]} onClick={vi.fn()} />));
@@ -57,6 +66,8 @@ describe('card face calendar chip', () => {
 
     await userEvent.click(link);
     expect(onClick).not.toHaveBeenCalled();
+    // A separate browser window, not a tab and not the card detail.
+    expect(openSpy).toHaveBeenCalledWith(link.getAttribute('href'), '_blank', expect.stringContaining('popup'));
   });
 
   it('collapses several events behind +N and expands them inline', async () => {
@@ -74,6 +85,10 @@ describe('card face calendar chip', () => {
     const links = Array.from(screen.getByRole('list', { name: 'Calendar events' }).querySelectorAll('a'));
     expect(links.map((a) => a.textContent)).toEqual([expect.stringContaining('Kick-off'), expect.stringContaining('Review')]);
     expect(links[1].getAttribute('href')).toBe(OUTLOOK_URL);
+
+    await userEvent.click(links[1]);
+    expect(onClick).not.toHaveBeenCalled();
+    expect(openSpy).toHaveBeenLastCalledWith(OUTLOOK_URL, '_blank', expect.stringContaining('popup'));
   });
 });
 
@@ -87,6 +102,16 @@ describe('card detail calendar section', () => {
     expect(link).toHaveTextContent('Work');
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('opens linked events and new events in a separate window', async () => {
+    const card = makeCard([{ id: 'e1', url: OUTLOOK_URL, title: 'Review', start: inFuture(1), end: null, account: 'work' }]);
+    render(withAccounts(<CalendarEventsSection card={card} title="Call the client" dueDate={null} />));
+    await userEvent.click(screen.getByRole('link', { name: /Review/ }));
+    expect(openSpy).toHaveBeenLastCalledWith(OUTLOOK_URL, '_blank', expect.stringContaining('popup'));
+    const newEvent = screen.getByRole('link', { name: /New event in Work/ });
+    await userEvent.click(newEvent);
+    expect(openSpy).toHaveBeenLastCalledWith(newEvent.getAttribute('href'), '_blank', expect.stringContaining('popup'));
   });
 
   it('creates new events in the board calendar with a link back to the card', () => {
