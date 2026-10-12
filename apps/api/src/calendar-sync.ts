@@ -3,7 +3,7 @@ import type Database from 'better-sqlite3';
 import { getDb } from './db.js';
 import { loadConfig, type AppConfig, type CalendarAccount } from './config.js';
 import { broadcast } from './ws.js';
-import { fetchGoogleEvents, fetchGraphEvents, outlookItemId, type FetchWindow, type ProviderEvent } from './calendar-providers.js';
+import { fetchGoogleEvents, fetchGraphEvents, outlookItemId, OUTLOOK_HOSTS, type FetchWindow, type ProviderEvent } from './calendar-providers.js';
 import { MAX_CALENDAR_EVENTS, type CalendarEvent } from './calendar-events.js';
 import { safeJsonParse } from './utils.js';
 import { cardLinksInText, decodeEntities, trustedHostsFor, type CardLinkRef } from './card-links.js';
@@ -85,10 +85,10 @@ export function eventRefsInCard(card: Pick<CardRow, 'title' | 'description' | 'l
       continue;
     }
     const host = url.hostname.toLowerCase();
-    if (host.startsWith('outlook.')) {
+    if (OUTLOOK_HOSTS.has(host)) {
       const itemId = outlookItemId(url.toString());
       if (itemId) refs.add(`outlook:${itemId}`);
-    } else if (host === 'calendar.google.com' || host === 'www.google.com') {
+    } else if (host === 'calendar.google.com' || (host === 'www.google.com' && url.pathname.startsWith('/calendar'))) {
       const eid = url.searchParams.get('eid') ?? /\/r\/(?:eventedit|event)\/([A-Za-z0-9_-]+)/.exec(url.pathname)?.[1];
       const decoded = eid ? googleEventIdFromEid(eid) : null;
       if (decoded) refs.add(`google:${decoded.eventId}`);
@@ -181,9 +181,11 @@ export function linkEventsToCards(
     const kept = safeJsonParse<CalendarEvent[]>(card.calendar_events, [])
       .filter((event) => event.account !== null && failedAccounts.has(event.account));
     const fresh = orderForCard(collapseSeries(linked.get(card.id) ?? [], now), now);
-    for (const event of fresh) linkedPerAccount.set(event.account, (linkedPerAccount.get(event.account) ?? 0) + 1);
-    const merged = [...fresh.map(toStored), ...kept];
-    byCard.set(card.id, merged.slice(0, MAX_CALENDAR_EVENTS));
+    // Preserved events of failed accounts always stay; fresh ones fill the remaining room.
+    const room = Math.max(0, MAX_CALENDAR_EVENTS - kept.length);
+    const stored = fresh.slice(0, room);
+    for (const event of stored) linkedPerAccount.set(event.account, (linkedPerAccount.get(event.account) ?? 0) + 1);
+    byCard.set(card.id, [...stored.map(toStored), ...kept]);
   }
   return { byCard, linkedPerAccount };
 }
