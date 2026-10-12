@@ -2,8 +2,11 @@
 
 ## 2026-10-12
 
+### Done shows 10 cards by default
+- With nothing chosen in this browser, Done now shows its 10 newest cards and "Show more" instead of the whole column. Auto, 5 and 20 are still in the "Show" picker, and Auto is now remembered too.
+
 ### How many Done cards to show
-- Done has a "Show" picker next to "Add item": Auto (the default — the whole column, as tall as the screen, scrolling inside), 5, 10 or 20. With a number, Done shows that many cards from the top (the newest closed) and "Show N more · M hidden" opens the next page; "Show less" goes back to one. The choice is remembered in this browser.
+- Done has a "Show" picker next to "Add item": Auto (the whole column, as tall as the screen, scrolling inside), 5, 10 or 20. With a number, Done shows that many cards from the top (the newest closed) and "Show N more · M hidden" opens the next page; "Show less" goes back to one. The choice is remembered in this browser.
 - A card dropped on Done's empty area while cards are hidden lands at the top; a Done card dropped there stays where it was, since the real end of the list is out of sight.
 
 ### Collapsible columns, board fits the screen

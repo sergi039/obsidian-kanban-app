@@ -88,19 +88,20 @@ afterEach(() => {
 });
 
 describe('Done page size storage', () => {
-  it('accepts only the offered sizes and falls back to auto', () => {
+  it('accepts only the offered sizes and falls back to 10', () => {
     expect(parseDonePageSize('5')).toBe(5);
     expect(parseDonePageSize('20')).toBe(20);
-    expect(parseDonePageSize('7')).toBe('auto');
     expect(parseDonePageSize('auto')).toBe('auto');
-    expect(parseDonePageSize(null)).toBe('auto');
+    expect(parseDonePageSize('7')).toBe(10);
+    expect(parseDonePageSize(null)).toBe(10);
   });
 
-  it('round-trips a size and clears the entry for auto', () => {
-    storeDonePageSize(window.localStorage, 10);
-    expect(loadDonePageSize(window.localStorage)).toBe(10);
+  it('round-trips every size, Auto included', () => {
+    storeDonePageSize(window.localStorage, 5);
+    expect(loadDonePageSize(window.localStorage)).toBe(5);
     storeDonePageSize(window.localStorage, 'auto');
-    expect(window.localStorage.getItem(DONE_PAGE_SIZE_STORAGE_KEY)).toBeNull();
+    expect(window.localStorage.getItem(DONE_PAGE_SIZE_STORAGE_KEY)).toBe('auto');
+    expect(loadDonePageSize(window.localStorage)).toBe('auto');
   });
 
   it('survives storage that throws', () => {
@@ -109,13 +110,21 @@ describe('Done page size storage', () => {
       setItem: () => { throw new Error('denied'); },
       removeItem: () => { throw new Error('denied'); },
     } as unknown as Storage;
-    expect(loadDonePageSize(broken)).toBe('auto');
+    expect(loadDonePageSize(broken)).toBe(10);
     expect(() => storeDonePageSize(broken, 5)).not.toThrow();
   });
 });
 
 describe('Done page size on the board', () => {
+  it('shows the 10 newest Done cards by default', () => {
+    renderBoard();
+    expect(shownDoneTitles()).toEqual(Array.from({ length: 10 }, (_, i) => `Closed task ${i + 1}`));
+    expect(screen.getByRole('combobox', { name: 'Cards shown in Done' })).toHaveValue('10');
+    expect(screen.getByRole('button', { name: 'Show 2 more · 2 hidden' })).toBeInTheDocument();
+  });
+
   it('shows every Done card on Auto and offers the picker only in Done', () => {
+    storeDonePageSize(window.localStorage, 'auto');
     renderBoard();
     expect(shownDoneTitles()).toHaveLength(DONE_COUNT);
     expect(screen.getByRole('combobox', { name: 'Cards shown in Done' })).toHaveValue('auto');
