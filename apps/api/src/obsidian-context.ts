@@ -209,7 +209,7 @@ export interface ClosedEntry {
 function withoutClosedTitles(content: string): string {
   return content
     .split('\n')
-    .map((l) => (CLOSED_LINE_RE.test(l) && l.includes(TITLE_END) ? l.slice(l.lastIndexOf(TITLE_END)) : l))
+    .map((l) => (CLOSED_LINE_RE.test(l.trimStart()) && l.includes(TITLE_END) ? l.slice(l.lastIndexOf(TITLE_END)) : l))
     .join('\n');
 }
 
@@ -241,7 +241,8 @@ export function closedEntry(
   // The title is quoted, not markup: no live [[links]] or #tags in the note.
   const title = cut.replace(/\[\[/g, '\\[\\[').replace(/(^|\s)#(?=[^\s#])/g, '$1\\#');
   const label = card.seq_id ? `${boardName} #${card.seq_id}` : boardName;
-  const tail = `— ${publicUrl ? `[${label}](${cardUrl(publicUrl, card.board_id, card.id)})` : label}`;
+  // The tail always carries the card id (inside the link, or after the label), so it names exactly one card.
+  const tail = `— ${publicUrl ? `[${label}](${cardUrl(publicUrl, card.board_id, card.id)})` : `${label} (${card.id})`}`;
   return { line: `- ${date} ✅ Карточка закрыта: «${title}» ${tail}`, tail };
 }
 
@@ -278,11 +279,16 @@ export function withClosedLine(content: string, entry: ClosedEntry, now: Date): 
   const cr = content.includes('\r\n') ? '\r' : '';
   const fenced = fencedLines(lines.map(text));
 
-  const own = lines.findIndex((l, i) => !fenced[i] && CLOSED_LINE_RE.test(text(l).trim()) && text(l).trimEnd().endsWith(entry.tail));
+  const isOwn = (l: string, i: number) => !fenced[i] && CLOSED_LINE_RE.test(text(l).trim()) && text(l).trimEnd().endsWith(entry.tail);
+  const own = lines.findIndex(isOwn);
   if (own !== -1) {
-    if (text(lines[own]).trim() === line) return null;
-    lines[own] = line + (lines[own].endsWith('\r') ? '\r' : '');
-    return setFrontmatterUpdated(lines, now, cr).join('\n');
+    const extra = lines.filter((l, i) => i > own && isOwn(l, i)).length;
+    if (text(lines[own]).trim() === line && extra === 0) return null;
+    // Replace in place, keeping the indent; older duplicates of the same card fold into this line.
+    const indent = /^\s*/.exec(text(lines[own]))![0];
+    lines[own] = indent + line + (lines[own].endsWith('\r') ? '\r' : '');
+    const kept = lines.filter((l, i) => i <= own || !isOwn(l, i));
+    return setFrontmatterUpdated(kept, now, cr).join('\n');
   }
   if (lines.some((l) => text(l).trim() === line)) return null;
 
@@ -329,10 +335,11 @@ function setFrontmatterUpdated(lines: string[], now: Date, cr: string): string[]
     lines.splice(close, 0, `updated: '${localDate(now)}'${cr}`);
     return lines;
   }
-  const m = /^updated:\s*(['"]?)([^'"#]*?)\1(\s+#.*)?\s*$/.exec(text(lines[idx]));
+  const m = /^updated:\s*(?:(['"])(.*?)\1|([^#]*?))(\s+#.*)?\s*$/.exec(text(lines[idx]));
   const quote = m?.[1] ?? '';
-  const value = /^\d{4}-\d{2}-\d{2}[T ]\d/.test(m?.[2] ?? '') ? localDateTime(now) : localDate(now);
-  lines[idx] = `updated: ${quote}${value}${quote}${m?.[3] ?? ''}${lines[idx].endsWith('\r') ? '\r' : ''}`;
+  const old = m?.[2] ?? m?.[3] ?? '';
+  const value = /^\d{4}-\d{2}-\d{2}[T ]\d/.test(old) ? localDateTime(now) : localDate(now);
+  lines[idx] = `updated: ${quote}${value}${quote}${m?.[4] ?? ''}${lines[idx].endsWith('\r') ? '\r' : ''}`;
   return lines;
 }
 
