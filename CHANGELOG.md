@@ -2,6 +2,11 @@
 
 ## 2026-10-12
 
+### Obsidian context on close
+- Closing a card now updates its context in Obsidian: each note the card links to (`obsidian://` link or `[[wikilink]]`) or that links back to the card gets a dated `✅ Карточка закрыта: «…» — [Board #N](card link)` line in its `## Канбан` section and a fresh frontmatter `updated:` date. The card gets an `obsidian` comment listing the notes, or the references that did not resolve.
+- Works for every way of closing: drag to Done, the card checkbox, the table view, bulk close, and `[x]` typed in Obsidian.
+- Only explicit references count; a title search was rejected because it matched dozens of unrelated notes in the real vault. Board files and `.trash`/dot-folders are never touched.
+
 ### Calendar events are automatic
 - The card's events now come from the calendars themselves: the API reads the work calendar through Microsoft Graph and the personal one through Google Calendar every 10 minutes and links an event to a card when the event's description carries the card link (or the card quotes the event's link). Nobody pastes links any more — the paste field, account selector and `PATCH calendar_events` are gone.
 - Title similarity is deliberately not used: tried on real data, every candidate it produced was a different task.

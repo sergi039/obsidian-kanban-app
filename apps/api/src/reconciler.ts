@@ -14,6 +14,7 @@ import { getDb } from './db.js';
 import { DEFAULT_PRIORITIES } from './config.js';
 import type { BoardConfig } from './config.js';
 import { suppressWatcher, unsuppressWatcher } from './watcher.js';
+import { notifyCardsClosed } from './obsidian-context.js';
 
 export interface ReconcileResult {
   boardId: string;
@@ -77,6 +78,8 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
   let added = 0;
   let updated = 0;
   let migrated = 0;
+  // Cards ticked [x] in Obsidian since the last sync — their context notes get updated too.
+  const closedIds: string[] = [];
 
   // Lines to update with kb:id markers (line index → { oldLine, newLine })
   const lineUpdates = new Map<number, { oldLine: string; newLine: string }>();
@@ -190,6 +193,7 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
         let col = existing.column_name;
         if (task.isDone && !existing.is_done) {
           col = getDefaultDoneColumn(board);
+          if (!existing.deleted_at) closedIds.push(id);
         } else if (!task.isDone && existing.is_done && isDoneColumn(existing.column_name, board)) {
           col = getDefaultOpenColumn(board);
         }
@@ -265,6 +269,7 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
   });
 
   upsertAll();
+  notifyCardsClosed(closedIds);
 
   // Write kb:id markers to .md file (outside transaction)
   if (lineUpdates.size > 0) {
