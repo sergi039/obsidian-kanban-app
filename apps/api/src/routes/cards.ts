@@ -11,7 +11,6 @@ import { fireEvent } from '../automations.js';
 import { formatCard, normalizePositions } from '../utils.js';
 import { trashCard, restoreCard, TrashError } from '../trash.js';
 import { ingestCard, IngestError } from '../ingest.js';
-import { CalendarEventsSchema, validateEventAccounts } from '../calendar-events.js';
 import type Database from 'better-sqlite3';
 
 const cards = new Hono();
@@ -36,7 +35,6 @@ const PatchCardSchema = z.object({
   links: z.array(z.object({
     url: z.string(), title: z.string(),
   })).optional(),
-  calendar_events: CalendarEventsSchema.optional(),
 });
 
 const CreateCommentSchema = z.object({
@@ -338,16 +336,12 @@ cards.patch('/:id', async (c) => {
       return c.json({ error: `Unknown category IDs: ${unknown.join(', ')}` }, 400);
     }
   }
-  if (fields.calendar_events !== undefined) {
-    const accountError = validateEventAccounts(fields.calendar_events, config.calendarAccounts ?? []);
-    if (accountError) return c.json({ error: accountError }, 400);
-  }
 
   const columnChanging = fields.column_name !== undefined && fields.column_name !== existing.column_name;
   const positionChanging = fields.position !== undefined;
   const hasMetadataChanges = fields.title !== undefined || fields.labels !== undefined || fields.priority !== undefined ||
     fields.due_date !== undefined || fields.description !== undefined || fields.checklist !== undefined ||
-    fields.links !== undefined || fields.calendar_events !== undefined;
+    fields.links !== undefined;
 
   if (!columnChanging && !positionChanging && !hasMetadataChanges) {
     return c.json({ error: 'No fields to update' }, 400);
@@ -404,10 +398,6 @@ cards.patch('/:id', async (c) => {
   if (fields.links !== undefined) {
     sets.push('links = ?');
     params.push(JSON.stringify(fields.links));
-  }
-  if (fields.calendar_events !== undefined) {
-    sets.push('calendar_events = ?');
-    params.push(JSON.stringify(fields.calendar_events));
   }
 
   if (sets.length > 0) {

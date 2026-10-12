@@ -596,7 +596,11 @@ export default function App() {
 
   const calendarSettings = useMemo<CalendarSettings>(
     () => boardDetail
-      ? { accounts: boardDetail.calendarAccounts ?? [], defaultAccountId: boardDetail.calendarAccount?.id ?? null }
+      ? {
+        accounts: boardDetail.calendarAccounts ?? [],
+        defaultAccountId: boardDetail.calendarAccount?.id ?? null,
+        publicUrl: boardDetail.publicUrl ?? null,
+      }
       : NO_CALENDAR_SETTINGS,
     [boardDetail],
   );

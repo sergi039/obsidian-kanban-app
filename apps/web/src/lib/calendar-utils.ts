@@ -7,7 +7,7 @@ const GOOGLE_EVENT_PATH_RE = /\/r\/(?:eventedit|event)\/([A-Za-z0-9_-]+)/;
 const GOOGLE_ACCOUNT_PATH_RE = /^\/calendar\/u\/\d+(?=\/)/;
 const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** Events store only a start; a timed event counts as ongoing for this long after it starts. */
+/** When an event has no end, a timed event counts as ongoing for this long after it starts. */
 const ASSUMED_EVENT_DURATION_MS = 60 * 60 * 1000;
 
 function parseUrl(raw: string): URL | null {
@@ -57,52 +57,9 @@ function sameEmail(a: string | null | undefined, b: string | null | undefined): 
   return !!a && !!b && a.toLowerCase() === b.toLowerCase();
 }
 
-/**
- * Best account for a pasted event URL: a Google account whose email the link names
- * (authuser, then eid), else the board default when it is the same provider, else the
- * only account of that provider. Never returns an account of another provider.
- */
-export function suggestAccount(
-  rawUrl: string,
-  accounts: CalendarAccount[],
-  defaultAccountId: string | null,
-): CalendarAccount | null {
-  const provider = detectProvider(rawUrl);
-  const defaultAccount = accounts.find((account) => account.id === defaultAccountId) ?? null;
-  if (provider === 'other') return defaultAccount;
-
-  if (provider === 'google') {
-    const googleAccounts = accounts.filter((account) => account.provider === 'google');
-    // An explicit authuser is the account the link opens in; it outranks the eid,
-    // which names the calendar owner (possibly someone who shared the event).
-    const authuser = parseUrl(rawUrl)?.searchParams.get('authuser');
-    const byAuthuser = googleAccounts.find((account) => sameEmail(account.email, authuser));
-    if (byAuthuser) return byAuthuser;
-    const eid = googleEid(rawUrl);
-    const calendarId = eid ? eidCalendarId(eid) : null;
-    const byCalendar = googleAccounts.find((account) => sameEmail(account.email, calendarId));
-    if (byCalendar) return byCalendar;
-  }
-
-  if (defaultAccount?.provider === provider) return defaultAccount;
-  const compatible = accounts.filter((account) => account.provider === provider);
-  return compatible.length === 1 ? compatible[0] : null;
-}
-
-/** Account an attached event belongs to: the stored one, else a suggestion from its URL. */
-export function resolveAccount(
-  event: CalendarEvent,
-  accounts: CalendarAccount[],
-  defaultAccountId: string | null,
-): CalendarAccount | null {
-  if (event.account) return accounts.find((account) => account.id === event.account) ?? null;
-  return suggestAccount(event.url, accounts, defaultAccountId);
-}
-
-/** Accounts an event URL may be filed under (the API rejects provider mismatches). */
-export function compatibleAccounts(rawUrl: string, accounts: CalendarAccount[]): CalendarAccount[] {
-  const provider = detectProvider(rawUrl);
-  return provider === 'other' ? accounts : accounts.filter((account) => account.provider === provider);
+/** The account an event was synced from (null when that account is no longer configured). */
+export function resolveAccount(event: CalendarEvent, accounts: CalendarAccount[]): CalendarAccount | null {
+  return event.account ? accounts.find((account) => account.id === event.account) ?? null : null;
 }
 
 /**
@@ -151,13 +108,6 @@ export function newEventUrl(account: CalendarAccount, draft: NewEventDraft): str
   return `https://outlook.office.com/calendar/action/compose?${buildQuery(params)}`;
 }
 
-export function calendarHomeUrl(account: CalendarAccount): string {
-  if (account.provider === 'google') {
-    return `https://calendar.google.com/calendar/r?${buildQuery([['authuser', account.email]])}`;
-  }
-  return 'https://outlook.office.com/calendar/';
-}
-
 /** Deep link back to the card in Kanban, for event descriptions. */
 export function cardDeepLink(origin: string, boardId: string, cardId: string): string {
   return `${origin}/?${buildQuery([['board', boardId], ['card', cardId]])}`;
@@ -174,13 +124,16 @@ export function eventRange(event: CalendarEvent): EventRange | null {
   const dateOnly = DATE_ONLY_RE.exec(event.start);
   if (dateOnly) {
     const start = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+    const endOnly = event.end ? DATE_ONLY_RE.exec(event.end) : null;
+    const end = endOnly
+      ? new Date(Number(endOnly[1]), Number(endOnly[2]) - 1, Number(endOnly[3]))
+      : new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
     return { startMs: start.getTime(), endMs: end.getTime(), allDay: true };
   }
   const startMs = Date.parse(event.start);
   if (Number.isNaN(startMs)) return null;
-  return { startMs, endMs: startMs + ASSUMED_EVENT_DURATION_MS, allDay: false };
+  const endMs = event.end ? Date.parse(event.end) : Number.NaN;
+  return { startMs, endMs: Number.isNaN(endMs) ? startMs + ASSUMED_EVENT_DURATION_MS : endMs, allDay: false };
 }
 
 export function isPastEvent(event: CalendarEvent, now = new Date()): boolean {
@@ -231,6 +184,3 @@ export function eventLabel(event: CalendarEvent, now = new Date()): string {
   return formatEventTime(event, now) ?? (event.title || 'Event');
 }
 
-export function newEventId(): string {
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-}

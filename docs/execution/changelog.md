@@ -13,3 +13,4 @@
 - Added browser notifications and a local macOS reminder agent for Notification Center, Calendar `.ics` handoff, and Mail.app email reminders because all non-in-app channels need an explicit delivery path outside the Kanban web UI.
 - Added configurable Calendar.app target calendar delivery because `.ics` import dialogs can default to a work account even for personal-board reminders.
 - 2026-10-12: Added calendar event links on cards (`cards.calendar_events`) with per-board default accounts because tasks have meetings in two calendars (Outlook for work, Google for personal) and Google links opened in the wrong signed-in account.
+- 2026-10-12: Replaced manual calendar links with an automatic sync (Graph for work, Google for personal) linking events by explicit card references, because the owner will not paste links and fuzzy title matching attached unrelated events on real data.

@@ -34,14 +34,16 @@ export interface CalendarAccount {
   email: string;
 }
 
-/** An event attached to a card by link; the calendar itself owns the event. */
+/** A calendar event linked to a card by the server's calendar sync; the calendar owns the event. */
 export interface CalendarEvent {
   id: string;
   url: string;
   title: string;
   /** 'YYYY-MM-DD' for all-day, timezone-aware ISO datetime, or null when unknown. */
   start: string | null;
-  /** Calendar account id; null = derive from the URL / board default. */
+  /** Exclusive end in the same format as `start`; null when unknown. */
+  end?: string | null;
+  /** Calendar account id from the board's calendar accounts. */
   account: string | null;
 }
 
@@ -172,6 +174,8 @@ export interface BoardDetail {
   /** Board's default calendar account, null when none is configured. */
   calendarAccount: CalendarAccount | null;
   calendarAccounts: CalendarAccount[];
+  /** Public base URL of this Kanban, used for card links inside calendar events. */
+  publicUrl?: string | null;
   columns: Column[];
   trashCount: number;
 }
@@ -271,5 +275,4 @@ export interface PatchCardRequest {
   description?: string;
   checklist?: ChecklistItem[];
   links?: LinkItem[];
-  calendar_events?: CalendarEvent[];
 }

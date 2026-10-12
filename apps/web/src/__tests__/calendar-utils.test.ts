@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  calendarHomeUrl,
   cardDeepLink,
-  compatibleAccounts,
   detectProvider,
   eidCalendarId,
   eventLabel,
@@ -13,7 +11,6 @@ import {
   newEventUrl,
   resolveAccount,
   sortEvents,
-  suggestAccount,
 } from '../lib/calendar-utils';
 import type { CalendarAccount, CalendarEvent } from '../types';
 
@@ -57,36 +54,10 @@ describe('provider and eid parsing', () => {
 });
 
 describe('account resolution', () => {
-  it('matches a google account by the email inside the eid, ignoring the board default', () => {
-    expect(suggestAccount(GOOGLE_URL, ACCOUNTS, 'work')?.id).toBe('personal');
-  });
-
-  it('prefers an explicit authuser email over the calendar owner in the eid', () => {
-    const second: CalendarAccount = { id: 'second', label: 'Second', provider: 'google', email: 'other@home.example' };
-    const shared = `${GOOGLE_URL}&authuser=other@home.example`;
-    expect(suggestAccount(shared, [...ACCOUNTS, second], 'work')?.id).toBe('second');
-  });
-
-  it('never files an event under another provider', () => {
-    const otherGoogle = `https://calendar.google.com/calendar/event?eid=${b64url('x shared@group.calendar.google.com')}`;
-    expect(suggestAccount(otherGoogle, [WORK], 'work')).toBeNull();
-    expect(suggestAccount(OUTLOOK_URL, [PERSONAL], 'personal')).toBeNull();
-    expect(suggestAccount(OUTLOOK_URL, ACCOUNTS, 'personal')?.id).toBe('work');
-  });
-
-  it('uses the board default for non-calendar links', () => {
-    expect(suggestAccount('https://zoom.us/j/1', ACCOUNTS, 'work')?.id).toBe('work');
-    expect(suggestAccount('https://zoom.us/j/1', ACCOUNTS, null)).toBeNull();
-  });
-
-  it('prefers the stored account and returns null for a removed one', () => {
-    expect(resolveAccount(event({ url: 'https://zoom.us/j/1', account: 'personal' }), ACCOUNTS, 'work')?.id).toBe('personal');
-    expect(resolveAccount(event({ account: 'gone' }), ACCOUNTS, 'personal')).toBeNull();
-  });
-
-  it('lists only compatible accounts for a link', () => {
-    expect(compatibleAccounts(GOOGLE_URL, ACCOUNTS)).toEqual([PERSONAL]);
-    expect(compatibleAccounts('https://zoom.us/j/1', ACCOUNTS)).toEqual(ACCOUNTS);
+  it('uses the account the event was synced from', () => {
+    expect(resolveAccount(event({ account: 'personal' }), ACCOUNTS)?.id).toBe('personal');
+    expect(resolveAccount(event({ account: 'gone' }), ACCOUNTS)).toBeNull();
+    expect(resolveAccount(event({ account: null }), ACCOUNTS)).toBeNull();
   });
 });
 
@@ -143,9 +114,7 @@ describe('event links', () => {
     expect(dated.searchParams.get('allday')).toBe('true');
   });
 
-  it('builds home and card links', () => {
-    expect(calendarHomeUrl(PERSONAL)).toBe('https://calendar.google.com/calendar/r?authuser=me%40home.example');
-    expect(calendarHomeUrl(WORK)).toBe('https://outlook.office.com/calendar/');
+  it('builds card links', () => {
     expect(cardDeepLink('https://kanban.example', 'vs', 'a b')).toBe('https://kanban.example/?board=vs&card=a%20b');
   });
 });
@@ -168,7 +137,14 @@ describe('event ordering and labels', () => {
     ]);
   });
 
-  it('treats a timed event as ongoing for an hour and an all-day event until the day ends', () => {
+  it('uses the real end when the calendar provides one', () => {
+    expect(isPastEvent(event({ start: at(12, 9), end: at(12, 13) }), now)).toBe(false);
+    expect(isPastEvent(event({ start: at(12, 9), end: at(12, 11) }), now)).toBe(true);
+    expect(isPastEvent(event({ start: '2026-10-10', end: '2026-10-13' }), now)).toBe(false);
+    expect(isPastEvent(event({ start: '2026-10-10', end: '2026-10-12' }), now)).toBe(true);
+  });
+
+  it('without an end, treats a timed event as ongoing for an hour and an all-day event until the day ends', () => {
     expect(isPastEvent(event({ start: at(12, 11, 30) }), now)).toBe(false);
     expect(isPastEvent(event({ start: at(12, 10, 59) }), now)).toBe(true);
     expect(isPastEvent(event({ start: '2026-10-12' }), now)).toBe(false);

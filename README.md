@@ -20,7 +20,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Managed links** — add/remove clickable links, stored in DB (auto-normalized URLs)
 - **Comments** — full CRUD with linkified URLs, author avatars, timestamps
 - **Reminders** — per-card reminder records with due/upcoming badges, snooze/dismiss, and polling-friendly API state
-- **Calendar events** — attach Google/Outlook event links to a card; the card shows the nearest one as a direct link (`+N` expands the rest) and opens each in the right account (work or personal)
+- **Calendar events** — events from the work (Outlook, Microsoft Graph) and personal (Google) calendars appear on their card automatically; the card shows the nearest one as a direct link (`+N` expands the rest) and opens each in the right account
 - **Custom fields** — TEXT, NUMBER, DATE, SINGLE_SELECT, ITERATION types per board
 - **Done checkbox** — tick the checkbox on a board card to move it to Done (`[x]` in Markdown); untick to send it back to Backlog
 - **Bulk actions** — Cmd/Ctrl-click cards to select several, then move or close them at once
@@ -300,13 +300,21 @@ Mail.app delivery from `launchd` requires macOS Automation permission for the No
 
 ### Calendar Accounts
 
-Cards can link to calendar events (stored in SQLite as `cards.calendar_events`, never written to Markdown). Which calendar a board uses is configured in `config.boards.json` — emails stay in this gitignored file:
+The API links calendar events to cards automatically (every 10 minutes, window −30…+180 days) and stores them in SQLite as `cards.calendar_events` (never written to Markdown, not writable through the API). An event belongs to a card only through an explicit reference — title similarity is not used, because on real data it attached unrelated events:
+
+- the event description contains the card link `https://<publicUrl>/?board=<board>&card=<id>` (or a `kb:id=<id>` marker) — the card's **＋ New event** button and agents that create events for a task put it there;
+- or the card's title, description or links contain the event's own link (Outlook `itemid`, Google `eid`).
+
+Accounts, credentials and the public URL live in the gitignored `config.boards.json`:
 
 ```json
 {
+  "publicUrl": "https://kanban.example.com",
   "calendarAccounts": [
-    { "id": "work", "label": "Work", "provider": "outlook", "email": "you@company.example" },
-    { "id": "personal", "label": "Personal", "provider": "google", "email": "you@gmail.example" }
+    { "id": "work", "label": "Work", "provider": "outlook", "email": "you@company.example",
+      "credentials": { "type": "graph-app", "envFile": "/path/to/m365.env" } },
+    { "id": "personal", "label": "Personal", "provider": "google", "email": "you@gmail.example",
+      "credentials": { "type": "google-oauth", "clientEnvFile": "/path/to/google-client.env", "tokenFile": "~/.config/obsidian-kanban/google-personal-token.json" } }
   ],
   "boards": [
     { "id": "work", "calendarAccount": "work", "...": "..." },
@@ -315,10 +323,10 @@ Cards can link to calendar events (stored in SQLite as `cards.calendar_events`, 
 }
 ```
 
-- `provider` is `google` or `outlook`; a board's `calendarAccount` must name an account id (boot fails otherwise). Restart the API after editing.
-- Google event links open with `authuser=<email>` of the event's account, so personal events do not open in the default signed-in account. Outlook links open as pasted.
-- An event's account is taken from the link when possible (the email inside a Google `eid`), else the board default, and is saved with the event; the API rejects a Google link filed under an Outlook account and vice versa.
-- `PATCH /api/cards/:id` with `calendar_events: [{ id, url, title, start, account }]` replaces the list (https URLs only, `start` is `YYYY-MM-DD` or an ISO datetime with offset, up to 20 events).
+- `graph-app`: an Entra app with `Calendars.Read` (application); the env file holds `M365_TENANT_ID`, `M365_CLIENT_ID`, `M365_CLIENT_SECRET`. Only `GET /users/<email>/calendarView` is called.
+- `google-oauth`: the env file holds `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` of a desktop OAuth client; `tokenFile` holds the owner's refresh token (scope `calendar.readonly`, mode 600), created once by an OAuth consent. Without it the account reports `not connected`.
+- Credentials are read at sync time, never logged and never sent to the browser. `/api/health` → `calendar` shows per account `ok`, `lastSyncAt`, `events`, `linked`, `error`. A failing account keeps the events it had.
+- A board's `calendarAccount` (and credentials matching the provider) is validated at boot; restart the API after editing.
 
 ### Board Columns
 

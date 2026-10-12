@@ -21,12 +21,27 @@ export const CategoryDefSchema = z.object({
   showOnCard: z.boolean(),
 });
 
-/** A calendar the owner works in; emails live only in the gitignored config. */
+/** Microsoft Graph app-only access; the env file holds M365_TENANT_ID / M365_CLIENT_ID / M365_CLIENT_SECRET. */
+const GraphCredentialsSchema = z.object({
+  type: z.literal('graph-app'),
+  envFile: z.string().min(1),
+});
+
+/** Google OAuth: client id/secret from an env file, the owner's refresh token from an owner-only file. */
+const GoogleCredentialsSchema = z.object({
+  type: z.literal('google-oauth'),
+  clientEnvFile: z.string().min(1),
+  tokenFile: z.string().min(1),
+});
+
+/** A calendar the owner works in; emails and credential paths live only in the gitignored config. */
 export const CalendarAccountSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]{1,40}$/, 'Calendar account id must be lowercase letters, digits or dashes'),
   label: z.string().trim().min(1).max(40),
   provider: z.enum(['google', 'outlook']),
   email: z.string().email(),
+  /** How the server reads this calendar; absent = events cannot be synced for this account. */
+  credentials: z.discriminatedUnion('type', [GraphCredentialsSchema, GoogleCredentialsSchema]).optional(),
 });
 
 const BoardSchema = z.object({
@@ -47,14 +62,24 @@ export const ConfigSchema = z.object({
   boards: z.array(BoardSchema),
   defaultColumns: z.array(z.string()),
   calendarAccounts: z.array(CalendarAccountSchema).optional(),
+  /** Public base URL of this Kanban (card links written into calendar events). */
+  publicUrl: z.string().url().optional(),
 }).superRefine((config, ctx) => {
   const accountIds = new Set<string>();
-  for (const account of config.calendarAccounts ?? []) {
+  (config.calendarAccounts ?? []).forEach((account, i) => {
     if (accountIds.has(account.id)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['calendarAccounts'], message: `Duplicate calendar account id "${account.id}"` });
     }
     accountIds.add(account.id);
-  }
+    const expected = account.provider === 'outlook' ? 'graph-app' : 'google-oauth';
+    if (account.credentials && account.credentials.type !== expected) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['calendarAccounts', i, 'credentials'],
+        message: `Calendar account "${account.id}" (${account.provider}) needs ${expected} credentials`,
+      });
+    }
+  });
   config.boards.forEach((board, i) => {
     if (board.calendarAccount !== undefined && !accountIds.has(board.calendarAccount)) {
       ctx.addIssue({

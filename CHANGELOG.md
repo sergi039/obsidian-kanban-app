@@ -2,6 +2,11 @@
 
 ## 2026-10-12
 
+### Calendar events are automatic
+- The card's events now come from the calendars themselves: the API reads the work calendar through Microsoft Graph and the personal one through Google Calendar every 10 minutes and links an event to a card when the event's description carries the card link (or the card quotes the event's link). Nobody pastes links any more — the paste field, account selector and `PATCH calendar_events` are gone.
+- Title similarity is deliberately not used: tried on real data, every candidate it produced was a different task.
+- "＋ New event" opens the board's calendar with the card link in the event body, so the saved event shows up on the card by itself. `/api/health` reports each calendar's sync state.
+
 ### Calendar events
 - Cards can carry calendar event links (`calendar_events`, DB-only, up to 20 per card). The card face shows the nearest event as a direct link (`📆 Tomorrow 10:00`); with several events a `+N` toggle expands the full list inline instead of growing the card.
 - Each event opens in the right calendar: work events in Outlook (Microsoft 365), personal ones in Google Calendar with `authuser=<email>`, so a personal event no longer opens in the default account and shows "event not found".
