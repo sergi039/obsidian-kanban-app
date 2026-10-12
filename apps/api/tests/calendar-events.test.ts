@@ -134,6 +134,17 @@ describe('linking events to cards', () => {
     expect(byCard.get('abc12345')).toEqual([]);
   });
 
+  it('ignores event links on look-alike hosts', () => {
+    const refs = sync.eventRefsInCard({
+      title: 't',
+      description: 'https://outlook.evil.example/?itemid=E7 https://www.google.com/search?eid=ZXZ0MTIz',
+      links: '[]',
+    });
+    expect([...refs]).toEqual([]);
+    const byCard = link([card('abc12345', 'vs', { description: 'https://outlook.evil.example/?itemid=E7' })], new Map([['work', [event('E7')]]]));
+    expect(byCard.get('abc12345')).toEqual([]);
+  });
+
   it('links an event that the card quotes', () => {
     const cards = [card('abc12345', 'vs', { description: 'meeting: https://outlook.office365.com/owa/?itemid=E7&exvsurl=1' })];
     const byCard = link(cards, new Map([['work', [event('E7')]]]));
@@ -158,6 +169,16 @@ describe('linking events to cards', () => {
     ]);
     const byCard = link([card('abc12345', 'vs', { calendar_events: previous })], new Map([['personal', []]]), new Set(['work']));
     expect(byCard.get('abc12345')?.map((e) => e.title)).toEqual(['old work']);
+  });
+
+  it('never lets fresh events push out the preserved events of a failed account', () => {
+    const previous = JSON.stringify([{ id: 'w', url: 'u', title: 'old work', start: '2026-10-20', end: null, account: 'work' }]);
+    const text = 'https://kanban.example/?board=vs&card=abc12345';
+    const fresh = Array.from({ length: 20 }, (_, i) =>
+      event(`P${String(i).padStart(2, '0')}`, { start: `2026-11-${String(i + 1).padStart(2, '0')}T08:00:00Z`, end: null, text }));
+    const stored = link([card('abc12345', 'vs', { calendar_events: previous })], new Map([['personal', fresh]]), new Set(['work'])).get('abc12345')!;
+    expect(stored).toHaveLength(20);
+    expect(stored.some((e) => e.title === 'old work')).toBe(true);
   });
 
   it('orders upcoming before past and caps the list', () => {
