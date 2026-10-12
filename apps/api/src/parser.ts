@@ -287,6 +287,31 @@ export function parseMarkdownTasks(content: string, priorityDefs?: PriorityDef[]
   return tasks;
 }
 
+/** True when the line is a Markdown checkbox task (top-level or nested). */
+export function isTaskLine(line: string): boolean {
+  return TASK_RE.test(line);
+}
+
+/**
+ * Index one past the last line that parseMarkdownTasks attributes to the task
+ * at `taskIdx`: the task line plus its indented sub-item lines. Blank lines
+ * between sub-items belong to the block; trailing blank lines do not.
+ */
+export function taskBlockEnd(lines: string[], taskIdx: number): number {
+  let end = taskIdx + 1;
+  for (let i = taskIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim().length === 0) continue;
+    if (TASK_RE.test(line)) break;
+    if (line.startsWith('\t') || line.startsWith('  ')) {
+      end = i + 1;
+      continue;
+    }
+    break;
+  }
+  return end;
+}
+
 /**
  * Check if a column is a "done" column.
  * Centralizes the hardcoded 'Done' check. Supports optional board-level doneColumns list.

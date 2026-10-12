@@ -105,7 +105,7 @@ exportRoutes.get('/:boardId', (c) => {
   const db = getDb();
 
   // Get board name from cards
-  const firstCard = db.prepare('SELECT board_id FROM cards WHERE board_id = ? LIMIT 1').get(boardId) as
+  const firstCard = db.prepare('SELECT board_id FROM cards WHERE board_id = ? AND deleted_at IS NULL LIMIT 1').get(boardId) as
     | { board_id: string }
     | undefined;
 
@@ -113,7 +113,7 @@ exportRoutes.get('/:boardId', (c) => {
     return c.json({ error: 'Board not found or empty' }, 404);
   }
 
-  const cards = db.prepare('SELECT * FROM cards WHERE board_id = ? ORDER BY column_name, position').all(boardId) as CardRow[];
+  const cards = db.prepare('SELECT * FROM cards WHERE board_id = ? AND deleted_at IS NULL ORDER BY column_name, position').all(boardId) as CardRow[];
 
   // Group by column, preserve order
   const columns = new Map<string, CardRow[]>();

@@ -485,7 +485,7 @@ export function stampAllColumns(): number {
       continue;
     }
 
-    const cards = db.prepare('SELECT id, column_name, raw_line, line_number FROM cards WHERE board_id = ?').all(board.id) as Array<{
+    const cards = db.prepare('SELECT id, column_name, raw_line, line_number FROM cards WHERE board_id = ? AND deleted_at IS NULL').all(board.id) as Array<{
       id: string; column_name: string; raw_line: string; line_number: number;
     }>;
 
@@ -535,7 +535,7 @@ export function stampAllColumns(): number {
 /**
  * Atomic write: write to temp file, then rename (prevents corruption on crash).
  */
-function atomicWrite(filePath: string, content: string): void {
+export function atomicWrite(filePath: string, content: string): void {
   const tmpPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.tmp`);
   writeFileSync(tmpPath, content, 'utf-8');
   renameSync(tmpPath, filePath);

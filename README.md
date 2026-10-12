@@ -24,6 +24,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Custom fields** — TEXT, NUMBER, DATE, SINGLE_SELECT, ITERATION types per board
 - **Done checkbox** — tick the checkbox on a board card to move it to Done (`[x]` in Markdown); untick to send it back to Backlog
 - **Bulk actions** — Cmd/Ctrl-click cards to select several, then move or close them at once
+- **Trash** — delete a card from its detail view; its Markdown lines leave the file, its comments/fields/reminders stay, and the 🗑 panel restores it to the same place in the file
 - **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance
 
 **Organization**
@@ -252,6 +253,7 @@ Obsidian (.md files)  ←→  Reconciler  ←→  SQLite DB  ←→  Web UI
 | `.md` → DB | Task text, done state, priority emoji, sub-items, links (new cards) |
 | DB → `.md` | Done checkbox `[x]`/`[ ]`, priority emoji, column marker |
 | DB only | Column position, labels, categories, custom fields, comments, descriptions, checklists, managed links, reminders |
+| Trash | Deleting a card removes its task block from `.md` and keeps it in the DB; restore writes the same lines back. Re-adding the line in Obsidian also restores it |
 
 ## 🛠 Configuration Reference
 

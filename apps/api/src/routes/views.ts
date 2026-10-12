@@ -161,7 +161,7 @@ views.get('/:id/cards', (c) => {
   const sortField = SAFE_SORT_FIELDS.has(view.sort_field) ? view.sort_field : 'position';
   const sortDir = view.sort_dir === 'DESC' ? 'DESC' : 'ASC';
 
-  const sql = `SELECT * FROM cards WHERE board_id = ? AND ${filter.where} ORDER BY ${sortField} ${sortDir}`;
+  const sql = `SELECT * FROM cards WHERE board_id = ? AND deleted_at IS NULL AND ${filter.where} ORDER BY ${sortField} ${sortDir}`;
   const params = [view.board_id, ...filter.params];
   const cards = db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
 

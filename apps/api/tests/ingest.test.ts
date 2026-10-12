@@ -35,7 +35,7 @@ function createDb(): InstanceType<typeof Database> {
       line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
       labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
       description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]',
-      source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
+      source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER, deleted_at TEXT, trashed_lines TEXT, trashed_after TEXT,
       created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS inbox_captures (

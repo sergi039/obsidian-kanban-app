@@ -10,6 +10,11 @@
 ### Board
 - The checkbox on a board card now marks it done: ticking moves the card to `Done` (and writes `[x]` to Markdown), unticking moves it back to `Backlog`. It used to only select the card for the bulk bar, so ticking it never closed anything. Bulk selection stays on Cmd/Ctrl-click; the table view's Done checkbox shares the same column logic.
 
+### Cards
+- Cards can be deleted from the card detail view (🗑 Move to trash). Trashing removes the task line and its sub-item lines from the board's `.md` file but keeps the card row with its comments, custom fields, and reminders — previously there was no way to delete a card from the UI at all.
+- The 🗑 header button opens the board's trash; Restore puts the exact Markdown lines back after the task that preceded them and returns the card to the end of its column. Undoing the deletion in Obsidian (the line with the same `kb:id` reappears) restores the card automatically.
+- Trashed cards are hidden from boards, table view, saved views, filters, exports, and card counts; their reminders no longer reach delivery agents (`/api/reminders/due`, board and channel listings).
+
 ## 2026-06-12
 
 ### Stability

@@ -48,6 +48,8 @@ interface Props {
   onUpdate: () => Promise<void>;
   onRemindersChanged?: () => Promise<void>;
   onManageCategories?: () => void;
+  /** Moves the card to the trash; the caller closes the modal and reloads. */
+  onTrash?: () => Promise<void>;
 }
 
 function escapeRegExp(text: string): string {
@@ -199,7 +201,7 @@ function CustomFieldInput({ field, value, cardId, onSaved, onLocalChange }: {
   );
 }
 
-export function CardDetail({ card, columns, priorities, categories, fields, onClose, onUpdate, onRemindersChanged, onManageCategories }: Props) {
+export function CardDetail({ card, columns, priorities, categories, fields, onClose, onUpdate, onRemindersChanged, onManageCategories, onTrash }: Props) {
   // Managed links — prefer card.links from DB, fall back to title extraction for transitional cards
   const initialLinks: LinkItem[] = card.links.length > 0
     ? card.links
@@ -208,6 +210,21 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
   const [newLinkUrl, setNewLinkUrl] = useState('');
   const modalRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [trashing, setTrashing] = useState(false);
+  const [trashError, setTrashError] = useState<string | null>(null);
+
+  const handleTrash = async () => {
+    if (!onTrash) return;
+    setTrashing(true);
+    setTrashError(null);
+    try {
+      await onTrash();
+    } catch (err) {
+      console.error('Move to trash failed:', err);
+      setTrashError('Could not move to trash. Try Sync, then retry.');
+      setTrashing(false);
+    }
+  };
 
   // Editable fields
   const [priority, setPriority] = useState<string>(card.priority || '');
@@ -1294,6 +1311,21 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
 
               {saving && (
                 <div className="text-xs animate-pulse" style={{ color: 'var(--board-accent)' }}>Saving…</div>
+              )}
+
+              {onTrash && (
+                <div className="pt-3 border-t border-board-border">
+                  <button
+                    type="button"
+                    onClick={handleTrash}
+                    disabled={trashing}
+                    className="w-full text-left text-xs px-2 py-1.5 rounded-md text-board-text-muted hover:text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                    title="Removes the task from the Markdown file; restore it from the 🗑 Trash panel"
+                  >
+                    {trashing ? 'Moving to trash…' : '🗑 Move to trash'}
+                  </button>
+                  {trashError && <p className="text-[11px] text-red-500 mt-1">{trashError}</p>}
+                </div>
               )}
             </div>
           </div>

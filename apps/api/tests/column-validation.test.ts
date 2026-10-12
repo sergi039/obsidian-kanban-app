@@ -15,7 +15,7 @@ vi.mock('../src/db.js', () => ({
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER, deleted_at TEXT, trashed_lines TEXT, trashed_after TEXT,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS comments (
@@ -114,7 +114,7 @@ describe('column validation on card create', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER, deleted_at TEXT, trashed_lines TEXT, trashed_after TEXT,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS inbox_captures (
@@ -188,7 +188,7 @@ describe('column validation on card move', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER, deleted_at TEXT, trashed_lines TEXT, trashed_after TEXT,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
     `);
@@ -236,7 +236,7 @@ describe('column validation on card PATCH', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER, deleted_at TEXT, trashed_lines TEXT, trashed_after TEXT,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
     `);
@@ -345,7 +345,7 @@ describe('unified move path (PATCH column_name uses move transaction)', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER, deleted_at TEXT, trashed_lines TEXT, trashed_after TEXT,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
     `);
@@ -421,7 +421,7 @@ describe('position normalization', () => {
         position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL, raw_line TEXT NOT NULL,
         line_number INTEGER NOT NULL, is_done INTEGER DEFAULT 0, priority TEXT,
         labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
-        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER,
+        description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]', source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER, deleted_at TEXT, trashed_lines TEXT, trashed_after TEXT,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
       );
     `);

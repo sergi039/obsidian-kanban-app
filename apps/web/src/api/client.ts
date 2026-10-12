@@ -173,6 +173,19 @@ export async function patchCard(cardId: string, patch: PatchCardRequest): Promis
   });
 }
 
+// Trash API: trashing removes the card's lines from the .md file; restore puts them back.
+export async function trashCard(cardId: string): Promise<Card> {
+  return request<Card>(`/cards/${cardId}`, { method: 'DELETE' });
+}
+
+export async function restoreCard(cardId: string): Promise<Card> {
+  return request<Card>(`/cards/${cardId}/restore`, { method: 'POST' });
+}
+
+export async function fetchTrash(boardId: string): Promise<Card[]> {
+  return request<Card[]>(`/boards/${boardId}/trash`);
+}
+
 export async function reloadSync(): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>('/boards/sync/reload', { method: 'POST' });
 }

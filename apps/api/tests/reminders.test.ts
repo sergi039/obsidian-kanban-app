@@ -58,6 +58,7 @@ describe('reminders routes', () => {
         source_url TEXT,
         source_meta TEXT DEFAULT '{}',
         seq_id INTEGER,
+        deleted_at TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       );
