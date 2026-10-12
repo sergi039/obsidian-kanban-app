@@ -46,28 +46,41 @@ export function CalendarEventsSection({ card, title, dueDate, onSaved }: Props) 
   // Saves replace the whole list, so only one may run at a time; a ref closes the
   // window between two clicks before the `saving` state re-renders.
   const savingRef = useRef(false);
+  // Server state that arrived while a save was in flight, applied once it ends.
+  const deferredRef = useRef<CalendarEvent[] | null>(null);
 
-  // Follow server state (board reload, other tabs), but never while a save is in
-  // flight: the PATCH response is authoritative for this card until it lands.
+  // Follow server state (board reload, other tabs). During a save, hold it back so
+  // an older snapshot cannot overwrite the PATCH result; newer ones apply after.
   useEffect(() => {
-    if (!savingRef.current) setEvents(card.calendar_events ?? []);
+    const incoming = card.calendar_events ?? [];
+    if (savingRef.current) deferredRef.current = incoming;
+    else setEvents(incoming);
   }, [card.calendar_events]);
+
+  const finishSave = () => {
+    if (deferredRef.current) setEvents(deferredRef.current);
+    deferredRef.current = null;
+    savingRef.current = false;
+    setSaving(false);
+  };
 
   const save = async (next: CalendarEvent[]): Promise<boolean> => {
     if (savingRef.current) return false;
     savingRef.current = true;
+    deferredRef.current = null;
     const previous = events;
     setSaving(true);
     setError(null);
     setEvents(next);
     try {
       const updated = await patchCard(card.id, { calendar_events: next });
+      // Snapshots received before the response predate this write.
+      deferredRef.current = null;
       setEvents(updated.calendar_events);
     } catch (err) {
       setEvents(previous);
       setError(err instanceof Error ? err.message : 'Could not save calendar events');
-      savingRef.current = false;
-      setSaving(false);
+      finishSave();
       return false;
     }
     try {
@@ -76,8 +89,7 @@ export function CalendarEventsSection({ card, title, dueDate, onSaved }: Props) 
       // The events are saved; only the board refresh failed. Keep the saved list.
       setError(`Saved, but the board did not refresh: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      savingRef.current = false;
-      setSaving(false);
+      finishSave();
     }
     return true;
   };

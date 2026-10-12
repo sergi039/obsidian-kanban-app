@@ -145,6 +145,25 @@ describe('card detail calendar section', () => {
     expect(screen.queryByRole('link', { name: /Review/ })).toBeNull();
   });
 
+  it('applies server state that arrives during the refresh even if the refresh then fails', async () => {
+    patchCard.mockImplementation(async (_id: string, patch: { calendar_events: CalendarEvent[] }) => makeCard(patch.calendar_events));
+    const existing: CalendarEvent = { id: 'e1', url: OUTLOOK_URL, title: 'Review', start: null, account: 'work' };
+    const fromOtherTab: CalendarEvent = { id: 'x', url: GOOGLE_URL, title: 'Added elsewhere', start: null, account: 'personal' };
+    let rerenderWith: (card: Card) => void = () => {};
+    const onSaved = vi.fn(async () => {
+      rerenderWith(makeCard([fromOtherTab])); // newer snapshot lands mid-refresh
+      throw new Error('network down');
+    });
+    const ui = (card: Card) => withAccounts(<CalendarEventsSection card={card} title="t" dueDate={null} onSaved={onSaved} />);
+    const { rerender } = render(ui(makeCard([existing])));
+    rerenderWith = (card) => rerender(ui(card));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove event link: Review' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Saved, but the board did not refresh');
+    expect(screen.getByRole('link', { name: /Added elsewhere/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Review/ })).toBeNull();
+  });
+
   it('offers new-event and open-calendar links for the chosen account', async () => {
     render(withAccounts(<CalendarEventsSection card={makeCard()} title="Call the client" dueDate="2026-10-14" onSaved={vi.fn()} />));
 
