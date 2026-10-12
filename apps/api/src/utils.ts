@@ -1,3 +1,5 @@
+import type { CalendarEvent } from './calendar-events.js';
+
 /**
  * Shared utility functions used across route handlers and modules.
  */
@@ -21,6 +23,7 @@ export function formatCard(row: Record<string, unknown>) {
     sub_items: safeJsonParse<string[]>(row.sub_items as string, []),
     checklist: safeJsonParse<{id:string;title:string;done:boolean}[]>(row.checklist as string, []),
     links: safeJsonParse<{url:string;title:string}[]>(row.links as string, []),
+    calendar_events: safeJsonParse<CalendarEvent[]>(row.calendar_events as string, []),
     source_meta: safeJsonParse<Record<string, unknown>>(row.source_meta as string, {}),
   };
 }

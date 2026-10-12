@@ -238,7 +238,22 @@ const MIGRATIONS = [
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
   )`,
+  // Calendar events attached to a card (JSON array, DB-only like links/checklist)
+  `ALTER TABLE cards ADD COLUMN calendar_events TEXT DEFAULT '[]'`,
 	];
+
+/** Columns added by migrations that the code depends on; migration errors are swallowed, so check them. */
+const REQUIRED_CARD_COLUMNS = ['checklist', 'links', 'calendar_events'];
+
+function assertCardColumns(database: Database.Database): void {
+  const present = new Set(
+    (database.prepare('PRAGMA table_info(cards)').all() as Array<{ name: string }>).map((col) => col.name),
+  );
+  const missing = REQUIRED_CARD_COLUMNS.filter((name) => !present.has(name));
+  if (missing.length > 0) {
+    throw new Error(`Database migration failed: cards table is missing columns ${missing.join(', ')}`);
+  }
+}
 
 /**
  * Create an isolated in-memory database for testing.
@@ -254,6 +269,7 @@ export function createTestDb(): Database.Database {
   for (const sql of INDEXES) {
     testDb.exec(sql);
   }
+  assertCardColumns(testDb);
   return testDb;
 }
 
@@ -281,6 +297,7 @@ export function getDb(dbPath?: string): Database.Database {
   for (const sql of INDEXES) {
     db.exec(sql);
   }
+  assertCardColumns(db);
 
   return db;
 }

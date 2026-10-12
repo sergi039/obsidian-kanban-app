@@ -21,6 +21,14 @@ export const CategoryDefSchema = z.object({
   showOnCard: z.boolean(),
 });
 
+/** A calendar the owner works in; emails live only in the gitignored config. */
+export const CalendarAccountSchema = z.object({
+  id: z.string().regex(/^[a-z0-9-]{1,40}$/, 'Calendar account id must be lowercase letters, digits or dashes'),
+  label: z.string().trim().min(1).max(40),
+  provider: z.enum(['google', 'outlook']),
+  email: z.string().email(),
+});
+
 const BoardSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -30,18 +38,39 @@ const BoardSchema = z.object({
   doneColumns: z.array(z.string()).optional(),
   priorities: z.array(PriorityDefSchema).optional(),
   categories: z.array(CategoryDefSchema).optional(),
+  /** Default calendar account id for events and "new event" links on this board. */
+  calendarAccount: z.string().optional(),
 });
 
-const ConfigSchema = z.object({
+export const ConfigSchema = z.object({
   vaultRoot: z.string(),
   boards: z.array(BoardSchema),
   defaultColumns: z.array(z.string()),
+  calendarAccounts: z.array(CalendarAccountSchema).optional(),
+}).superRefine((config, ctx) => {
+  const accountIds = new Set<string>();
+  for (const account of config.calendarAccounts ?? []) {
+    if (accountIds.has(account.id)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['calendarAccounts'], message: `Duplicate calendar account id "${account.id}"` });
+    }
+    accountIds.add(account.id);
+  }
+  config.boards.forEach((board, i) => {
+    if (board.calendarAccount !== undefined && !accountIds.has(board.calendarAccount)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['boards', i, 'calendarAccount'],
+        message: `Board "${board.id}" references unknown calendar account "${board.calendarAccount}"`,
+      });
+    }
+  });
 });
 
 export type BoardConfig = z.infer<typeof BoardSchema>;
 export type AppConfig = z.infer<typeof ConfigSchema>;
 export type PriorityDef = z.infer<typeof PriorityDefSchema>;
 export type CategoryDef = z.infer<typeof CategoryDefSchema>;
+export type CalendarAccount = z.infer<typeof CalendarAccountSchema>;
 
 export const DEFAULT_PRIORITIES: PriorityDef[] = [
   { id: 'urgent', emoji: '🔺', label: 'Urgent', color: '#ef4444', showOnCard: true },

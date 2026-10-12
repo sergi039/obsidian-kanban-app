@@ -6,6 +6,7 @@
       "name": "My Board",
       "file": "Tasks/My Tasks.md",
       "columns": ["Backlog", "In Progress", "Done"],
+      "calendarAccount": "personal",
       "categories": [
         { "id": "bug", "label": "Bug", "color": "#dc2626", "showOnCard": true },
         { "id": "feature", "label": "Feature", "color": "#2563eb", "showOnCard": true }
@@ -17,5 +18,9 @@
       ]
     }
   ],
-  "defaultColumns": ["Backlog", "In Progress", "Done"]
+  "defaultColumns": ["Backlog", "In Progress", "Done"],
+  "calendarAccounts": [
+    { "id": "work", "label": "Work", "provider": "outlook", "email": "you@company.example" },
+    { "id": "personal", "label": "Personal", "provider": "google", "email": "you@gmail.example" }
+  ]
 }

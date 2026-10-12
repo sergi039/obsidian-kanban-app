@@ -36,6 +36,7 @@ import {
   sortReminders,
   toLocalDateTimeInput,
 } from '../lib/reminder-utils';
+import { CalendarEventsSection } from './CalendarEventsSection';
 
 interface Props {
   card: Card;
@@ -832,6 +833,9 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                   )}
                 </div>
               </div>
+
+              {/* Calendar events */}
+              <CalendarEventsSection card={card} title={displayTitle} dueDate={dueDate || null} onSaved={onUpdate} />
 
               {/* Sub-items */}
               {card.sub_items.length > 0 && (

@@ -178,11 +178,14 @@ boards.get('/:id', (c) => {
     cards: cards.filter((card) => card.column_name === col).map(formatCard),
   }));
 
+  const calendarAccounts = config.calendarAccounts ?? [];
   return c.json({
     id: board.id,
     name: board.name,
     priorities: board.priorities ?? DEFAULT_PRIORITIES,
     categories: board.categories ?? [],
+    calendarAccount: calendarAccounts.find((account) => account.id === board.calendarAccount) ?? null,
+    calendarAccounts,
     columns,
   });
 });
