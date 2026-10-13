@@ -10,7 +10,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Board view** — drag & drop cards between columns (Backlog → In Progress → Done)
 - **Table view** — spreadsheet-style with inline editing
 - **Saved views** — custom filter/sort/group configurations per board
-- **Collapsible columns** — the board fits the window and each column scrolls on its own; « in a column header folds it (e.g. a long Done) into a narrow strip with its card count, remembered per board in this browser; cards can still be dropped on the strip
+- **Collapsible columns** — the board fits the window and each column scrolls on its own; the collapse button in a column header folds it (e.g. a long Done) into a narrow strip with its card count, remembered per board in this browser; cards can still be dropped on the strip
 - **Done page size** — "Show" next to Done's "Add item": 10 newest cards by default, or 5 / 20, each with "Show more", or Auto (whole column, fits the screen); remembered in this browser
 - **Board sorting** — sort cards by priority, category, due date, title, or last updated
 - **Filtering** — context-aware autocomplete with dynamic value suggestions
@@ -27,12 +27,12 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Done checkbox** — tick the checkbox on a board card to move it to Done (`[x]` in Markdown); untick to send it back to Backlog
 - **Closed cards on top** — a closed card lands at the top of Done, whether it was closed by the checkbox, the card's status, a bulk close, or `[x]` typed in Obsidian; only dragging puts it exactly where it is dropped
 - **Bulk actions** — Cmd/Ctrl-click cards to select several, then move or close them at once
-- **Trash** — delete a card from its detail view; its Markdown lines leave the file, its comments/fields/reminders stay, and the 🗑 panel restores it to the same place in the file
+- **Trash** — delete a card from its detail view; its Markdown lines leave the file, its comments/fields/reminders stay, and the Trash panel in the toolbar restores it to the same place in the file
 - **Obsidian context on close** — when a card is closed (board, table, bulk, or `[x]` typed in Obsidian), the notes it is linked with get a dated `✅ Карточка закрыта` line in their `## Канбан` section and a fresh `updated:` date; the card gets an `obsidian` comment naming them
 - **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance
 
 **Organization**
-- **Custom priorities** — configurable per board with emoji, color, and card visibility
+- **Custom priorities** — configurable per board with emoji, color, and card visibility; the emoji is the marker written to Markdown, the UI shows a flag in the priority color
 - **Categories** — color-coded labels with per-board management
 - **Automations** — trigger actions on card events (e.g., set field when moved to Done)
 
@@ -390,4 +390,4 @@ lsof -ti:4000 | xargs kill
 
 ## 📄 License
 
-MIT
+MIT — see [LICENSE](LICENSE).
