@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchAutomations, createAutomation, updateAutomation, deleteAutomation } from '../api/client';
 import type { AutomationRule, Trigger, AutomationAction, Field } from '../types';
+import { Icon } from './Icon';
 
 interface Props {
   boardId: string;
@@ -8,17 +9,6 @@ interface Props {
   fields: Field[];
   onClose: () => void;
 }
-
-const TRIGGER_LABELS: Record<string, string> = {
-  'card.moved': '📦 Card moved',
-  'card.created': '✨ Card created',
-};
-
-const ACTION_LABELS: Record<string, string> = {
-  'set_field': '🏷️ Set field',
-  'add_comment': '💬 Add comment',
-  'set_due_date': '📅 Set due date',
-};
 
 function triggerSummary(t: Trigger, columns: string[]): string {
   if (t.type === 'card.moved') {
@@ -69,14 +59,15 @@ function RuleCard({ rule, columns, fields, onToggle, onDelete }: {
         </div>
         <button
           onClick={onDelete}
-          className="text-xs text-board-text-muted hover:text-red-400 transition-colors px-1"
+          className="text-board-text-muted hover:text-red-400 transition-colors px-1 flex items-center"
           title="Delete"
+          aria-label="Delete automation"
         >
-          🗑️
+          <Icon name="trash" size={14} />
         </button>
       </div>
       <div className="text-xs text-board-text-muted space-y-1">
-        <div>⚡ {triggerSummary(rule.trigger, columns)}</div>
+        <div className="flex items-center gap-1"><Icon name="zap" size={12} /> {triggerSummary(rule.trigger, columns)}</div>
         {rule.actions.map((a, i) => (
           <div key={i} className="pl-3">→ {actionSummary(a, fields)}</div>
         ))}
@@ -191,10 +182,10 @@ export function AutomationsPanel({ boardId, columns, fields, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-board-border">
           <h2 className="text-lg font-semibold text-board-text flex items-center gap-2">
-            ⚡ Automations
+            <Icon name="zap" size={18} /> Automations
           </h2>
-          <button onClick={onClose} className="text-board-text-muted hover:text-board-text text-xl p-1 rounded-lg hover:bg-board-column">
-            ✕
+          <button onClick={onClose} aria-label="Close" className="text-board-text-muted hover:text-board-text p-1 rounded-lg hover:bg-board-column flex items-center">
+            <Icon name="x" size={18} />
           </button>
         </div>
 
@@ -204,7 +195,7 @@ export function AutomationsPanel({ boardId, columns, fields, onClose }: Props) {
             <div className="text-sm text-board-text-muted animate-pulse">Loading…</div>
           ) : rules.length === 0 && !showCreate ? (
             <div className="text-center py-8">
-              <div className="text-3xl mb-2">⚡</div>
+              <Icon name="zap" size={30} className="mx-auto mb-2 text-board-text-muted" />
               <p className="text-sm text-board-text-muted mb-3">No automations yet</p>
               <p className="text-xs text-board-text-muted mb-4">
                 Automate repetitive tasks — add comments, set due dates, or update fields when cards move or are created.
@@ -247,8 +238,8 @@ export function AutomationsPanel({ boardId, columns, fields, onClose }: Props) {
                   onChange={(e) => setTriggerType(e.target.value as 'card.moved' | 'card.created')}
                   className="w-full text-sm bg-board-bg border border-board-border rounded-md px-2 py-1.5 text-board-text focus:outline-none cursor-pointer"
                 >
-                  <option value="card.moved">📦 Card is moved</option>
-                  <option value="card.created">✨ Card is created</option>
+                  <option value="card.moved">Card is moved</option>
+                  <option value="card.created">Card is created</option>
                 </select>
 
                 {triggerType === 'card.moved' && (
@@ -292,9 +283,9 @@ export function AutomationsPanel({ boardId, columns, fields, onClose }: Props) {
                   onChange={(e) => setActionType(e.target.value as 'set_field' | 'add_comment' | 'set_due_date')}
                   className="w-full text-sm bg-board-bg border border-board-border rounded-md px-2 py-1.5 text-board-text focus:outline-none cursor-pointer"
                 >
-                  <option value="add_comment">💬 Add a comment</option>
-                  <option value="set_due_date">📅 Set due date</option>
-                  {fields.length > 0 && <option value="set_field">🏷️ Set a field value</option>}
+                  <option value="add_comment">Add a comment</option>
+                  <option value="set_due_date">Set due date</option>
+                  {fields.length > 0 && <option value="set_field">Set a field value</option>}
                 </select>
 
                 {actionType === 'add_comment' && (

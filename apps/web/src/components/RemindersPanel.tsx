@@ -1,6 +1,7 @@
 import { dismissReminder, snoozeReminder } from '../api/client';
 import type { Card, Reminder } from '../types';
 import { activeReminders, formatReminderTime, isDueReminder, reminderEffectiveAt } from '../lib/reminder-utils';
+import { Icon } from './Icon';
 
 interface Props {
   reminders: Reminder[];
@@ -38,10 +39,10 @@ export function RemindersPanel({ reminders, cards, onClose, onOpenCard, onRefres
           <button
             type="button"
             onClick={onClose}
-            className="text-board-text-muted hover:text-board-text rounded-md px-2 py-1"
+            className="text-board-text-muted hover:text-board-text rounded-md px-2 py-1 flex items-center"
             aria-label="Close reminders"
           >
-            ✕
+            <Icon name="x" size={16} />
           </button>
         </div>
 

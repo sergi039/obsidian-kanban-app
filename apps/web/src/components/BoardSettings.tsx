@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PriorityDef, CategoryDef } from '../types';
+import { Icon } from './Icon';
 
 const PRIORITY_EMOJIS = [
   '🔺', '⏫', '🟦', '⬇️', '⭐', '🔥', '⚡', '🚨',
@@ -223,10 +224,10 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
           <h2 className="text-lg font-semibold text-board-text">{boardName} · Board settings</h2>
           <button
             onClick={onClose}
-            className="text-board-text-muted hover:text-board-text text-xl leading-none p-1 rounded-md hover:bg-board-column"
+            className="text-board-text-muted hover:text-board-text p-1 rounded-md hover:bg-board-column flex items-center"
             aria-label="Close settings"
           >
-            ✕
+            <Icon name="x" size={18} />
           </button>
         </div>
 
@@ -299,28 +300,28 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
                       <button
                         onClick={() => movePriority(i, -1)}
                         disabled={i === 0}
-                        className="w-7 h-7 text-xs rounded border border-board-border text-board-text-muted disabled:opacity-40"
+                        className="w-7 h-7 inline-flex items-center justify-center rounded border border-board-border text-board-text-muted disabled:opacity-40"
                         title="Move up"
                         type="button"
                       >
-                        ↑
+                        <Icon name="arrow-up" size={13} />
                       </button>
                       <button
                         onClick={() => movePriority(i, 1)}
                         disabled={i === priDraft.length - 1}
-                        className="w-7 h-7 text-xs rounded border border-board-border text-board-text-muted disabled:opacity-40"
+                        className="w-7 h-7 inline-flex items-center justify-center rounded border border-board-border text-board-text-muted disabled:opacity-40"
                         title="Move down"
                         type="button"
                       >
-                        ↓
+                        <Icon name="arrow-down" size={13} />
                       </button>
                       <button
                         onClick={() => removePriority(i)}
-                        className="w-7 h-7 text-xs rounded border border-red-300 text-red-500 hover:bg-red-50"
+                        className="w-7 h-7 inline-flex items-center justify-center rounded border border-red-300 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                         title="Delete priority"
                         type="button"
                       >
-                        ✕
+                        <Icon name="x" size={13} />
                       </button>
                     </div>
                   </div>
@@ -398,28 +399,28 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
                       <button
                         onClick={() => moveCategory(i, -1)}
                         disabled={i === 0}
-                        className="w-7 h-7 text-xs rounded border border-board-border text-board-text-muted disabled:opacity-40"
+                        className="w-7 h-7 inline-flex items-center justify-center rounded border border-board-border text-board-text-muted disabled:opacity-40"
                         title="Move up"
                         type="button"
                       >
-                        ↑
+                        <Icon name="arrow-up" size={13} />
                       </button>
                       <button
                         onClick={() => moveCategory(i, 1)}
                         disabled={i === catDraft.length - 1}
-                        className="w-7 h-7 text-xs rounded border border-board-border text-board-text-muted disabled:opacity-40"
+                        className="w-7 h-7 inline-flex items-center justify-center rounded border border-board-border text-board-text-muted disabled:opacity-40"
                         title="Move down"
                         type="button"
                       >
-                        ↓
+                        <Icon name="arrow-down" size={13} />
                       </button>
                       <button
                         onClick={() => removeCategory(i)}
-                        className="w-7 h-7 text-xs rounded border border-red-300 text-red-500 hover:bg-red-50"
+                        className="w-7 h-7 inline-flex items-center justify-center rounded border border-red-300 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                         title="Delete category"
                         type="button"
                       >
-                        ✕
+                        <Icon name="x" size={13} />
                       </button>
                     </div>
                   </div>

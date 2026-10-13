@@ -26,6 +26,7 @@ import { browserStorage } from '../lib/browser-storage';
 import { loadCollapsedColumns, storeCollapsedColumns, toggleCollapsedColumn } from '../lib/collapsed-columns';
 import { DONE_COLUMN } from '../lib/done-utils';
 import { loadDonePageSize, storeDonePageSize, type DonePageSize } from '../lib/done-page-size';
+import { Icon } from './Icon';
 
 interface Props {
   board: BoardDetail;
@@ -409,10 +410,10 @@ export function Board({
           <AddColumnButton onAdd={onColumnAdd} />
           <button
             onClick={() => setShowSettings(true)}
-            className="px-4 py-2 text-sm text-board-text-muted hover:text-board-text hover:bg-board-column rounded-lg transition-colors border border-board-border"
+            className="px-4 py-2 text-sm text-board-text-muted hover:text-board-text hover:bg-board-column rounded-lg transition-colors border border-board-border flex items-center justify-center gap-1.5 whitespace-nowrap"
             type="button"
           >
-            ⚙ Board settings
+            <Icon name="settings" /> Board settings
           </button>
         </div>
       </div>
@@ -430,7 +431,7 @@ export function Board({
         ) : null}
         {activeColName ? (
           <div className="opacity-70 w-80 min-w-[320px] bg-board-column rounded-lg border-2 border-dashed border-blue-400 p-6 text-center text-board-text font-medium shadow-lg">
-            📋 {activeColName}
+            {activeColName}
           </div>
         ) : null}
       </DragOverlay>

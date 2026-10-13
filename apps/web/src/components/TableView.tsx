@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import type { Card, PriorityDef, CategoryDef } from '../types';
 import { moveCard, patchCard } from '../api/client';
 import { toggleDoneTargetColumn } from '../lib/done-utils';
+import { Icon } from './Icon';
 
 interface Props {
   cards: Card[];
@@ -192,8 +193,8 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
   });
 
   const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <span className="text-board-text-muted/30 ml-0.5">↕</span>;
-    return <span className="ml-0.5">{sortDir === 'ASC' ? '↑' : '↓'}</span>;
+    if (sortField !== field) return <Icon name="arrow-up-down" size={12} className="ml-1 opacity-30" />;
+    return <Icon name={sortDir === 'ASC' ? 'arrow-up' : 'arrow-down'} size={12} className="ml-1" />;
   };
 
   // Archive pagination
@@ -233,8 +234,16 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
           <span className={`text-board-text hover:text-blue-500 transition-colors ${card.is_done ? 'line-through opacity-60' : ''}`}>
             {card.title.length > 80 ? card.title.slice(0, 80) + '…' : card.title}
           </span>
-          {card.description && <span className="text-board-text-muted text-[10px]">📝</span>}
-          {card.sub_items.length > 0 && <span className="text-board-text-muted text-[10px]">☰ {card.sub_items.length}</span>}
+          {card.description && (
+            <span className="text-board-text-muted flex items-center" title="Has description">
+              <Icon name="description" size={12} />
+            </span>
+          )}
+          {card.sub_items.length > 0 && (
+            <span className="text-board-text-muted text-[10px] flex items-center gap-1" title="Sub-items">
+              <Icon name="sub-items" size={12} /> {card.sub_items.length}
+            </span>
+          )}
         </div>
       </td>
       {/* Status */}
@@ -336,14 +345,15 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
         {/* Done visibility settings */}
         <button
           onClick={() => setShowSettings((v) => !v)}
-          className={`px-2.5 py-2 text-sm border rounded-md transition-colors ${
+          className={`px-2.5 py-2 text-sm border rounded-md transition-colors flex items-center ${
             showSettings
               ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-300'
               : 'bg-board-card border-board-border text-board-text-muted hover:text-board-text'
           }`}
           title="Done task visibility settings"
+          aria-label="Done task visibility settings"
         >
-          ⚙️
+          <Icon name="settings" size={16} />
         </button>
 
         {/* Archive toggle */}
@@ -357,7 +367,7 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
             }`}
             title={`Show ${hiddenCards.length} hidden done tasks`}
           >
-            📦 {hiddenCards.length}
+            <Icon name="archive" /> {hiddenCards.length}
           </button>
         )}
       </div>
@@ -409,7 +419,7 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-board-border text-left">
-            <th className="px-3 py-2 text-xs font-medium text-board-text-muted uppercase tracking-wider w-12">✓</th>
+            <th className="px-3 py-2 text-xs font-medium text-board-text-muted uppercase tracking-wider w-12"><Icon name="check" size={14} /><span className="sr-only">Done</span></th>
             <th className="px-3 py-2 text-xs font-medium text-board-text-muted uppercase tracking-wider w-20">ID</th>
             {[
               { field: 'title' as SortField, label: 'Title', width: '' },
@@ -452,17 +462,18 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
       {showArchive && hiddenCards.length > 0 && (
         <div className="mt-6">
           <div className="flex items-center gap-3 mb-3">
-            <h3 className="text-sm font-medium text-board-text-muted">
-              📦 Completed ({archiveTotal} tasks)
+            <h3 className="text-sm font-medium text-board-text-muted flex items-center gap-1.5">
+              <Icon name="archive" /> Completed ({archiveTotal} tasks)
             </h3>
             {archivePages > 1 && (
               <div className="flex items-center gap-1 text-xs">
                 <button
                   disabled={archivePage === 0}
                   onClick={() => setArchivePage((p) => p - 1)}
-                  className="px-2 py-0.5 rounded border border-board-border text-board-text-muted hover:text-board-text disabled:opacity-30 transition-colors"
+                  className="px-1.5 py-1 rounded border border-board-border text-board-text-muted hover:text-board-text disabled:opacity-30 transition-colors flex items-center"
+                  aria-label="Previous page"
                 >
-                  ◀
+                  <Icon name="chevron-left" size={12} />
                 </button>
                 <span className="text-board-text-muted px-2">
                   {archivePage + 1} / {archivePages}
@@ -470,9 +481,10 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
                 <button
                   disabled={archivePage >= archivePages - 1}
                   onClick={() => setArchivePage((p) => p + 1)}
-                  className="px-2 py-0.5 rounded border border-board-border text-board-text-muted hover:text-board-text disabled:opacity-30 transition-colors"
+                  className="px-1.5 py-1 rounded border border-board-border text-board-text-muted hover:text-board-text disabled:opacity-30 transition-colors flex items-center"
+                  aria-label="Next page"
                 >
-                  ▶
+                  <Icon name="chevron-right" size={12} />
                 </button>
               </div>
             )}

@@ -26,6 +26,7 @@ import { Board } from './components/Board';
 
 import { TableView } from './components/TableView';
 import { ViewSwitcher } from './components/ViewSwitcher';
+import { Icon } from './components/Icon';
 import { Filters } from './components/Filters';
 import { CardDetail } from './components/CardDetail';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -648,19 +649,19 @@ export default function App() {
     {/* Viewport-high page: the board scrolls inside <main>, so a long column never stretches the page */}
     <div className="h-dvh bg-board-bg flex flex-col">
       {/* Header */}
-      <header className="border-b border-board-border px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h1 className="text-lg font-semibold text-board-text flex items-center gap-2">
-            <span className="flex items-center gap-1.5">
-              <span className="text-purple-500">◆</span> Obsidian Kanban
-            </span>
+      {/* Wraps onto a second row on narrow windows instead of squeezing buttons into two-line stacks */}
+      <header className="border-b border-board-border px-6 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex items-center gap-4 min-w-0">
+          <h1 className="text-lg font-semibold text-board-text flex items-center gap-2 whitespace-nowrap">
+            <Icon name="diamond" size={14} className="text-purple-500" /> Obsidian Kanban
           </h1>
           <a
             href="/about"
-            className="text-xs text-board-text-muted hover:text-board-text transition-colors"
+            className="flex items-center text-board-text-muted hover:text-board-text transition-colors"
             title="About this project"
+            aria-label="About this project"
           >
-            ?
+            <Icon name="help" size={14} />
           </a>
           <BoardSwitcher
             boards={boards}
@@ -675,7 +676,7 @@ export default function App() {
             }}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex grow flex-wrap items-center justify-end gap-2">
           <Filters
             filterQuery={filterQuery}
             onFilterChange={setFilterQuery}
@@ -689,47 +690,47 @@ export default function App() {
           )}
           <button
             onClick={() => setShowAutomations(true)}
-            className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors"
+            className="px-3 h-8 text-sm inline-flex items-center gap-1.5 whitespace-nowrap bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors"
             title="Automations"
           >
-            ⚡ Auto
+            <Icon name="zap" /> Auto
           </button>
           <button
             onClick={() => setShowReminders((value) => !value)}
-            className={`px-3 h-8 text-sm border border-board-border rounded-md transition-colors ${
+            className={`px-3 h-8 text-sm inline-flex items-center gap-1.5 whitespace-nowrap border border-board-border rounded-md transition-colors ${
               dueReminderCount > 0
                 ? 'bg-amber-500/15 text-amber-500 hover:bg-amber-500/20'
                 : 'bg-board-column hover:bg-board-card text-board-text-muted hover:text-board-text'
             }`}
             title="Reminders"
           >
-            ⏰ {dueReminderCount}
+            <Icon name="alarm" /> {dueReminderCount}
           </button>
           <button
             onClick={() => setShowTrash((value) => !value)}
             disabled={!boardDetail}
-            className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
+            className="px-3 h-8 text-sm inline-flex items-center gap-1.5 whitespace-nowrap bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
             title="Trash — deleted cards you can restore"
           >
-            🗑 {boardDetail?.trashCount ?? 0}
+            <Icon name="trash" /> {boardDetail?.trashCount ?? 0}
           </button>
           {'Notification' in window && browserNotificationPermission !== 'granted' && (
             <button
               onClick={requestBrowserNotifications}
               disabled={browserNotificationPermission === 'denied'}
-              className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
+              className="px-3 h-8 text-sm inline-flex items-center gap-1.5 whitespace-nowrap bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
               title={browserNotificationPermission === 'denied' ? 'Browser notifications are blocked in browser settings' : 'Enable browser notifications'}
             >
-              🔔 Browser
+              <Icon name="bell" /> Browser
             </button>
           )}
           <button
             onClick={handleReload}
             disabled={syncing}
-            className="px-3 h-8 text-sm bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
+            className="px-3 h-8 text-sm inline-flex items-center gap-1.5 whitespace-nowrap bg-board-column hover:bg-board-card border border-board-border rounded-md text-board-text-muted hover:text-board-text transition-colors disabled:opacity-50"
             title="Reload from files"
           >
-            {syncing ? '⏳ Syncing…' : '↻ Sync'}
+            <Icon name="refresh" className={syncing ? 'animate-spin' : ''} /> {syncing ? 'Syncing…' : 'Sync'}
           </button>
           <ThemeToggle theme={theme} onCycle={cycleTheme} />
         </div>
@@ -737,13 +738,15 @@ export default function App() {
 
       {/* Error banner */}
       {error && (
-        <div className="bg-red-100 dark:bg-red-900/30 border-b border-red-300 dark:border-red-700/50 px-6 py-2 text-sm text-red-700 dark:text-red-400">
-          ⚠️ {error}
+        <div className="bg-red-100 dark:bg-red-900/30 border-b border-red-300 dark:border-red-700/50 px-6 py-2 text-sm text-red-700 dark:text-red-400 flex items-center gap-2">
+          <Icon name="alert" />
+          <span>{error}</span>
           <button
             onClick={() => setError(null)}
-            className="ml-3 text-red-500 hover:text-red-300"
+            className="ml-1 text-red-500 hover:text-red-300"
+            aria-label="Dismiss error"
           >
-            ✕
+            <Icon name="x" />
           </button>
         </div>
       )}

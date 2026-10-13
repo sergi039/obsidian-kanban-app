@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Icon } from './Icon';
 
 interface Props {
   count: number;
@@ -50,10 +51,10 @@ export function BulkActionsBar({ count, columns, onMove, onClear }: Props) {
               type="button"
               disabled={busy}
               onClick={() => handleMove(column)}
-              className="px-2.5 h-7 text-xs font-medium rounded-md border border-green-600/40 bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors disabled:opacity-50"
+              className="px-2.5 h-7 text-xs font-medium rounded-md border border-green-600/40 bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors disabled:opacity-50 inline-flex items-center gap-1 whitespace-nowrap"
               title={`Close ${count} card${count === 1 ? '' : 's'} (move to ${column})`}
             >
-              ✓ {column}
+              <Icon name="check" size={12} /> {column}
             </button>
           ) : (
             <button
@@ -73,10 +74,10 @@ export function BulkActionsBar({ count, columns, onMove, onClear }: Props) {
         type="button"
         disabled={busy}
         onClick={onClear}
-        className="px-2.5 h-7 text-xs rounded-md text-board-text-muted hover:text-board-text hover:bg-board-column transition-colors disabled:opacity-50"
+        className="px-2.5 h-7 text-xs rounded-md text-board-text-muted hover:text-board-text hover:bg-board-column transition-colors disabled:opacity-50 inline-flex items-center gap-1 whitespace-nowrap"
         title="Clear selection"
       >
-        ✕ Clear
+        <Icon name="x" size={12} /> Clear
       </button>
     </div>
   );

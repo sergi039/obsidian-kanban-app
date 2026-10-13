@@ -10,6 +10,7 @@ import {
   resolveAccount,
   sortEvents,
 } from '../lib/calendar-utils';
+import { Icon } from './Icon';
 
 interface Props {
   card: Card;
@@ -40,7 +41,7 @@ export function CalendarEventsSection({ card, title, dueDate }: Props) {
   return (
     <div>
       <h3 className="text-xs font-medium text-board-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
-        📆 Calendar {events.length > 0 && `(${events.length})`}
+        <Icon name="calendar-event" size={13} /> Calendar {events.length > 0 && `(${events.length})`}
       </h3>
 
       {events.length > 0 ? (
@@ -61,14 +62,15 @@ export function CalendarEventsSection({ card, title, dueDate }: Props) {
                 }`}
                 style={{ color: 'var(--board-accent)' }}
               >
-                <span className="flex-shrink-0">📆 {label}</span>
+                <Icon name="calendar-event" size={13} />
+                <span className="flex-shrink-0">{label}</span>
                 {event.title && label !== event.title && <span className="truncate text-board-text">{event.title}</span>}
                 {account && (
                   <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-board-column text-board-text-muted flex-shrink-0">
                     {account.label}
                   </span>
                 )}
-                <span className={`text-board-text-muted text-[10px] flex-shrink-0 ${account ? '' : 'ml-auto'}`}>↗</span>
+                <Icon name="external-link" size={11} className={`text-board-text-muted ${account ? '' : 'ml-auto'}`} />
               </a>
             );
           })}
@@ -83,11 +85,12 @@ export function CalendarEventsSection({ card, title, dueDate }: Props) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => openInWindow(e, createHref)}
-          className="text-[11px] hover:underline"
+          className="text-[11px] hover:underline inline-flex items-center gap-1"
           style={{ color: 'var(--board-accent)' }}
           title={`Creates an event in ${boardAccount.label}; it links back to this card automatically`}
         >
-          ＋ New event in {boardAccount.label} ↗
+          <Icon name="plus" size={11} /> New event in {boardAccount.label}
+          <Icon name="external-link" size={11} />
         </a>
       )}
     </div>

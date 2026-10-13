@@ -3,6 +3,7 @@ import type { Card, PriorityDef, CategoryDef, Reminder } from '../types';
 import { extractLinks } from '../lib/link-utils';
 import { formatReminderTime, isDueReminder, nextActiveReminder } from '../lib/reminder-utils';
 import { CalendarEventsChip } from './CalendarEventsChip';
+import { Icon } from './Icon';
 
 interface Props {
   card: Card;
@@ -160,20 +161,21 @@ export function KanbanCard({ card, priorities, categories = [], reminders = [], 
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {showPriority && (
           <span
-            className="text-[11px] font-medium px-1.5 py-0.5 rounded"
+            className="text-[11px] font-medium px-1.5 py-0.5 rounded inline-flex items-center gap-1 whitespace-nowrap"
             style={{ backgroundColor: `${priorityDef.color}26`, color: priorityDef.color }}
           >
-            {priorityDef.emoji} {priorityDef.label}
+            {priorityDef.emoji && <span className="leading-none">{priorityDef.emoji}</span>}
+            {priorityDef.label}
           </span>
         )}
         {linkCount > 0 && (
-          <span className="text-[11px] text-board-text-muted flex items-center gap-0.5">
-            🔗 {linkCount}
+          <span className="text-[11px] text-board-text-muted flex items-center gap-1" title="Links">
+            <Icon name="link" size={12} /> {linkCount}
           </span>
         )}
         {card.sub_items.length > 0 && (
-          <span className="text-[11px] text-board-text-muted flex items-center gap-0.5">
-            ☰ {card.sub_items.length}
+          <span className="text-[11px] text-board-text-muted flex items-center gap-1" title="Sub-items">
+            <Icon name="sub-items" size={12} /> {card.sub_items.length}
           </span>
         )}
         {card.checklist.length > 0 && (() => {
@@ -181,30 +183,32 @@ export function KanbanCard({ card, priorities, categories = [], reminders = [], 
           const total = card.checklist.length;
           const allDone = done === total;
           return (
-            <span className={`text-[11px] flex items-center gap-0.5 ${allDone ? 'text-green-500' : 'text-board-text-muted'}`}>
-              ☑ {done}/{total}
+            <span className={`text-[11px] flex items-center gap-1 ${allDone ? 'text-green-500' : 'text-board-text-muted'}`} title="Checklist">
+              <Icon name="checklist" size={12} /> {done}/{total}
             </span>
           );
         })()}
         {card.description && (
-          <span className="text-[11px] text-board-text-muted flex items-center gap-0.5" title="Has description">
-            📝
+          <span className="text-[11px] text-board-text-muted flex items-center" title="Has description">
+            <Icon name="description" size={12} />
           </span>
         )}
         {card.due_date && (
-          <span className="text-[11px] text-board-text-muted">📅 {card.due_date}</span>
+          <span className="text-[11px] text-board-text-muted flex items-center gap-1 whitespace-nowrap" title="Due date">
+            <Icon name="calendar" size={12} /> {card.due_date}
+          </span>
         )}
         <CalendarEventsChip events={card.calendar_events ?? []} />
         {nextReminder && (
           <span
-            className={`text-[11px] px-1.5 py-0.5 rounded ${
+            className={`text-[11px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 whitespace-nowrap ${
               reminderIsDue
                 ? 'bg-amber-500/15 text-amber-500'
                 : 'bg-board-column text-board-text-muted'
             }`}
             title={nextReminder.message || 'Reminder'}
           >
-            ⏰ {formatReminderTime(nextReminder)}
+            <Icon name="alarm" size={12} /> {formatReminderTime(nextReminder)}
           </span>
         )}
       </div>
