@@ -5,7 +5,7 @@
 ### Even icons
 - Every icon in the UI is now one SVG line-icon set (toolbar, card meta, column controls, card detail, table, panels, menus) instead of emoji and symbol glyphs, which rendered at different sizes and baselines and looked crooked next to the text.
 - On a narrow window the header now wraps onto a second row and the filter field shrinks, instead of squeezing every button so its icon sat on top of its label ("Board", "Sort", "Auto", "Sync" each in two lines).
-- Priority emoji chosen in board settings stay as they are: they are the markers written to the Markdown files.
+- Priorities show a flag in the priority color on cards, in the table and in the card's Priority field, instead of the emoji (⏫ rendered as a blue box inside an orange "High" badge). The emoji stays the marker written to the Markdown file; board settings show a flag preview next to each color.
 
 ## 2026-10-12
 

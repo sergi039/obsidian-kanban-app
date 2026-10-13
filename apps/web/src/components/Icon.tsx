@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 // One line-icon set for the whole UI. Emoji were used before and rendered at
 // different sizes and baselines per glyph and per OS, so buttons looked uneven.
@@ -278,9 +278,11 @@ interface Props {
   size?: number | string;
   className?: string;
   strokeWidth?: number;
+  /** For data-driven colours (priority colour); static colours go in className. */
+  style?: CSSProperties;
 }
 
-export function Icon({ name, size = '1em', className = '', strokeWidth = 2 }: Props) {
+export function Icon({ name, size = '1em', className = '', strokeWidth = 2, style }: Props) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -295,6 +297,7 @@ export function Icon({ name, size = '1em', className = '', strokeWidth = 2 }: Pr
       aria-hidden="true"
       focusable="false"
       className={`inline-block shrink-0 ${className}`}
+      style={style}
     >
       {PATHS[name]}
     </svg>

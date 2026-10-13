@@ -259,6 +259,9 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
                 + Add priority
               </button>
             </div>
+            <p className="text-xs text-board-text-muted mb-2">
+              The emoji is the marker written to the Markdown file; cards show a flag in the priority color.
+            </p>
             {priDraft.length === 0 ? (
               <div className="text-xs text-board-text-muted bg-board-column border border-board-border rounded-md p-3">
                 No priorities configured. Cards can still use "none".
@@ -278,12 +281,21 @@ export function BoardSettingsModal({ open, boardName, columns, priorities, categ
                       className="w-full text-sm bg-board-bg border border-board-border rounded px-2 py-1 text-board-text"
                       placeholder="Priority label"
                     />
-                    <input
-                      value={priority.color}
-                      onChange={(e) => updatePriority(i, { color: e.target.value })}
-                      className="w-full text-sm bg-board-bg border border-board-border rounded px-2 py-1 font-mono text-board-text"
-                      placeholder="#ef4444"
-                    />
+                    <div className="relative">
+                      <Icon
+                        name="flag"
+                        size={13}
+                        strokeWidth={2.5}
+                        className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none"
+                        style={{ color: priority.color }}
+                      />
+                      <input
+                        value={priority.color}
+                        onChange={(e) => updatePriority(i, { color: e.target.value })}
+                        className="w-full text-sm bg-board-bg border border-board-border rounded pl-7 pr-2 py-1 font-mono text-board-text"
+                        placeholder="#ef4444"
+                      />
+                    </div>
                     <label className="flex items-center gap-1 cursor-pointer" title="Show on card">
                       <input
                         type="checkbox"

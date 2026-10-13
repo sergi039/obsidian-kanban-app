@@ -164,7 +164,7 @@ export function KanbanCard({ card, priorities, categories = [], reminders = [], 
             className="text-[11px] font-medium px-1.5 py-0.5 rounded inline-flex items-center gap-1 whitespace-nowrap"
             style={{ backgroundColor: `${priorityDef.color}26`, color: priorityDef.color }}
           >
-            {priorityDef.emoji && <span className="leading-none">{priorityDef.emoji}</span>}
+            <Icon name="flag" size={11} strokeWidth={2.5} />
             {priorityDef.label}
           </span>
         )}

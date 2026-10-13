@@ -4,11 +4,11 @@ import { KanbanCard } from '../components/Card';
 import { ViewSwitcher } from '../components/ViewSwitcher';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { BoardSort } from '../components/BoardSort';
-import type { Card } from '../types';
+import type { Card, PriorityDef } from '../types';
 
-// UI chrome icons are SVG; emoji and symbol glyphs rendered at uneven sizes and baselines.
-// Priority emoji are user data (chosen in board settings) and stay out of this check.
-const GLYPH_ICON = /[\p{Extended_Pictographic}←-⇿■-◿☀-➿]/u;
+// UI icons are SVG; emoji and symbol glyphs rendered at uneven sizes and baselines.
+// Priority emoji stay in the Markdown file only; the card shows a flag in the priority color.
+const GLYPH_ICON = /[\p{Extended_Pictographic}\u2190-\u21FF\u25A0-\u25FF\u2600-\u27BF]/u;
 
 function makeCard(overrides: Partial<Card> = {}): Card {
   return {
@@ -42,18 +42,24 @@ function makeCard(overrides: Partial<Card> = {}): Card {
 
 describe('UI icons', () => {
   it('card meta row uses SVG icons, not emoji', () => {
+    const priorities: PriorityDef[] = [{ id: 'high', emoji: '⏫', label: 'High', color: '#f59e0b' }];
     const card = makeCard({
+      priority: 'high',
       due_date: '2026-03-27',
       description: 'Details',
       sub_items: ['one'],
       checklist: [{ id: 'c1', title: 'Step', done: false }],
       links: [{ title: 'Spec', url: 'https://example.com' }],
     });
-    const { container } = render(<KanbanCard card={card} priorities={[]} onClick={() => {}} />);
+    const { container } = render(<KanbanCard card={card} priorities={priorities} onClick={() => {}} />);
 
     expect(container.textContent).not.toMatch(GLYPH_ICON);
     expect(container.textContent).toContain('2026-03-27');
-    expect(container.querySelectorAll('svg[aria-hidden="true"]').length).toBeGreaterThanOrEqual(5);
+    expect(container.querySelectorAll('svg[aria-hidden="true"]').length).toBeGreaterThanOrEqual(6);
+
+    const badge = [...container.querySelectorAll('span')].find((el) => el.textContent === 'High')!;
+    expect(badge.querySelector('svg')).not.toBeNull();
+    expect(badge).toHaveStyle({ color: '#f59e0b' });
   });
 
   it('toolbar controls carry an SVG icon and no glyph text', () => {
