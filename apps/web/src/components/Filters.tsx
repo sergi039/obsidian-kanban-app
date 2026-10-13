@@ -15,7 +15,6 @@ interface SuggestionItem {
   display: string;
   desc?: string;
   color?: string;
-  emoji?: string;
 }
 
 interface TokenContext {
@@ -185,7 +184,6 @@ function getSuggestions(
             display: p.label,
             desc: p.id,
             color: p.color,
-            emoji: p.emoji,
           })),
           { value: 'none', display: 'none', desc: 'No priority set' },
         ],
@@ -449,7 +447,6 @@ export function Filters({ filterQuery, onFilterChange, columns, priorities, cate
                   style={{ backgroundColor: item.color }}
                 />
               )}
-              {item.emoji && <span className="text-xs flex-shrink-0">{item.emoji}</span>}
               <code className="text-xs font-mono px-1 py-0.5 bg-board-column rounded" style={{ color: 'var(--board-accent)' }}>
                 {item.display}
               </code>

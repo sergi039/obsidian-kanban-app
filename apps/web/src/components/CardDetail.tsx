@@ -229,6 +229,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
 
   // Editable fields
   const [priority, setPriority] = useState<string>(card.priority || '');
+  const selectedPriority = priorities.find((p) => p.id === priority);
   const [dueDate, setDueDate] = useState(card.due_date || '');
   const [columnName, setColumnName] = useState(card.column_name);
   const [labels, setLabels] = useState<string[]>(card.labels);
@@ -1040,16 +1041,27 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               {/* Priority */}
               <div>
                 <label className="text-xs font-medium text-board-text-muted uppercase tracking-wider block mb-1">Priority</label>
-                <select
-                  value={priority}
-                  onChange={(e) => handlePriorityChange(e.target.value)}
-                  className="w-full text-sm bg-board-column border border-board-border rounded-md px-2 py-1.5 text-board-text focus:outline-none cursor-pointer"
-                >
-                  <option value="">None</option>
-                  {priorities.map((p) => (
-                    <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  {selectedPriority && (
+                    <Icon
+                      name="flag"
+                      size={13}
+                      strokeWidth={2.5}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                      style={{ color: selectedPriority.color }}
+                    />
+                  )}
+                  <select
+                    value={priority}
+                    onChange={(e) => handlePriorityChange(e.target.value)}
+                    className={`w-full text-sm bg-board-column border border-board-border rounded-md py-1.5 pr-2 text-board-text focus:outline-none cursor-pointer ${selectedPriority ? 'pl-7' : 'pl-2'}`}
+                  >
+                    <option value="">None</option>
+                    {priorities.map((p) => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {/* Due date */}

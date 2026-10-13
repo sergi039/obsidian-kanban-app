@@ -84,6 +84,10 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
     () => new Map(categories.map(c => [c.id, c])),
     [categories],
   );
+  const priorityMap = useMemo(
+    () => new Map(priorities.map(p => [p.id, p])),
+    [priorities],
+  );
 
   const updateSetting = (key: string, value: unknown) => {
     const s = loadSettings(boardId);
@@ -261,16 +265,23 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
       </td>
       {/* Priority */}
       <td className="px-3 py-2.5">
-        <select
-          value={card.priority || 'none'}
-          onChange={(e) => handlePriorityChange(card, e.target.value)}
-          className="text-xs bg-transparent border border-transparent hover:border-board-border rounded px-1.5 py-1 text-board-text cursor-pointer focus:outline-none focus:border-blue-500 transition-colors"
-        >
-          <option value="none">— None</option>
-          {priorities.map((p) => (
-            <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-1">
+          {card.priority && priorityMap.has(card.priority) ? (
+            <Icon name="flag" size={12} strokeWidth={2.5} style={{ color: priorityMap.get(card.priority)!.color }} />
+          ) : (
+            <span className="w-3 shrink-0" aria-hidden />
+          )}
+          <select
+            value={card.priority || 'none'}
+            onChange={(e) => handlePriorityChange(card, e.target.value)}
+            className="text-xs bg-transparent border border-transparent hover:border-board-border rounded px-1.5 py-1 text-board-text cursor-pointer focus:outline-none focus:border-blue-500 transition-colors"
+          >
+            <option value="none">— None</option>
+            {priorities.map((p) => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
+          </select>
+        </div>
       </td>
       {/* Category */}
       <td className="px-3 py-2.5">
