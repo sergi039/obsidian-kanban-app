@@ -37,6 +37,7 @@ import {
   toLocalDateTimeInput,
 } from '../lib/reminder-utils';
 import { CalendarEventsSection } from './CalendarEventsSection';
+import { Icon } from './Icon';
 
 interface Props {
   card: Card;
@@ -615,9 +616,9 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                     onClick={handleTitleEdit}
                     aria-label="Edit title"
                     title="Edit title"
-                    className="text-board-text-muted hover:text-board-text text-sm opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0"
+                    className="text-board-text-muted hover:text-board-text opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0 flex items-center"
                   >
-                    ✏️
+                    <Icon name="pencil" size={14} />
                   </button>
                 </div>
               )}
@@ -629,9 +630,9 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               ref={closeRef}
               onClick={onClose}
               aria-label="Close"
-              className="text-board-text-muted hover:text-board-text text-xl leading-none p-2 rounded-lg hover:bg-board-column focus:outline-none"
+              className="text-board-text-muted hover:text-board-text p-2 rounded-lg hover:bg-board-column focus:outline-none flex items-center"
             >
-              ✕
+              <Icon name="x" size={18} />
             </button>
           </div>
 
@@ -642,7 +643,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-xs font-medium text-board-text-muted uppercase tracking-wider flex items-center gap-1.5">
-                    📝 Description
+                    <Icon name="description" size={13} /> Description
                   </h3>
                   {!editingDesc && description && (
                     <button
@@ -706,7 +707,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-xs font-medium text-board-text-muted uppercase tracking-wider flex items-center gap-1.5">
-                    ☑ Checklist {checklist.length > 0 && `(${checklist.filter((i) => i.done).length}/${checklist.length})`}
+                    <Icon name="checklist" size={13} /> Checklist {checklist.length > 0 && `(${checklist.filter((i) => i.done).length}/${checklist.length})`}
                   </h3>
                 </div>
                 {/* Progress bar */}
@@ -745,10 +746,11 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                         </span>
                         <button
                           onClick={() => handleChecklistDelete(item.id)}
-                          className="text-board-text-muted hover:text-red-400 text-xs opacity-0 group-hover/cli:opacity-100 transition-opacity px-1"
+                          className="text-board-text-muted hover:text-red-400 opacity-0 group-hover/cli:opacity-100 transition-opacity px-1 flex items-center"
                           title="Delete item"
+                          aria-label="Delete item"
                         >
-                          ✕
+                          <Icon name="x" size={12} />
                         </button>
                       </div>
                     ))}
@@ -779,7 +781,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               {/* Links */}
               <div>
                 <h3 className="text-xs font-medium text-board-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  🔗 Links {links.length > 0 && `(${links.length})`}
+                  <Icon name="link" size={13} /> Links {links.length > 0 && `(${links.length})`}
                 </h3>
                 {links.length > 0 && (
                   <div className="space-y-0.5 mb-2">
@@ -793,8 +795,9 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                           style={{ color: 'var(--board-accent)' }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          🔗 <span className="truncate">{link.title}</span>
-                          <span className="text-board-text-muted text-[10px] ml-auto flex-shrink-0">↗</span>
+                          <Icon name="link" size={13} />
+                          <span className="truncate">{link.title}</span>
+                          <Icon name="external-link" size={11} className="ml-auto text-board-text-muted" />
                         </a>
                         <button
                           onClick={() => {
@@ -802,10 +805,11 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                             setLinks(updated);
                             saveField({ links: updated });
                           }}
-                          className="text-board-text-muted hover:text-red-400 text-xs opacity-0 group-hover/link:opacity-100 transition-opacity px-1 flex-shrink-0"
+                          className="text-board-text-muted hover:text-red-400 opacity-0 group-hover/link:opacity-100 transition-opacity px-1 flex-shrink-0 flex items-center"
                           title="Remove link"
+                          aria-label="Remove link"
                         >
-                          ✕
+                          <Icon name="x" size={12} />
                         </button>
                       </div>
                     ))}
@@ -858,7 +862,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               {card.sub_items.length > 0 && (
                 <div>
                   <h3 className="text-xs font-medium text-board-text-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    ☰ Sub-items ({card.sub_items.length})
+                    <Icon name="sub-items" size={13} /> Sub-items ({card.sub_items.length})
                   </h3>
                   <ul className="space-y-1">
                     {card.sub_items.map((item, i) => (
@@ -873,7 +877,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               {/* Comments */}
               <div>
                 <h3 className="text-xs font-medium text-board-text-muted uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  💬 Comments {comments.length > 0 && `(${comments.length})`}
+                  <Icon name="comment" size={13} /> Comments {comments.length > 0 && `(${comments.length})`}
                 </h3>
 
                 {/* Comment list */}
@@ -899,17 +903,19 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                             <div className="ml-auto opacity-0 group-hover/comment:opacity-100 transition-opacity flex items-center gap-1">
                               <button
                                 onClick={() => handleEditComment(comment)}
-                                className="text-[10px] text-board-text-muted hover:text-board-text px-1"
+                                className="text-board-text-muted hover:text-board-text px-1 flex items-center"
                                 title="Edit"
+                                aria-label="Edit comment"
                               >
-                                ✏️
+                                <Icon name="pencil" size={12} />
                               </button>
                               <button
                                 onClick={() => handleDeleteComment(comment.id)}
-                                className="text-[10px] text-board-text-muted hover:text-red-400 px-1"
+                                className="text-board-text-muted hover:text-red-400 px-1 flex items-center"
                                 title="Delete"
+                                aria-label="Delete comment"
                               >
-                                🗑️
+                                <Icon name="trash" size={12} />
                               </button>
                             </div>
                           </div>
@@ -1071,8 +1077,8 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                           return (
                             <div key={reminder.id} className="rounded-md border border-board-border bg-board-column p-2">
                               <div className="flex items-center gap-1.5">
-                                <span className={`text-[11px] px-1.5 py-0.5 rounded ${due ? 'bg-amber-500/15 text-amber-500' : 'bg-board-card text-board-text-muted'}`}>
-                                  ⏰ {formatReminderTime(reminder)}
+                                <span className={`text-[11px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${due ? 'bg-amber-500/15 text-amber-500' : 'bg-board-card text-board-text-muted'}`}>
+                                  <Icon name="alarm" size={12} /> {formatReminderTime(reminder)}
                                 </span>
                                 <span className="text-[10px] text-board-text-muted">{reminder.channel}</span>
                               </div>
@@ -1298,7 +1304,7 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               {/* Done badge */}
               {card.is_done && (
                 <div className="flex items-center gap-1.5 text-green-500 text-sm">
-                  ✓ Completed
+                  <Icon name="check" /> Completed
                 </div>
               )}
 
@@ -1319,10 +1325,10 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
                     type="button"
                     onClick={handleTrash}
                     disabled={trashing}
-                    className="w-full text-left text-xs px-2 py-1.5 rounded-md text-board-text-muted hover:text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50"
-                    title="Removes the task from the Markdown file; restore it from the 🗑 Trash panel"
+                    className="w-full text-left text-xs px-2 py-1.5 rounded-md text-board-text-muted hover:text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                    title="Removes the task from the Markdown file; restore it from the Trash panel"
                   >
-                    {trashing ? 'Moving to trash…' : '🗑 Move to trash'}
+                    <Icon name="trash" size={13} /> {trashing ? 'Moving to trash…' : 'Move to trash'}
                   </button>
                   {trashError && <p className="text-[11px] text-red-500 mt-1">{trashError}</p>}
                 </div>

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { PriorityDef, CategoryDef } from '../types';
+import { Icon } from './Icon';
 
 interface Props {
   filterQuery: string;
@@ -386,10 +387,10 @@ export function Filters({ filterQuery, onFilterChange, columns, priorities, cate
   }, [showAutocomplete, selectedIndex]); // recalc when dropdown updates
 
   return (
-    <div className="relative">
+    <div className="relative grow min-w-[12rem] max-w-[22rem]">
       <div className="flex items-center gap-1.5">
         <label htmlFor="filter-query" className="sr-only">Filter tasks</label>
-        <div className="relative">
+        <div className="relative flex-1 min-w-0">
           <input
             ref={inputRef}
             id="filter-query"
@@ -400,24 +401,26 @@ export function Filters({ filterQuery, onFilterChange, columns, priorities, cate
             onFocus={updateSuggestions}
             onClick={updateSuggestions}
             onKeyDown={handleKeyDown}
-            className="px-3 h-8 text-sm bg-board-column border border-board-border rounded-md text-board-text placeholder:text-board-text-muted/40 focus:outline-none focus:ring-2 focus:ring-board-accent/50 focus:border-board-accent/50 w-80"
+            className="px-3 h-8 text-sm bg-board-column border border-board-border rounded-md text-board-text placeholder:text-board-text-muted/40 focus:outline-none focus:ring-2 focus:ring-board-accent/50 focus:border-board-accent/50 w-full"
           />
           {filterQuery && (
             <button
               onClick={() => { onFilterChange(''); setShowAutocomplete(false); }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-board-text-muted hover:text-board-text text-xs"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-board-text-muted hover:text-board-text flex items-center"
               title="Clear filter"
+              aria-label="Clear filter"
             >
-              ✕
+              <Icon name="x" size={12} />
             </button>
           )}
         </div>
         <button
           onClick={handleShowAll}
-          className="text-board-text-muted hover:text-board-text text-sm px-1.5 h-8 rounded hover:bg-board-column transition-colors"
+          className="text-board-text-muted hover:text-board-text px-1.5 h-8 rounded hover:bg-board-column transition-colors flex items-center"
           title="Show filter options"
+          aria-label="Show filter options"
         >
-          ?
+          <Icon name="help" size={14} />
         </button>
       </div>
 

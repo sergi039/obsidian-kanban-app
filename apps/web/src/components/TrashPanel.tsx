@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchTrash, restoreCard } from '../api/client';
 import type { Card } from '../types';
+import { Icon } from './Icon';
 
 interface Props {
   boardId: string;
@@ -67,10 +68,10 @@ export function TrashPanel({ boardId, trashCount, onClose, onRestored }: Props) 
           <button
             type="button"
             onClick={onClose}
-            className="text-board-text-muted hover:text-board-text rounded-md px-2 py-1"
+            className="text-board-text-muted hover:text-board-text rounded-md px-2 py-1 flex items-center"
             aria-label="Close trash"
           >
-            ✕
+            <Icon name="x" size={16} />
           </button>
         </div>
 
@@ -100,9 +101,9 @@ export function TrashPanel({ boardId, trashCount, onClose, onRestored }: Props) 
                     type="button"
                     disabled={restoringId !== null}
                     onClick={() => restore(card.id)}
-                    className="text-[11px] px-2 py-1 rounded bg-board-card hover:bg-board-card-hover text-board-text-muted hover:text-board-text whitespace-nowrap disabled:opacity-50"
+                    className="text-[11px] px-2 py-1 rounded bg-board-card hover:bg-board-card-hover text-board-text-muted hover:text-board-text whitespace-nowrap disabled:opacity-50 inline-flex items-center gap-1"
                   >
-                    {restoringId === card.id ? 'Restoring…' : '↩ Restore'}
+                    {restoringId === card.id ? 'Restoring…' : <><Icon name="restore" size={12} /> Restore</>}
                   </button>
                 </div>
               ))}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { CalendarEvent } from '../types';
 import { useCalendarSettings } from '../lib/calendar-context';
 import { eventLabel, eventOpenUrl, isPastEvent, openInWindow, resolveAccount, sortEvents } from '../lib/calendar-utils';
+import { Icon } from './Icon';
 
 interface Props {
   events: CalendarEvent[];
@@ -50,11 +51,12 @@ export function CalendarEventsChip({ events }: Props) {
         }}
         title={`${first.accountLabel} · ${first.title}`}
         aria-label={`Open calendar event: ${first.title}, ${first.label}`}
-        className={`text-[11px] px-1.5 py-0.5 rounded max-w-[160px] truncate hover:underline ${
+        className={`text-[11px] px-1.5 py-0.5 rounded max-w-[160px] inline-flex items-center gap-1 hover:underline ${
           first.past ? 'bg-board-column text-board-text-muted' : 'bg-sky-500/15 text-sky-500'
         }`}
       >
-        📆 {first.label}
+        <Icon name="calendar-event" size={12} />
+        <span className="truncate min-w-0">{first.label}</span>
       </a>
       {sorted.length > 1 && (
         <button
@@ -92,9 +94,10 @@ export function CalendarEventsChip({ events }: Props) {
                     item.past ? 'text-board-text-muted' : 'text-board-text'
                   }`}
                 >
-                  <span className="flex-shrink-0">📆 {item.label}</span>
+                  <Icon name="calendar-event" size={12} />
+                  <span className="flex-shrink-0">{item.label}</span>
                   {event.title && item.label !== event.title && <span className="truncate">· {event.title}</span>}
-                  <span className="ml-auto flex-shrink-0 text-board-text-muted">↗</span>
+                  <Icon name="external-link" size={11} className="ml-auto text-board-text-muted" />
                 </a>
               </li>
             );

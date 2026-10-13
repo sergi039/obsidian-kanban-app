@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { BoardSummary } from '../types';
 import { createBoard, archiveBoard, unarchiveBoard, renameBoard, deleteBoard, fetchArchivedBoards, searchVaultTasks } from '../api/client';
 import type { VaultSearchResult } from '../api/client';
+import { Icon } from './Icon';
 
 interface Props {
   boards: BoardSummary[];
@@ -129,7 +130,7 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
   };
 
   return (
-    <nav className="flex gap-1 items-center relative">
+    <nav className="flex flex-wrap gap-1 items-center relative">
       {boards.map((board) => {
         const isActive = board.id === activeBoardId;
         const isRenaming = renaming === board.id;
@@ -156,7 +157,7 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
             key={board.id}
             onClick={() => onSelect(board.id)}
             onContextMenu={(e) => handleContextMenu(e, board.id)}
-            className={`px-3 h-8 text-sm rounded-md transition-colors border ${
+            className={`px-3 h-8 text-sm rounded-md transition-colors border whitespace-nowrap ${
               isActive
                 ? 'text-board-accent border-board-accent font-medium'
                 : 'text-board-text-muted hover:text-board-text hover:bg-board-column border-transparent'
@@ -174,8 +175,9 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
         onClick={() => setShowCreate(true)}
         className="w-8 h-8 text-sm rounded-md transition-colors border border-dashed border-board-border text-board-text-muted hover:text-board-text hover:bg-board-column hover:border-board-text-muted flex items-center justify-center"
         title="Create new board"
+        aria-label="Create new board"
       >
-        +
+        <Icon name="plus" size={14} />
       </button>
 
       {/* Archive button */}
@@ -183,8 +185,9 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
         onClick={() => { setShowArchive((v) => !v); if (!showArchive) loadArchived(); }}
         className="w-8 h-8 text-sm rounded-md transition-colors border border-transparent text-board-text-muted hover:text-board-text hover:bg-board-column flex items-center justify-center"
         title="Archived boards"
+        aria-label="Archived boards"
       >
-        📦
+        <Icon name="archive" size={16} />
       </button>
 
       {/* Create board popover */}
@@ -238,7 +241,7 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
                       <div className="mt-1 space-y-0.5">
                         {r.sampleTasks.map((t, i) => (
                           <div key={i} className="text-[11px] text-board-text-muted truncate">
-                            {'☐ '}{t}
+                            <Icon name="square" className="mr-1 align-[-0.125em]" />{t}
                           </div>
                         ))}
                       </div>
@@ -258,7 +261,7 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
       {/* Archived boards popover */}
       {showArchive && (
         <div className="absolute top-full right-0 mt-2 z-50 bg-board-card border border-board-border rounded-lg shadow-xl p-4 w-64">
-          <h3 className="text-sm font-medium text-board-text mb-3">📦 Archived Boards</h3>
+          <h3 className="text-sm font-medium text-board-text mb-3 flex items-center gap-1.5"><Icon name="archive" /> Archived Boards</h3>
           {archivedBoards.length === 0 ? (
             <p className="text-xs text-board-text-muted">No archived boards</p>
           ) : (
@@ -289,22 +292,22 @@ export function BoardSwitcher({ boards, activeBoardId, onSelect, onBoardsChanged
         >
           <button
             onClick={() => handleRename(contextMenu.boardId)}
-            className="w-full px-4 py-1.5 text-sm text-left text-board-text hover:bg-board-column"
+            className="w-full px-4 py-1.5 text-sm text-left text-board-text hover:bg-board-column flex items-center gap-2"
           >
-            ✏️ Rename
+            <Icon name="pencil" /> Rename
           </button>
           <button
             onClick={() => handleArchive(contextMenu.boardId)}
-            className="w-full px-4 py-1.5 text-sm text-left text-board-text hover:bg-board-column"
+            className="w-full px-4 py-1.5 text-sm text-left text-board-text hover:bg-board-column flex items-center gap-2"
           >
-            📦 Archive
+            <Icon name="archive" /> Archive
           </button>
           <hr className="my-1 border-board-border" />
           <button
             onClick={() => handleDelete(contextMenu.boardId)}
-            className="w-full px-4 py-1.5 text-sm text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+            className="w-full px-4 py-1.5 text-sm text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
           >
-            🗑 Delete
+            <Icon name="trash" /> Delete
           </button>
         </div>
       )}

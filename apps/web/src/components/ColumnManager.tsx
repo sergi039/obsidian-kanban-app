@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Icon } from './Icon';
 
 interface ColumnMenuProps {
   name: string;
@@ -56,24 +57,24 @@ export function ColumnMenu({ name, onRename, onDelete }: ColumnMenuProps) {
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setOpen(!open)}
-        className="text-board-text-muted hover:text-board-text opacity-0 group-hover:opacity-100 transition-opacity text-xs px-1"
+        className="text-board-text-muted hover:text-board-text opacity-0 group-hover:opacity-100 transition-opacity px-1 flex items-center"
         aria-label={`Column options for ${name}`}
       >
-        ⋯
+        <Icon name="more" size={16} />
       </button>
       {open && (
         <div className="absolute right-0 top-6 bg-board-bg border border-board-border rounded-lg shadow-xl py-1 z-30 min-w-[140px]">
           <button
             onClick={() => { setRenaming(true); setOpen(false); }}
-            className="w-full text-left px-3 py-1.5 text-sm text-board-text hover:bg-board-column transition-colors"
+            className="w-full text-left px-3 py-1.5 text-sm text-board-text hover:bg-board-column transition-colors flex items-center gap-2"
           >
-            ✏️ Rename
+            <Icon name="pencil" /> Rename
           </button>
           <button
             onClick={async () => { setOpen(false); await onDelete(name); }}
-            className="w-full text-left px-3 py-1.5 text-sm text-red-500 hover:bg-board-column transition-colors"
+            className="w-full text-left px-3 py-1.5 text-sm text-red-500 hover:bg-board-column transition-colors flex items-center gap-2"
           >
-            🗑 Delete
+            <Icon name="trash" /> Delete
           </button>
         </div>
       )}
@@ -146,7 +147,7 @@ export function AddColumnButton({ onAdd }: AddColumnProps) {
         onClick={() => setEditing(true)}
         className="flex items-center gap-1.5 px-4 py-2 text-sm text-board-text-muted hover:text-board-text hover:bg-board-column rounded-lg transition-colors whitespace-nowrap"
       >
-        <span className="text-lg">+</span> Add column
+        <Icon name="plus" size={14} /> Add column
       </button>
     </div>
   );

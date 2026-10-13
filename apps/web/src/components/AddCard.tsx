@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Icon } from './Icon';
 
 interface Props {
   boardId: string;
@@ -56,7 +57,7 @@ export function AddCard({ boardId, columnName, onAdd }: Props) {
         onClick={() => setIsEditing(true)}
         className="w-full text-left px-3 py-2 text-sm text-board-text-muted hover:text-board-text rounded-lg hover:bg-board-card transition-colors flex items-center gap-1.5"
       >
-        <span className="text-lg leading-none">+</span> Add item
+        <Icon name="plus" size={14} /> Add item
       </button>
     );
   }
@@ -90,9 +91,10 @@ export function AddCard({ boardId, columnName, onAdd }: Props) {
         </button>
         <button
           onClick={() => { setIsEditing(false); setTitle(''); }}
-          className="text-board-text-muted hover:text-board-text text-sm px-1"
+          className="text-board-text-muted hover:text-board-text px-1 flex items-center"
+          aria-label="Cancel"
         >
-          ✕
+          <Icon name="x" size={14} />
         </button>
       </div>
     </div>

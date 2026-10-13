@@ -1,3 +1,5 @@
+import { Icon } from './Icon';
+
 interface Props {
   layout: 'board' | 'table';
   onLayoutChange: (layout: 'board' | 'table') => void;
@@ -9,26 +11,26 @@ export function ViewSwitcher({ layout, onLayoutChange }: Props) {
       <button
         onClick={() => onLayoutChange('board')}
         aria-pressed={layout === 'board'}
-        className={`px-2.5 h-8 text-xs font-medium transition-colors ${
+        className={`px-2.5 h-8 text-xs font-medium inline-flex items-center gap-1.5 whitespace-nowrap transition-colors ${
           layout === 'board'
             ? 'bg-board-card text-board-text shadow-sm'
             : 'text-board-text-muted hover:text-board-text'
         }`}
         title="Board view"
       >
-        ▦ Board
+        <Icon name="board" size={14} /> Board
       </button>
       <button
         onClick={() => onLayoutChange('table')}
         aria-pressed={layout === 'table'}
-        className={`px-2.5 h-8 text-xs font-medium transition-colors ${
+        className={`px-2.5 h-8 text-xs font-medium inline-flex items-center gap-1.5 whitespace-nowrap transition-colors ${
           layout === 'table'
             ? 'bg-board-card text-board-text shadow-sm'
             : 'text-board-text-muted hover:text-board-text'
         }`}
         title="Table view"
       >
-        ☰ Table
+        <Icon name="table" size={14} /> Table
       </button>
     </div>
   );
