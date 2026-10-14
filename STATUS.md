@@ -1,7 +1,7 @@
 # Project Status — Obsidian Kanban App
 
 **Last updated:** 2026-02-19 13:10 CET
-**Commit:** f7b2d29 (main)
+**Commit:** d2e04ab (main)
 
 ## Architecture
 
@@ -100,19 +100,19 @@ npm run dev --workspace apps/web    # Terminal 2 → http://localhost:3456
 ## Git History
 
 ```
-f7b2d29 feat: board management — create, archive, rename, delete from UI
-8464ed4 fix: tests were using production DB — switch to in-memory createTestDb()
-96b78a5 docs: comprehensive README with setup guide, Obsidian instructions, architecture
-07c8962 fix: safety guards against card deletion + DB backup on startup
-ae5505f feat: column recovery — persist kb:col markers in .md files
-1d58850 fix: Phase 5 review
-0ed0c57 feat: Phase 5 — Automations Lite
-3af678e fix: Phase 4 review
-846b6f2 feat: Phase 4 — Custom Fields
-c95b413 fix: Phase 3 review
-fc9bc50 feat: Phase 3 — Views (Board + Table)
-5734dbb feat: Phase 2 — Filter Engine
-53f3df8 fix: Phase 1 review — 4 DnD issues
+d2e04ab feat: board management — create, archive, rename, delete from UI
+c679cbb fix: tests were using production DB — switch to in-memory createTestDb()
+cfcd7c1 docs: comprehensive README with setup guide, Obsidian instructions, architecture
+b64189f fix: safety guards against card deletion + DB backup on startup
+04a55ed feat: column recovery — persist kb:col markers in .md files
+a381c0e fix: Phase 5 review
+e2f79a4 feat: Phase 5 — Automations Lite
+e30d93e fix: Phase 4 review
+00d2d6a feat: Phase 4 — Custom Fields
+eb37ca3 fix: Phase 3 review
+9ba4b68 feat: Phase 3 — Views (Board + Table)
+4e62b32 feat: Phase 2 — Filter Engine
+a94ca42 fix: Phase 1 review — 4 DnD issues
 ```
 
 ## Next Steps (planned)
