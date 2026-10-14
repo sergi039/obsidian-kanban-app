@@ -126,6 +126,25 @@ describe('writeBackTitle', () => {
     expect(row.raw_line).toBe('- [ ] Brand new title <!-- kb:id=t1000001 kb:col=Backlog -->');
   });
 
+  it('keeps links added in the app when the card is renamed', async () => {
+    const rawLine = '- [ ] Old title [doc](https://doc.example.com) <!-- kb:id=t1500001 -->';
+    writeMd('Tasks/Board.md', `${rawLine}\n`);
+    seedCard({ id: 't1500001', rawLine, title: 'Old title [doc](https://doc.example.com)' });
+    testDb.prepare('UPDATE cards SET links = ? WHERE id = ?').run(JSON.stringify([
+      { title: 'doc', url: 'https://doc.example.com' },
+      { title: 'Calendar', url: 'https://calendar.example.com/event/2' },
+    ]), 't1500001');
+
+    const { writeBackTitle } = await import('../src/writeback.js');
+    expect(writeBackTitle('t1500001', 'New title [doc](https://doc.example.com)').success).toBe(true);
+
+    const row = testDb.prepare('SELECT links FROM cards WHERE id = ?').get('t1500001') as { links: string };
+    expect(JSON.parse(row.links)).toEqual([
+      { title: 'doc', url: 'https://doc.example.com' },
+      { title: 'Calendar', url: 'https://calendar.example.com/event/2' },
+    ]);
+  });
+
   it('preserves the priority emoji when a configured emoji is present', async () => {
     const rawLine = '- [ ] ⏫ Important thing <!-- kb:id=t2000001 -->';
     writeMd('Tasks/Board.md', `${rawLine}\n`);

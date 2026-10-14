@@ -175,6 +175,26 @@ export function extractTaskLinks(text: string): { links: ParsedLink[]; sourceLin
   return { links, sourceLink };
 }
 
+/**
+ * A card's links after its Markdown line was re-read. The line's links come
+ * first. A link added in the app (stored on the card, never written into the
+ * line) is kept; a link that was in the previous line and is gone from the new
+ * one was removed in Obsidian and is dropped. Replacing the card's links with
+ * the line's alone erased every link added in the app on each Obsidian edit
+ * of the board file and on each rename.
+ */
+export function mergeCardLinks(lineLinks: ParsedLink[], previousLinks: unknown, previousRawLine: string): ParsedLink[] {
+  const inLine = new Set(lineLinks.map((l) => l.url));
+  const wasInLine = new Set(extractTaskLinks(previousRawLine).links.map((l) => l.url));
+  const kept: ParsedLink[] = [];
+  for (const link of Array.isArray(previousLinks) ? previousLinks : []) {
+    if (!link || typeof link.url !== 'string' || inLine.has(link.url) || wasInLine.has(link.url)) continue;
+    kept.push({ url: link.url, title: typeof link.title === 'string' ? link.title : link.url });
+    inLine.add(link.url);
+  }
+  return [...lineLinks, ...kept];
+}
+
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

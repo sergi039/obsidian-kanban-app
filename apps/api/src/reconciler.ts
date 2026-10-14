@@ -8,8 +8,10 @@ import {
   getDefaultOpenColumn,
   injectKbId,
   isDoneColumn,
+  mergeCardLinks,
   parseMarkdownTasks,
 } from './parser.js';
+import { safeJsonParse } from './utils.js';
 import { getDb } from './db.js';
 import { DEFAULT_PRIORITIES } from './config.js';
 import type { BoardConfig } from './config.js';
@@ -65,6 +67,8 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
     due_date: string | null;
     description: string | null;
     title: string;
+    raw_line: string;
+    links: string | null;
     source: string | null;
     source_url: string | null;
     deleted_at: string | null;
@@ -213,7 +217,7 @@ export function reconcileBoard(board: BoardConfig, vaultRoot: string): Reconcile
           JSON.stringify(task.subItems),
           srcFp,
           col,
-          JSON.stringify(task.links),
+          JSON.stringify(mergeCardLinks(task.links, safeJsonParse(existing.links, []), existing.raw_line)),
           task.sourceLink?.source ?? null,
           task.sourceLink?.source ?? null,
           task.sourceLink?.url ?? null,

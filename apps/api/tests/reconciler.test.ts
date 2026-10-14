@@ -172,6 +172,46 @@ describe('reconciler', () => {
     ]);
   });
 
+  it('keeps links added in the app when the board file is edited in Obsidian', async () => {
+    const board = makeBoard();
+    writeMd('Tasks/Board.md', '- [ ] Pay invoice [bill](https://bill.example.com) <!-- kb:id=keep1234 -->\n');
+    const { reconcileBoard } = await import('../src/reconciler.js');
+    reconcileBoard(board, vaultRoot);
+
+    // Added on the card (PATCH links): stored on the card, not written into the line.
+    testDb.prepare('UPDATE cards SET links = ? WHERE id = ?').run(JSON.stringify([
+      { title: 'bill', url: 'https://bill.example.com' },
+      { title: 'Calendar', url: 'https://calendar.example.com/event/1' },
+    ]), 'keep1234');
+
+    // Another task typed in Obsidian: the file changes, the card's line does not.
+    writeMd('Tasks/Board.md', '- [ ] Pay invoice [bill](https://bill.example.com) <!-- kb:id=keep1234 -->\n- [ ] New task\n');
+    reconcileBoard(board, vaultRoot);
+
+    const card = getCards().find((c) => c.id === 'keep1234')!;
+    expect(JSON.parse(card.links as string)).toEqual([
+      { title: 'bill', url: 'https://bill.example.com' },
+      { title: 'Calendar', url: 'https://calendar.example.com/event/1' },
+    ]);
+  });
+
+  it('drops a link deleted from the line in Obsidian but keeps the ones added in the app', async () => {
+    const board = makeBoard();
+    writeMd('Tasks/Board.md', '- [ ] Pay invoice [bill](https://bill.example.com) <!-- kb:id=drop1234 -->\n');
+    const { reconcileBoard } = await import('../src/reconciler.js');
+    reconcileBoard(board, vaultRoot);
+    testDb.prepare('UPDATE cards SET links = ? WHERE id = ?').run(JSON.stringify([
+      { title: 'bill', url: 'https://bill.example.com' },
+      { title: 'Tracking', url: 'https://track.example.com/1' },
+    ]), 'drop1234');
+
+    writeMd('Tasks/Board.md', '- [ ] Pay invoice <!-- kb:id=drop1234 -->\n');
+    reconcileBoard(board, vaultRoot);
+
+    const card = getCards().find((c) => c.id === 'drop1234')!;
+    expect(JSON.parse(card.links as string)).toEqual([{ title: 'Tracking', url: 'https://track.example.com/1' }]);
+  });
+
   it('removes cards that are no longer in .md', async () => {
     const board = makeBoard();
     writeMd('Tasks/Board.md', '- [ ] Task A <!-- kb:id=aaaa1111 -->\n- [ ] Task B <!-- kb:id=bbbb2222 -->\n');

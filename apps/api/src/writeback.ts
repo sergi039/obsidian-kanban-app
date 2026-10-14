@@ -10,7 +10,8 @@ import path from 'node:path';
 import { suppressWatcher, unsuppressWatcher } from './watcher.js';
 import { DEFAULT_PRIORITIES, loadConfig } from './config.js';
 import { getDb } from './db.js';
-import { extractKbId, injectKbCol, extractTaskLinks } from './parser.js';
+import { extractKbId, injectKbCol, extractTaskLinks, mergeCardLinks } from './parser.js';
+import { safeJsonParse } from './utils.js';
 
 export interface WriteBackResult {
   success: boolean;
@@ -333,7 +334,7 @@ export function writeBackTitle(
 ): WriteBackResult {
   const db = getDb();
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(cardId) as
-    | { board_id: string; line_number: number; raw_line: string }
+    | { board_id: string; line_number: number; raw_line: string; links: string | null }
     | undefined;
 
   if (!card) {
@@ -417,8 +418,8 @@ export function writeBackTitle(
       unsuppressWatcher();
     }
 
-    // Re-extract links from the rebuilt line text (same logic as parser/reconciler).
-    const { links } = extractTaskLinks(line);
+    // Links from the rebuilt line (same logic as parser/reconciler), plus the ones added in the app.
+    const links = mergeCardLinks(extractTaskLinks(line).links, safeJsonParse(card.links, []), card.raw_line);
 
     db.prepare('UPDATE cards SET title = ?, raw_line = ?, line_number = ?, links = ?, updated_at = datetime(\'now\') WHERE id = ?')
       .run(trimmedTitle, line, lineIdx + 1, JSON.stringify(links), cardId);

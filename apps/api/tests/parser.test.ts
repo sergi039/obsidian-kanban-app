@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  mergeCardLinks,
   computeFingerprint,
   encodeCol,
   extractKbCol,
@@ -523,5 +524,23 @@ describe('computeFingerprint', () => {
     const a = computeFingerprint('  Task  Title  ', 'vs', 0);
     const b = computeFingerprint('task title', 'vs', 0);
     expect(a).toBe(b);
+  });
+});
+
+describe('mergeCardLinks', () => {
+  const bill = { title: 'bill', url: 'https://bill.example.com' };
+  const calendar = { title: 'Calendar', url: 'https://calendar.example.com/e/1' };
+
+  it('keeps links that were never in the line (added in the app) after the line links', () => {
+    expect(mergeCardLinks([bill], [bill, calendar], '- [ ] Pay [bill](https://bill.example.com)')).toEqual([bill, calendar]);
+  });
+
+  it('drops a link that was in the previous line and is gone from the new one', () => {
+    expect(mergeCardLinks([], [bill, calendar], '- [ ] Pay [bill](https://bill.example.com)')).toEqual([calendar]);
+  });
+
+  it('ignores malformed stored links and duplicates', () => {
+    expect(mergeCardLinks([bill], [null, { title: 'x' }, calendar, calendar], '- [ ] Pay')).toEqual([bill, calendar]);
+    expect(mergeCardLinks([bill], 'not a list', '- [ ] Pay')).toEqual([bill]);
   });
 });

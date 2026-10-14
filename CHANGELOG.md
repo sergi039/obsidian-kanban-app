@@ -2,6 +2,10 @@
 
 ## 2026-10-14
 
+### Links added on a card are no longer erased
+- A link added on the card (in the app or by an agent: calendar event, tracking, document) was stored on the card only. Any edit of the board file in Obsidian, even of another task, and any rename of the card replaced the card's links with the ones written in its Markdown line, so these links silently disappeared. Now they stay; a link written in the line and deleted from it in Obsidian is still removed.
+- At the time of the fix 45 such links on 12 cards were at risk; 5 of them, erased on 2026-10-14 by a sync, were restored from the boot backup.
+
 ### Tasks from email keep their link and thread (issue #2, EMAIL-1)
 - A capture can say which email it came from: provider (Gmail or Outlook), mailbox, message id and thread id. The card then links to that email (`[from:email](…)` in the task line), in the same link formats invoice-zero uses.
 - One email thread is one task: capturing the same thread again returns the card it already has instead of a second card, even with another title or a later message in the thread.
