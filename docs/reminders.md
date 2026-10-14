@@ -173,3 +173,20 @@ data/reminder-delivery.json
 This prevents duplicate OS/email/calendar delivery if the process crashes after local delivery but before `/fire`.
 
 If `API_TOKEN` is enabled for the Kanban API, set `KANBAN_API_TOKEN` for the agent. Do not commit tokens to the repository.
+
+## Email follow-ups
+
+"Remind me if nobody answers this thread in 3 days" on a card made from an email (EMAIL-1/2: the card carries `source_meta.email` with provider, mailbox and thread id):
+
+```http
+POST /api/reminders/follow-up
+Content-Type: application/json
+
+{ "card_id": "<card-id>", "days": 3, "mode": "await_reply", "channel": "macos", "timezone": "Europe/Madrid" }
+```
+
+- `mode`: `await_reply` (default) — the owner wrote last and waits for the other side; `owe_reply` — the other side wrote last and the owner has to answer.
+- The reminder (`kind: follow_up`) fires `days` after the message the wait counts from: the owner's last message for `await_reply`, theirs for `owe_reply`. `source_meta.follow_up` records mode, days, that time (`baseline_at`), `state` and the last error.
+- `201`: a new follow-up; `200` with the same reminder: the card's active follow-up was updated; `200` with `reminder: null`: the awaited answer is already in the thread.
+- Every 10 minutes the API reads the thread of every active follow-up: sender and date of each message only, never subject or body. When the awaited answer is there, the reminder is dismissed and the card gets a comment from `kanban` saying when and from whom. `/api/health` reports the run under `followUps`.
+- The mailbox is read with the credentials of the calendar account that has the same address: Microsoft Graph app-only for Outlook (needs `Mail.Read`), the stored Google refresh token for Gmail (needs the `gmail.metadata` scope on top of `calendar.readonly`). Without access the follow-up keeps `state: "unchecked"` with the reason and still fires on time; it only cannot dismiss itself.

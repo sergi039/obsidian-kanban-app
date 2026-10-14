@@ -19,6 +19,7 @@ import { reconcileAll } from './reconciler.js';
 import { startWatcher } from './watcher.js';
 import { stampAllColumns } from './writeback.js';
 import { getCalendarSyncStatus, startCalendarSync, stopCalendarSync } from './calendar-sync.js';
+import { getFollowUpSyncStatus, startFollowUpSync, stopFollowUpSync } from './mail-followup.js';
 import { startObsidianContext, stopObsidianContext } from './obsidian-context.js';
 import { createWsServer } from './ws.js';
 import { apiTokenAuth, bodyLimit, getCorsOrigins, securityHeaders } from './middleware/security.js';
@@ -70,7 +71,7 @@ function buildHealth() {
     }
     return { id: board.id, file: board.file, exists, mtime };
   });
-  return { ok: true, vaultRoot: cfg.vaultRoot, boards, calendar: getCalendarSyncStatus() };
+  return { ok: true, vaultRoot: cfg.vaultRoot, boards, calendar: getCalendarSyncStatus(), followUps: getFollowUpSyncStatus() };
 }
 
 app.get('/api/health', (c) => c.json(buildHealth()));
@@ -223,6 +224,7 @@ startWatcher(config);
 
 // Calendar events → cards (after reconciliation so links see the current cards)
 startCalendarSync();
+startFollowUpSync();
 
 // HTTP + WebSocket server
 const PORT = Number(process.env.PORT) || 4000;
@@ -301,6 +303,7 @@ function shutdown(signal: string) {
   console.log(`\n[shutdown] ${signal} received, closing…`);
   stopWatcher();
   stopCalendarSync();
+  stopFollowUpSync();
   stopObsidianContext();
   try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* ok */ }
   try { db.close(); } catch { /* ok */ }

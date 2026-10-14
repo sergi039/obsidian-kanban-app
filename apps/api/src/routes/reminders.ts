@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { getDb } from '../db.js';
 import { broadcast } from '../ws.js';
 import { safeJsonParse } from '../utils.js';
+import { createFollowUp, FollowUpError, FOLLOW_UP_MODES } from '../mail-followup.js';
 
 const reminders = new Hono();
 
@@ -289,6 +290,47 @@ reminders.post('/', async (c) => {
   const reminder = getReminder(id)!;
   emitReminderChanged('reminder-created', reminder);
   return c.json(formatReminder(reminder), 201);
+});
+
+const FollowUpSchema = z.object({
+  card_id: z.string().min(1),
+  /** Remind this many days after the message the wait counts from. */
+  days: z.number().int().min(1).max(90),
+  /** await_reply: waiting for their answer; owe_reply: the owner has to answer. */
+  mode: z.enum(FOLLOW_UP_MODES).default('await_reply'),
+  channel: ReminderChannelSchema.default('macos'),
+  timezone: z.string().min(1).default('UTC'),
+  message: z.string().max(500).optional(),
+});
+
+// POST /api/reminders/follow-up — remind about an email thread unless the awaited answer arrives
+reminders.post('/follow-up', async (c) => {
+  const body = await safeParseJson(c);
+  if (body === null) return c.json({ error: 'Invalid JSON body' }, 400);
+  const parsed = FollowUpSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  try {
+    const result = await createFollowUp({
+      cardId: parsed.data.card_id,
+      mode: parsed.data.mode,
+      days: parsed.data.days,
+      channel: parsed.data.channel,
+      timezone: parsed.data.timezone,
+      message: parsed.data.message,
+    });
+    if (!result.reminderId) {
+      // The awaited answer is already in the thread: nothing to remind about.
+      return c.json({ follow_up: result.followUp, reminder: null });
+    }
+    const reminder = getReminder(result.reminderId)!;
+    emitReminderChanged(result.created ? 'reminder-created' : 'reminder-updated', reminder);
+    return c.json({ follow_up: result.followUp, reminder: formatReminder(reminder) }, result.created ? 201 : 200);
+  } catch (err) {
+    if (err instanceof FollowUpError) return c.json({ error: err.message, code: err.code }, err.status);
+    console.error('[follow-up] Failed to create a follow-up:', err);
+    return c.json({ error: 'Failed to create the follow-up' }, 500);
+  }
 });
 
 // GET /api/reminders/:id — get one reminder

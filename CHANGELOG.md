@@ -2,6 +2,11 @@
 
 ## 2026-10-14
 
+### Remind me if they don't answer (issue #2, EMAIL-3)
+- A card made from an email can get a follow-up: "remind me in N days if nobody answers" (or "remind me to answer"). It is a normal reminder (macOS notification by default) that fires N days after the last message of the side the wait is on.
+- Every 10 minutes the Kanban looks at the thread, the way it already looks at the calendars: only who wrote and when, never the text. When the answer arrives, the reminder is removed by itself and the card gets a comment "Ответ получен … от …".
+- Works for the work Outlook mailbox now. The personal Gmail needs one more Google consent (read email headers); until then a Gmail follow-up still reminds on time but cannot notice the answer.
+
 ### «В канбан» from an email (issue #2, EMAIL-2)
 - The card endpoint the agents already use (`POST /api/cards`) takes the same `email` object as the capture endpoints. A card made from an email links to it, and asking again for the same thread returns that card (200) instead of a second one. No token or MCP setup is needed.
 

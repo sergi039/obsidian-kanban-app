@@ -58,7 +58,8 @@ export function readEnvValues(file: string, keys: string[]): Record<string, stri
   return found;
 }
 
-async function fetchJson(url: string, init: RequestInit, signal: AbortSignal): Promise<unknown> {
+/** GET/POST JSON with retries on 429/503; errors carry status and provider code, never tokens. */
+export async function fetchJson(url: string, init: RequestInit, signal: AbortSignal): Promise<unknown> {
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(url, { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) });
     if ((res.status === 429 || res.status === 503) && attempt < MAX_RETRIES) {
@@ -131,10 +132,11 @@ export function outlookItemId(rawUrl: string): string | null {
   }
 }
 
-export async function fetchGraphEvents(account: CalendarAccount, window: FetchWindow): Promise<ProviderEvent[]> {
+/** App-only Microsoft Graph token for an account with graph-app credentials (shared by calendar and mail). */
+export async function graphAccessToken(account: CalendarAccount, signal: AbortSignal): Promise<string> {
   if (account.credentials?.type !== 'graph-app') throw new Error('no graph-app credentials configured');
   const env = readEnvValues(account.credentials.envFile, ['M365_TENANT_ID', 'M365_CLIENT_ID', 'M365_CLIENT_SECRET']);
-  const token = await cachedToken(`graph:${env.M365_TENANT_ID}:${env.M365_CLIENT_ID}`, async () => {
+  return cachedToken(`graph:${env.M365_TENANT_ID}:${env.M365_CLIENT_ID}`, async () => {
     const body = new URLSearchParams({
       client_id: env.M365_CLIENT_ID,
       client_secret: env.M365_CLIENT_SECRET,
@@ -144,10 +146,14 @@ export async function fetchGraphEvents(account: CalendarAccount, window: FetchWi
     const res = await fetchJson(
       `https://login.microsoftonline.com/${encodeURIComponent(env.M365_TENANT_ID)}/oauth2/v2.0/token`,
       { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
-      window.signal,
+      signal,
     ) as { access_token: string; expires_in: number };
     return { token: res.access_token, expiresIn: res.expires_in };
   });
+}
+
+export async function fetchGraphEvents(account: CalendarAccount, window: FetchWindow): Promise<ProviderEvent[]> {
+  const token = await graphAccessToken(account, window.signal);
 
   const params = new URLSearchParams({
     startDateTime: window.from.toISOString(),
@@ -201,7 +207,8 @@ interface GoogleEvent {
   end?: { date?: string; dateTime?: string };
 }
 
-export async function fetchGoogleEvents(account: CalendarAccount, window: FetchWindow): Promise<ProviderEvent[]> {
+/** Access token from the owner's stored Google refresh token (scopes are whatever the consent granted). */
+export async function googleAccessToken(account: CalendarAccount, signal: AbortSignal): Promise<string> {
   if (account.credentials?.type !== 'google-oauth') throw new Error('no google-oauth credentials configured');
   const { clientEnvFile, tokenFile } = account.credentials;
   const client = readEnvValues(clientEnvFile, ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']);
@@ -216,7 +223,7 @@ export async function fetchGoogleEvents(account: CalendarAccount, window: FetchW
     throw new Error(`token belongs to ${stored.account}, not ${account.email}`);
   }
   const refreshToken = stored.refresh_token;
-  const token = await cachedToken(`google:${account.id}`, async () => {
+  return cachedToken(`google:${account.id}`, async () => {
     const res = await fetchJson('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -226,9 +233,13 @@ export async function fetchGoogleEvents(account: CalendarAccount, window: FetchW
         refresh_token: refreshToken,
         grant_type: 'refresh_token',
       }),
-    }, window.signal) as { access_token: string; expires_in: number };
+    }, signal) as { access_token: string; expires_in: number };
     return { token: res.access_token, expiresIn: res.expires_in };
   });
+}
+
+export async function fetchGoogleEvents(account: CalendarAccount, window: FetchWindow): Promise<ProviderEvent[]> {
+  const token = await googleAccessToken(account, window.signal);
 
   const events: ProviderEvent[] = [];
   let pageToken: string | null = null;

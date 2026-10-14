@@ -329,7 +329,7 @@ Accounts, credentials and the public URL live in the gitignored `config.boards.j
 ```
 
 - `graph-app`: an Entra app with `Calendars.Read` (application); the env file holds `M365_TENANT_ID`, `M365_CLIENT_ID`, `M365_CLIENT_SECRET`. Only `GET /users/<email>/calendarView` is called.
-- `google-oauth`: the env file holds `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` of a desktop OAuth client; `tokenFile` holds the owner's refresh token (scope `calendar.readonly`, mode 600), created once by an OAuth consent. Without it the account reports `not connected`.
+- `google-oauth`: the env file holds `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` of a desktop OAuth client; `tokenFile` holds the owner's refresh token (scope `calendar.readonly`, mode 600), created once by an OAuth consent. Without it the account reports `not connected`. The same accounts read email threads for follow-ups ([docs/reminders.md](docs/reminders.md#email-follow-ups)): Graph needs `Mail.Read`, Google needs `gmail.metadata` in the consent as well.
 - Credentials are read at sync time, never logged and never sent to the browser. `/api/health` → `calendar` shows per account `ok`, `lastSyncAt`, `events`, `linked`, `error`. A failing account keeps the events it had.
 - A board's `calendarAccount` (and credentials matching the provider) is validated at boot; restart the API after editing.
 
