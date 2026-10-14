@@ -2,6 +2,9 @@
 
 ## 2026-10-14
 
+### «В канбан» from an email (issue #2, EMAIL-2)
+- The card endpoint the agents already use (`POST /api/cards`) takes the same `email` object as the capture endpoints. A card made from an email links to it, and asking again for the same thread returns that card (200) instead of a second one. No token or MCP setup is needed.
+
 ### Links added on a card are no longer erased
 - A link added on the card (in the app or by an agent: calendar event, tracking, document) was stored on the card only. Any edit of the board file in Obsidian, even of another task, and any rename of the card replaced the card's links with the ones written in its Markdown line, so these links silently disappeared. Now they stay; a link written in the line and deleted from it in Obsidian is still removed.
 - At the time of the fix 45 such links on 12 cards were at risk; 5 of them, erased on 2026-10-14 by a sync, were restored from the boot backup.

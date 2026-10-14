@@ -90,7 +90,7 @@ For local Codex-style use, expose the same command:
 
 ## Tasks from email
 
-When the task comes from an email, the agent passes the email's provider ids in `email` (MCP `kanban_capture_task`, or `POST /api/inbox/capture`):
+When the task comes from an email, the agent passes the email's provider ids in `email`. Three entry points take it: `POST /api/cards` (no token, the path the owner's agents use for «в канбан»: `{board_id, title, email}`), MCP `kanban_capture_task`, and `POST /api/inbox/capture`:
 
 ```json
 {
@@ -110,7 +110,7 @@ When the task comes from an email, the agent passes the email's provider ids in 
 
 The server derives the rest, so `source_uid`, `source_url` and `idempotency_key` stay empty:
 
-- `source` is `email`.
+- `source` is `email`. `POST /api/cards` answers 201 for a new card, 200 with the existing card when the thread already has one, and 409 `capture_deleted` when the thread's card was deleted for good.
 - `source_uid` is `<provider>:<mailbox>:thread:<thread_id>`, or `…:message:<message_id>` without a thread id. Capturing the same thread again returns the card it already has, with status `duplicate`, even when the title or message differs. The same thread in another mailbox is another task.
 - `source_url` opens the email, in the formats invoice-zero's `buildEmailLink` uses: Gmail `https://mail.google.com/mail/u/<mailbox>/#all/<message_id>`; Outlook work/school `https://outlook.office.com/mail/deeplink/read/<message_id>`; consumer Outlook (outlook.com, hotmail, live, msn) `https://outlook.live.com/mail/0/inbox/id/<thread_id or message_id>`. It is written into the task line as `[from:email](…)`.
 - `source_meta.email` keeps only the fields above. Unknown fields in `email` are rejected, and so is a `source_meta` key that looks like an email body (`body`, `html`, `text`, `raw`, …). For every source, a `source_meta` key that looks like a credential (`token`, `secret`, `password`, `api_key`, `cookie`, …) is rejected.

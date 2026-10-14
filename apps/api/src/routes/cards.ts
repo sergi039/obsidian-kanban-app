@@ -11,6 +11,7 @@ import { fireEvent } from '../automations.js';
 import { formatCard, normalizePositions } from '../utils.js';
 import { trashCard, restoreCard, TrashError } from '../trash.js';
 import { ingestCard, IngestError } from '../ingest.js';
+import { EmailRefSchema } from '../email-provenance.js';
 import { notifyCardsClosed } from '../obsidian-context.js';
 import type Database from 'better-sqlite3';
 
@@ -20,6 +21,8 @@ const CreateCardSchema = z.object({
   board_id: z.string(),
   title: z.string().min(1),
   column: z.string().optional(),
+  /** The email the task came from: the card links to it, and its thread keeps one card (200 = existing). */
+  email: EmailRefSchema.optional(),
 });
 
 const PatchCardSchema = z.object({
@@ -170,7 +173,7 @@ cards.post('/', async (c) => {
       boardId: parsed.data.board_id,
       title: parsed.data.title,
       column: parsed.data.column,
-      source: 'manual',
+      ...(parsed.data.email ? { email: parsed.data.email } : { source: 'manual' as const }),
     });
     if (!result.created) {
       if ('needsClarification' in result) {
@@ -178,6 +181,10 @@ cards.post('/', async (c) => {
           return c.json({ error: 'Board not found' }, 404);
         }
         return c.json({ error: result.question, route: result.route }, 400);
+      }
+      if (result.deleted) {
+        // The thread had a card that was deleted for good: say so instead of silently making another.
+        return c.json({ error: 'A card for this email thread was deleted', code: 'capture_deleted' }, 409);
       }
       return c.json({ error: 'Unable to create card', route: result.route ?? null }, 400);
     }
