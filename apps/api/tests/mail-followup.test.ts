@@ -20,7 +20,7 @@ const WORK: CalendarAccount = {
   credentials: { type: 'graph-app', envFile: '/unused' },
 };
 const config: AppConfig = { vaultRoot: '/tmp/unused', boards: [], defaultColumns: ['Backlog'], calendarAccounts: [WORK] };
-const msg = (at: string, outbound: boolean, from = outbound ? 'Owner' : 'Partner'): ThreadMessage => ({ at: new Date(at).toISOString(), outbound, from });
+const msg = (at: string, outbound: boolean, from = outbound ? 'Owner' : 'Partner', auto = false): ThreadMessage => ({ at: new Date(at).toISOString(), outbound, from, auto });
 
 function seedEmailCard(id = 'card0001', email: Record<string, unknown> = { provider: 'outlook', account: 'owner@example.com', message_id: 'm1', thread_id: 'conv-1', subject: 'Renewal' }) {
   testDb.prepare(`
@@ -50,6 +50,32 @@ describe('follow-up rules', () => {
     expect(baseline).toBe('2026-10-03T09:00:00.000Z');
     expect(findAnswer('owe_reply', baseline, thread)).toBeNull();
     expect(findAnswer('owe_reply', baseline, [...thread, msg('2026-10-05T09:00Z', true)])?.outbound).toBe(true);
+  });
+
+  it('does not take an out-of-office reply or a bounce for the answer', async () => {
+    const { baselineFor, findAnswer } = await import('../src/mail-followup.js');
+    const thread = [msg('2026-10-13T10:00Z', true), msg('2026-10-13T10:01Z', false, 'Partner', true)];
+    const baseline = baselineFor('await_reply', thread, NOW.toISOString());
+    expect(findAnswer('await_reply', baseline, thread)).toBeNull();
+    expect(findAnswer('await_reply', baseline, [...thread, msg('2026-10-14T09:00Z', false)])?.at).toBe('2026-10-14T09:00:00.000Z');
+    // An auto-reply never moves the baseline of owe_reply either.
+    expect(baselineFor('owe_reply', [msg('2026-10-01T09:00Z', false), msg('2026-10-02T09:00Z', false, 'Bot', true)], NOW.toISOString()))
+      .toBe('2026-10-01T09:00:00.000Z');
+  });
+
+  it.each([
+    ['an Exchange out-of-office reply', { messageClass: 'IPM.Note.Rules.OofTemplate.Microsoft' }, true],
+    ['a delivery report', { messageClass: 'REPORT.IPM.Note.NDR' }, true],
+    ['Auto-Submitted: auto-replied', { headers: new Map([['auto-submitted', 'auto-replied']]) }, true],
+    ['Auto-Submitted: no', { headers: new Map([['auto-submitted', 'no']]) }, false],
+    ['X-Autoreply', { headers: new Map([['x-autoreply', 'yes']]) }, true],
+    ['Precedence: auto_reply', { headers: new Map([['precedence', 'auto_reply']]) }, true],
+    ['a mailer-daemon sender', { fromAddress: 'MAILER-DAEMON@example.net' }, true],
+    ['a multipart/report message', { mimeType: 'multipart/report' }, true],
+    ['an ordinary reply', { messageClass: 'IPM.Note', headers: new Map([['precedence', 'bulk']]), fromAddress: 'partner@example.net' }, false],
+  ])('isAutomatic: %s', async (_label, signals, expected) => {
+    const { isAutomatic } = await import('../src/mail-followup.js');
+    expect(isAutomatic(signals)).toBe(expected);
   });
 
   it('falls back when the thread has no message', async () => {
@@ -82,28 +108,35 @@ describe('fetchThreadMessages', () => {
       if (!url.includes('page2')) {
         return new Response(JSON.stringify({
           value: [
-            { from: { emailAddress: { address: 'Owner@Example.com', name: 'Owner' } }, sentDateTime: '2026-10-02T09:00:00Z', receivedDateTime: '2026-10-02T09:00:01Z' },
+            { from: { emailAddress: { address: 'Owner@Example.com', name: 'Owner' } }, sentDateTime: '2026-10-02T09:00:00Z', receivedDateTime: '2026-10-02T09:00:01Z', singleValueExtendedProperties: [{ id: 'String 0x1a', value: 'IPM.Note' }] },
             { isDraft: true, from: { emailAddress: { address: 'owner@example.com' } }, sentDateTime: '2026-10-06T09:00:00Z' },
+            { from: { emailAddress: { address: 'partner@example.net', name: 'Partner' } }, receivedDateTime: '2026-10-02T09:01:00Z', singleValueExtendedProperties: [{ id: 'String 0x1a', value: 'IPM.Note.Rules.OofTemplate.Microsoft' }] },
           ],
           '@odata.nextLink': 'https://graph.microsoft.com/v1.0/page2',
         }));
       }
       return new Response(JSON.stringify({
-        value: [{ from: { emailAddress: { address: 'partner@example.net', name: 'Partner' } }, receivedDateTime: '2026-10-04T09:00:00Z' }],
+        value: [
+          { from: { emailAddress: { address: 'partner@example.net', name: 'Partner' } }, receivedDateTime: '2026-10-03T09:00:00Z', internetMessageHeaders: [{ name: 'Auto-Submitted', value: 'auto-generated' }] },
+          { from: { emailAddress: { address: 'partner@example.net', name: 'Partner' } }, receivedDateTime: '2026-10-04T09:00:00Z', internetMessageHeaders: [{ name: 'Auto-Submitted', value: 'no' }] },
+        ],
       }));
     }));
 
     const { fetchThreadMessages } = await import('../src/mail-followup.js');
-    const messages = await fetchThreadMessages(account, { provider: 'outlook', account: 'owner@example.com', thread_id: "conv'1" }, AbortSignal.timeout(5000));
+    const messages = await fetchThreadMessages(account, { provider: 'outlook', account: 'owner@example.com', thread_id: 'conv+1/=' }, AbortSignal.timeout(5000));
 
     expect(messages).toEqual([
-      { at: '2026-10-02T09:00:00.000Z', outbound: true, from: 'Owner' },
-      { at: '2026-10-04T09:00:00.000Z', outbound: false, from: 'Partner' },
+      { at: '2026-10-02T09:00:00.000Z', outbound: true, from: 'Owner', auto: false },
+      { at: '2026-10-02T09:01:00.000Z', outbound: false, from: 'Partner', auto: true },
+      { at: '2026-10-03T09:00:00.000Z', outbound: false, from: 'Partner', auto: true },
+      { at: '2026-10-04T09:00:00.000Z', outbound: false, from: 'Partner', auto: false },
     ]);
     const list = new URL(urls[1]);
     expect(list.pathname).toBe('/v1.0/users/owner%40example.com/messages');
-    expect(list.searchParams.get('$filter')).toBe("conversationId eq 'conv''1'");
-    expect(list.searchParams.get('$select')).toBe('from,sentDateTime,receivedDateTime,isDraft');
+    expect(list.searchParams.get('$filter')).toBe("conversationId eq 'conv+1/='");
+    expect(list.searchParams.get('$select')).toBe('from,sentDateTime,receivedDateTime,isDraft,internetMessageHeaders');
+    expect(list.searchParams.get('$expand')).toBe("singleValueExtendedProperties($filter=id eq 'String 0x001A')");
   });
 
   it('reads a Gmail thread by labels, and explains a 403 as missing Gmail consent', async () => {
@@ -122,6 +155,8 @@ describe('fetchThreadMessages', () => {
           { internalDate: String(Date.parse('2026-10-02T09:00:00Z')), labelIds: ['SENT'], payload: { headers: [{ name: 'From', value: 'Me <me@home.example>' }] } },
           { internalDate: String(Date.parse('2026-10-03T09:00:00Z')), labelIds: ['DRAFT'] },
           { internalDate: String(Date.parse('2026-10-04T09:00:00Z')), labelIds: ['INBOX'], payload: { headers: [{ name: 'From', value: 'Shop <shop@example.net>' }] } },
+          { internalDate: String(Date.parse('2026-10-04T09:05:00Z')), labelIds: ['INBOX'], payload: { headers: [{ name: 'From', value: 'Shop <shop@example.net>' }, { name: 'Auto-Submitted', value: 'auto-replied' }] } },
+          { internalDate: String(Date.parse('2026-10-04T09:06:00Z')), labelIds: ['INBOX'], payload: { mimeType: 'multipart/report', headers: [{ name: 'From', value: 'Mail Delivery Subsystem <mailer-daemon@googlemail.com>' }] } },
         ],
       }));
     }));
@@ -129,12 +164,20 @@ describe('fetchThreadMessages', () => {
     const { fetchThreadMessages } = await import('../src/mail-followup.js');
     const email = { provider: 'gmail' as const, account: 'me@home.example', thread_id: 't1' };
     expect(await fetchThreadMessages(account, email, AbortSignal.timeout(5000))).toEqual([
-      { at: '2026-10-02T09:00:00.000Z', outbound: true, from: 'Me <me@home.example>' },
-      { at: '2026-10-04T09:00:00.000Z', outbound: false, from: 'Shop <shop@example.net>' },
+      { at: '2026-10-02T09:00:00.000Z', outbound: true, from: 'Me <me@home.example>', auto: false },
+      { at: '2026-10-04T09:00:00.000Z', outbound: false, from: 'Shop <shop@example.net>', auto: false },
+      { at: '2026-10-04T09:05:00.000Z', outbound: false, from: 'Shop <shop@example.net>', auto: true },
+      { at: '2026-10-04T09:06:00.000Z', outbound: false, from: 'Mail Delivery Subsystem <mailer-daemon@googlemail.com>', auto: true },
     ]);
+    const threadUrl = new URL(vi.mocked(fetch).mock.calls.map(([u]) => String(u)).find((u) => u.includes('/threads/'))!);
+    expect(threadUrl.searchParams.getAll('metadataHeaders')).toEqual(['From', 'Auto-Submitted', 'Precedence', 'X-Autoreply', 'X-Autorespond']);
 
     threadStatus = 403;
     await expect(fetchThreadMessages(account, email, AbortSignal.timeout(5000))).rejects.toThrow(/gmail\.metadata/);
+    // A dot segment would leave the thread resource (threads.list, getProfile).
+    for (const thread_id of ['.', '..']) {
+      await expect(fetchThreadMessages(account, { ...email, thread_id }, AbortSignal.timeout(5000))).rejects.toThrow(/not a gmail thread id/);
+    }
   });
 });
 
@@ -214,6 +257,25 @@ describe('createFollowUp', () => {
       .rejects.toMatchObject({ code });
   });
 
+  it('does not create a follow-up for a card trashed while its thread was read', async () => {
+    seedEmailCard();
+    const { createFollowUp } = await import('../src/mail-followup.js');
+    const fetchThread = async () => {
+      testDb.prepare("UPDATE cards SET deleted_at = '2026-10-14T11:59:00Z' WHERE id = 'card0001'").run();
+      return [msg('2026-10-13T10:00Z', true)];
+    };
+    await expect(createFollowUp({ cardId: 'card0001', mode: 'await_reply', days: 3, channel: 'macos', timezone: 'UTC' }, { fetchThread, now: () => NOW, config }))
+      .rejects.toMatchObject({ code: 'card_not_found' });
+    expect(reminderRows()).toHaveLength(0);
+  });
+
+  it('rejects a thread id that is not the provider\'s', async () => {
+    seedEmailCard('card0001', { provider: 'gmail', account: 'owner@example.com', message_id: 'm1', thread_id: '..' });
+    const { createFollowUp } = await import('../src/mail-followup.js');
+    await expect(createFollowUp({ cardId: 'card0001', mode: 'await_reply', days: 3, channel: 'macos', timezone: 'UTC' }, { fetchThread: vi.fn(), now: () => NOW, config }))
+      .rejects.toMatchObject({ code: 'invalid_thread_id' });
+  });
+
   it('rejects an unknown time zone', async () => {
     seedEmailCard();
     const { createFollowUp } = await import('../src/mail-followup.js');
@@ -258,6 +320,31 @@ describe('runFollowUpSync', () => {
     expect(comments).toEqual([{ author: 'kanban', text: 'Ответ получен 14.10.2026, 08:30 от Partner: напоминание о follow-up снято.' }]);
     expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'reminder-dismissed', reminderId }));
     expect(getFollowUpSyncStatus()).toMatchObject({ ok: true, answered: 1, active: 0, failed: 0 });
+  });
+
+  it('re-anchors a follow-up made while the thread was unreadable and sees an earlier answer', async () => {
+    const { createFollowUp, runFollowUpSync } = await import('../src/mail-followup.js');
+    await createFollowUp(
+      { cardId: 'card0001', mode: 'await_reply', days: 3, channel: 'macos', timezone: 'UTC' },
+      { fetchThread: async () => { throw new Error('HTTP 503'); }, now: () => NOW, config },
+    );
+    await runFollowUpSync({ fetchThread: async () => [msg('2026-10-10T09:00Z', true), msg('2026-10-12T09:00Z', false)], now: () => NOW, config });
+    const [row] = reminderRows();
+    expect(row.status).toBe('dismissed');
+    expect(JSON.parse(row.source_meta).follow_up).toMatchObject({ state: 'answered', baseline_at: '2026-10-10T09:00:00.000Z', baseline_source: 'thread' });
+  });
+
+  it('re-anchors the trigger on the first good read when no answer came', async () => {
+    const { createFollowUp, runFollowUpSync } = await import('../src/mail-followup.js');
+    await createFollowUp(
+      { cardId: 'card0001', mode: 'await_reply', days: 3, channel: 'macos', timezone: 'UTC' },
+      { fetchThread: async () => { throw new Error('HTTP 503'); }, now: () => NOW, config },
+    );
+    expect(reminderRows()[0].trigger_at).toBe('2026-10-17T12:00:00.000Z');
+    await runFollowUpSync({ fetchThread: async () => [msg('2026-10-10T09:00Z', true)], now: () => NOW, config });
+    const [row] = reminderRows();
+    expect(row).toMatchObject({ status: 'scheduled', trigger_at: '2026-10-13T09:00:00.000Z' });
+    expect(JSON.parse(row.source_meta).follow_up).toMatchObject({ state: 'waiting', baseline_source: 'thread', error: null });
   });
 
   it('keeps waiting while no answer is in the thread', async () => {

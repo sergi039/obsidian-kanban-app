@@ -312,6 +312,16 @@ describe('ingestCard from an email (EMAIL-1)', () => {
     expect((testDb.prepare('SELECT COUNT(*) AS n FROM inbox_captures').get() as { n: number }).n).toBe(0);
   });
 
+  it('reserves source_meta.email for the validated email object', async () => {
+    const { ingestCard } = await import('../src/ingest.js');
+    expect(() => ingestCard({
+      boardId: 'private',
+      title: 'Task',
+      source: 'email',
+      sourceMeta: { email: { provider: 'gmail', account: 'me@example.com', thread_id: '.' } },
+    }, createConfig(vaultRoot))).toThrow(expect.objectContaining({ code: 'source_meta_email_reserved' }) as unknown as Error);
+  });
+
   it('rejects credentials in source_meta for any source', async () => {
     const { ingestCard } = await import('../src/ingest.js');
     expect(() => ingestCard({

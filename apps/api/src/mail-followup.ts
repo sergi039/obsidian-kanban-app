@@ -9,9 +9,11 @@
  * - `owe_reply`: the other side wrote last and the owner has to answer.
  *
  * The reminder fires `days` after the message the wait counts from. Every sync reads
- * the thread's message headers (sender and date only, never subject or body) through
- * the account credentials the calendar sync already uses; once the awaited answer is
- * in the thread, the reminder is dismissed and the card gets a comment saying so.
+ * the thread's message headers (never a body) through the account credentials the
+ * calendar sync already uses; once the awaited answer is in the thread, the reminder
+ * is dismissed and the card gets a comment saying so. Automatic messages (out-of-office
+ * replies, delivery failures, auto-generated notices) are not answers. Only sender and
+ * date of the answer are stored.
  * Without mailbox access (an unconfigured mailbox, a Google consent without Gmail)
  * the reminder still fires on time; it just cannot dismiss itself.
  */
@@ -22,6 +24,7 @@ import { loadConfig, type AppConfig, type CalendarAccount } from './config.js';
 import { fetchJson, graphAccessToken, googleAccessToken } from './calendar-providers.js';
 import { broadcast } from './ws.js';
 import { safeJsonParse } from './utils.js';
+import { isProviderId } from './email-provenance.js';
 
 export const FOLLOW_UP_MODES = ['await_reply', 'owe_reply'] as const;
 export type FollowUpMode = (typeof FOLLOW_UP_MODES)[number];
@@ -39,6 +42,8 @@ export interface ThreadMessage {
   /** Sent from the card's mailbox. */
   outbound: boolean;
   from: string;
+  /** Out-of-office reply, delivery report or other auto-generated mail: never an answer. */
+  auto: boolean;
 }
 
 export interface FollowUpState {
@@ -46,6 +51,8 @@ export interface FollowUpState {
   days: number;
   /** The message the wait counts from: the owner's last one (await_reply) or theirs (owe_reply). */
   baseline_at: string;
+  /** thread: taken from the thread; fallback: the thread was unreadable, re-taken on the first good read. */
+  baseline_source: 'thread' | 'fallback';
   /** waiting: thread read, no answer yet; unchecked: the thread could not be read; answered: done. */
   state: 'waiting' | 'unchecked' | 'answered';
   checked_at: string | null;
@@ -71,17 +78,42 @@ export class FollowUpError extends Error {
 
 // ---------------------------------------------------------------- rules (pure)
 
+/** Exchange message classes of out-of-office/rule replies and of delivery/read reports. */
+const AUTO_MESSAGE_CLASS_RE = /^(IPM\.Note\.Rules\.|REPORT\.)/i;
+const AUTO_SENDER_RE = /^(mailer-daemon|postmaster)@/i;
+
+/** RFC 3834 and common auto-responder markers; any one makes a message automatic. */
+export function isAutomatic(signals: {
+  messageClass?: string;
+  headers?: Map<string, string>;
+  fromAddress?: string;
+  mimeType?: string;
+}): boolean {
+  const header = (name: string) => signals.headers?.get(name)?.trim().toLowerCase();
+  const autoSubmitted = header('auto-submitted');
+  return Boolean(
+    (signals.messageClass && AUTO_MESSAGE_CLASS_RE.test(signals.messageClass))
+    || (autoSubmitted && autoSubmitted !== 'no')
+    || signals.headers?.has('x-autoreply')
+    || signals.headers?.has('x-autorespond')
+    || header('precedence') === 'auto_reply'
+    || (signals.fromAddress && AUTO_SENDER_RE.test(signals.fromAddress))
+    || signals.mimeType?.toLowerCase() === 'multipart/report',
+  );
+}
+
 /** The time the wait counts from; `fallback` when the thread has no message to anchor on. */
 export function baselineFor(mode: FollowUpMode, messages: ThreadMessage[], fallback: string): string {
-  const own = messages.filter((m) => (mode === 'await_reply' ? m.outbound : !m.outbound));
-  const pool = own.length > 0 ? own : messages;
+  const human = messages.filter((m) => !m.auto);
+  const own = human.filter((m) => (mode === 'await_reply' ? m.outbound : !m.outbound));
+  const pool = own.length > 0 ? own : human;
   if (pool.length === 0) return fallback;
   return pool.reduce((latest, m) => (m.at > latest.at ? m : latest)).at;
 }
 
 /** The first awaited message after the baseline: theirs for await_reply, the owner's for owe_reply. */
 export function findAnswer(mode: FollowUpMode, baselineAt: string, messages: ThreadMessage[]): ThreadMessage | null {
-  const answers = messages.filter((m) => (mode === 'await_reply' ? !m.outbound : m.outbound) && m.at > baselineAt);
+  const answers = messages.filter((m) => !m.auto && (mode === 'await_reply' ? !m.outbound : m.outbound) && m.at > baselineAt);
   if (answers.length === 0) return null;
   return answers.reduce((first, m) => (m.at < first.at ? m : first));
 }
@@ -102,24 +134,44 @@ interface GraphMessage {
   sentDateTime?: string;
   receivedDateTime?: string;
   from?: { emailAddress?: { address?: string; name?: string } };
+  internetMessageHeaders?: Array<{ name: string; value: string }>;
+  singleValueExtendedProperties?: Array<{ id: string; value: string }>;
 }
 
 interface GmailMessage {
   internalDate?: string;
   labelIds?: string[];
-  payload?: { headers?: Array<{ name: string; value: string }> };
+  payload?: { mimeType?: string; headers?: Array<{ name: string; value: string }> };
+}
+
+/** PidTagMessageClass: tells Exchange out-of-office replies and reports from ordinary mail. */
+const GRAPH_MESSAGE_CLASS = 'String 0x001A';
+/** Graph answers with the short form (`String 0x1a`), so compare the tag number, not the text. */
+const GRAPH_MESSAGE_CLASS_ID_RE = /^string 0x0*1a$/i;
+const GMAIL_HEADERS = ['From', 'Auto-Submitted', 'Precedence', 'X-Autoreply', 'X-Autorespond'];
+
+function headerMap(headers: Array<{ name: string; value: string }> | undefined): Map<string, string> {
+  return new Map((headers ?? []).map((h) => [h.name.toLowerCase(), h.value]));
+}
+
+function addressOf(from: string): string {
+  const match = /<([^>]+)>/.exec(from);
+  return (match ? match[1] : from).trim().toLowerCase();
 }
 
 /** Sender and date of every message in the thread; throws rather than return a partial thread. */
 export const fetchThreadMessages: ThreadFetcher = async (account, email, signal) => {
   if (!email.thread_id) throw new Error('the card\'s email has no thread id');
+  if (!isProviderId(email.provider, email.thread_id)) throw new Error(`not a ${email.provider} thread id`);
   const mailbox = account.email.toLowerCase();
 
   if (account.provider === 'outlook') {
     const token = await graphAccessToken(account, signal);
+    // Headers, never the body: internetMessageHeaders carry the auto-reply markers.
     const params = new URLSearchParams({
       $filter: `conversationId eq '${email.thread_id.replace(/'/g, "''")}'`,
-      $select: 'from,sentDateTime,receivedDateTime,isDraft',
+      $select: 'from,sentDateTime,receivedDateTime,isDraft,internetMessageHeaders',
+      $expand: `singleValueExtendedProperties($filter=id eq '${GRAPH_MESSAGE_CLASS}')`,
       $top: '50',
     });
     let next: string | null = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(account.email)}/messages?${params}`;
@@ -136,7 +188,12 @@ export const fetchThreadMessages: ThreadFetcher = async (account, email, signal)
         const outbound = address === mailbox;
         const at = outbound ? m.sentDateTime : m.receivedDateTime;
         if (!at) continue;
-        messages.push({ at: new Date(at).toISOString(), outbound, from: m.from?.emailAddress?.name || address });
+        const auto = isAutomatic({
+          messageClass: m.singleValueExtendedProperties?.find((p) => GRAPH_MESSAGE_CLASS_ID_RE.test(p.id))?.value,
+          headers: headerMap(m.internetMessageHeaders),
+          fromAddress: address,
+        });
+        messages.push({ at: new Date(at).toISOString(), outbound, from: m.from?.emailAddress?.name || address, auto });
       }
       next = res['@odata.nextLink'] ?? null;
     }
@@ -144,7 +201,8 @@ export const fetchThreadMessages: ThreadFetcher = async (account, email, signal)
   }
 
   const token = await googleAccessToken(account, signal);
-  const params = new URLSearchParams({ format: 'metadata', metadataHeaders: 'From' });
+  const params = new URLSearchParams({ format: 'metadata' });
+  for (const name of GMAIL_HEADERS) params.append('metadataHeaders', name);
   let res: { messages?: GmailMessage[] };
   try {
     res = await fetchJson(
@@ -163,8 +221,10 @@ export const fetchThreadMessages: ThreadFetcher = async (account, email, signal)
   for (const m of res.messages ?? []) {
     const labels = m.labelIds ?? [];
     if (labels.includes('DRAFT') || !m.internalDate) continue;
-    const from = m.payload?.headers?.find((h) => h.name.toLowerCase() === 'from')?.value ?? '';
-    messages.push({ at: new Date(Number(m.internalDate)).toISOString(), outbound: labels.includes('SENT'), from });
+    const headers = headerMap(m.payload?.headers);
+    const from = headers.get('from') ?? '';
+    const auto = isAutomatic({ headers, fromAddress: addressOf(from), mimeType: m.payload?.mimeType });
+    messages.push({ at: new Date(Number(m.internalDate)).toISOString(), outbound: labels.includes('SENT'), from, auto });
   }
   return messages;
 };
@@ -278,6 +338,9 @@ export async function createFollowUp(
   if (!email.thread_id) {
     throw new FollowUpError('The card\'s email has no thread id to follow', 400, 'no_thread_id');
   }
+  if (!isProviderId(email.provider, email.thread_id)) {
+    throw new FollowUpError(`The card's thread id is not a ${email.provider} thread id`, 400, 'invalid_thread_id');
+  }
 
   const config = deps.config ?? loadConfig();
   const fetchThread = deps.fetchThread ?? fetchThreadMessages;
@@ -297,12 +360,17 @@ export async function createFollowUp(
     }
   }
 
+  // The card may have gone to the trash while the thread was read.
+  const live = db.prepare('SELECT deleted_at FROM cards WHERE id = ?').get(card.id) as { deleted_at: string | null } | undefined;
+  if (!live || live.deleted_at) throw new FollowUpError('Card not found', 404, 'card_not_found');
+
   const baselineAt = messages ? baselineFor(input.mode, messages, nowIso) : nowIso;
   const answer = messages ? findAnswer(input.mode, baselineAt, messages) : null;
   const followUp: FollowUpState = {
     mode: input.mode,
     days: input.days,
     baseline_at: baselineAt,
+    baseline_source: messages ? 'thread' : 'fallback',
     state: messages ? 'waiting' : 'unchecked',
     checked_at: messages ? nowIso : null,
     error,
@@ -399,12 +467,22 @@ export async function runFollowUpSync(deps: { fetchThread?: ThreadFetcher; now?:
           : AbortSignal.timeout(THREAD_FETCH_TIMEOUT_MS);
         const messages = await fetchThread(account, email, signal);
         if (shutdown?.signal.aborted) return;
-        const answer = findAnswer(follow.mode, follow.baseline_at, messages);
+        // A follow-up made while the thread was unreadable counted from its creation time;
+        // the first good read anchors it on the thread, as if it had been read then.
+        const rebased = follow.baseline_source === 'fallback';
+        const current: FollowUpState = rebased
+          ? { ...follow, baseline_at: baselineFor(follow.mode, messages, follow.baseline_at), baseline_source: 'thread' }
+          : follow;
+        const answer = findAnswer(current.mode, current.baseline_at, messages);
         if (answer) {
-          if (markAnswered(db, row, follow, answer, nowIso)) {
+          if (markAnswered(db, row, current, answer, nowIso)) {
             answered++;
             notifyAnswered(row);
           }
+        } else if (rebased) {
+          const triggerAt = new Date(new Date(current.baseline_at).getTime() + current.days * DAY_MS).toISOString();
+          db.prepare(`UPDATE reminders SET trigger_at = ?, source_meta = ?, updated_at = datetime('now') WHERE id = ? AND status IN ('scheduled', 'snoozed') AND source_meta = ?`)
+            .run(triggerAt, JSON.stringify({ ...meta, follow_up: { ...current, state: 'waiting', checked_at: nowIso, error: null } }), row.id, row.source_meta);
         } else {
           record({ state: 'waiting', checked_at: nowIso, error: null });
         }

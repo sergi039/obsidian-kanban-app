@@ -263,6 +263,10 @@ function emailProvenance(input: IngestCardInput, email: unknown): Provenance {
 
 function provenance(input: IngestCardInput): Provenance {
   if (input.email !== undefined) return emailProvenance(input, input.email);
+  // source_meta.email is what follow-ups read the mailbox by: only the validated `email` object writes it.
+  if (input.sourceMeta && Object.prototype.hasOwnProperty.call(input.sourceMeta, 'email')) {
+    throw new IngestError('source_meta.email is set from the email object; pass `email` instead', 400, 'source_meta_email_reserved');
+  }
   const source = input.source ?? 'manual';
   assertSource(source);
   return { source, sourceUid: makeSourceUid(source, input.sourceUid), sourceUrl: input.sourceUrl ?? null, sourceMeta: input.sourceMeta };

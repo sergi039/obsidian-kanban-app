@@ -66,6 +66,11 @@ export const EmailRefSchema = z
 
 export type EmailRef = z.infer<typeof EmailRefSchema>;
 
+/** Whether `id` has the shape of this provider's message/thread id; `.` and `..` never do. */
+export function isProviderId(provider: EmailProvider, id: string): boolean {
+  return id.length <= MAX_ID_LENGTH && (provider === 'gmail' ? GMAIL_ID_RE : OUTLOOK_ID_RE).test(id);
+}
+
 function mailbox(ref: EmailRef): string {
   return ref.account.toLowerCase();
 }
