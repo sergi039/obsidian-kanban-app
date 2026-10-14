@@ -88,6 +88,33 @@ For local Codex-style use, expose the same command:
 - `kanban_route_task` dry-runs routing and returns confidence/clarification state.
 - `kanban_capture_task` creates exactly one card when routing is confident or explicit; otherwise it returns clarification options without writing.
 
+## Tasks from email
+
+When the task comes from an email, the agent passes the email's provider ids in `email` (MCP `kanban_capture_task`, or `POST /api/inbox/capture`):
+
+```json
+{
+  "title": "Reply to the partner about the renewal",
+  "description": "Short summary written by the agent",
+  "email": {
+    "provider": "gmail",
+    "account": "owner@example.com",
+    "message_id": "<Gmail API message id or Graph message id>",
+    "thread_id": "<Gmail threadId or Graph conversationId>",
+    "subject": "Contract renewal",
+    "from": "Partner <partner@example.net>",
+    "received_at": "2026-10-14T08:30:00Z"
+  }
+}
+```
+
+The server derives the rest, so `source_uid`, `source_url` and `idempotency_key` stay empty:
+
+- `source` is `email`.
+- `source_uid` is `<provider>:<mailbox>:thread:<thread_id>`, or `…:message:<message_id>` without a thread id. Capturing the same thread again returns the card it already has, with status `duplicate`, even when the title or message differs. The same thread in another mailbox is another task.
+- `source_url` opens the email, in the formats invoice-zero's `buildEmailLink` uses: Gmail `https://mail.google.com/mail/u/<mailbox>/#all/<message_id>`; Outlook work/school `https://outlook.office.com/mail/deeplink/read/<message_id>`; consumer Outlook (outlook.com, hotmail, live, msn) `https://outlook.live.com/mail/0/inbox/id/<thread_id or message_id>`. It is written into the task line as `[from:email](…)`.
+- `source_meta.email` keeps only the fields above. Unknown fields in `email` are rejected, and so is a `source_meta` key that looks like an email body (`body`, `html`, `text`, `raw`, …). For every source, a `source_meta` key that looks like a credential (`token`, `secret`, `password`, `api_key`, `cookie`, …) is rejected.
+
 ## Routing behavior
 
 - Auto-create requires confidence at or above `clarifyBelowConfidence` and enough margin over the second candidate.
@@ -100,6 +127,7 @@ For local Codex-style use, expose the same command:
 
 - Desktop clients use one high-level capture tool instead of separate work/personal write tools.
 - The API stores `source_uid`, `source_url`, bounded `source_meta`, and an `inbox_captures` row for idempotency and auditability.
+- `source_meta` never carries credentials, and email captures never carry the email body.
 - Replays with the same payload return the existing card; replays with the same capture key and different payload are rejected.
 - Failed writes can be retried with the same capture key after the underlying file/API issue is fixed.
 

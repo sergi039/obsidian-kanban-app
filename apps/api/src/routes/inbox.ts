@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { ingestCard, IngestError, SOURCE_VALUES } from '../ingest.js';
+import { EmailRefSchema } from '../email-provenance.js';
 import { ingestTokenAuth } from '../middleware/security.js';
 import { loadConfig } from '../config.js';
 import { loadRoutingConfig, routeTask } from '../routing.js';
@@ -19,10 +20,13 @@ const CaptureSchema = z.object({
   board_id: z.string().optional(),
   column: z.string().optional(),
   links: z.array(LinkSchema).optional(),
-  source: z.enum(SOURCE_VALUES).default('manual'),
+  /** Defaults to "email" when `email` is given, else "manual". */
+  source: z.enum(SOURCE_VALUES).optional(),
   source_uid: z.string().optional(),
   source_url: z.string().url().optional(),
   source_meta: z.record(z.unknown()).optional(),
+  /** Provider ids of the email the task came from; the server derives source_uid/source_url. */
+  email: EmailRefSchema.optional(),
   context: z.string().optional(),
   allow_default_on_ambiguous: z.boolean().optional(),
 });
@@ -104,6 +108,7 @@ inbox.post('/capture', async (c) => {
       sourceUid: parsed.data.source_uid,
       sourceUrl: parsed.data.source_url,
       sourceMeta: parsed.data.source_meta,
+      email: parsed.data.email,
       context: parsed.data.context,
       allowDefaultOnAmbiguous: parsed.data.allow_default_on_ambiguous,
     });

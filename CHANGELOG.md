@@ -2,6 +2,12 @@
 
 ## 2026-10-14
 
+### Tasks from email keep their link and thread (issue #2, EMAIL-1)
+- A capture can say which email it came from: provider (Gmail or Outlook), mailbox, message id and thread id. The card then links to that email (`[from:email](…)` in the task line), in the same link formats invoice-zero uses.
+- One email thread is one task: capturing the same thread again returns the card it already has instead of a second card, even with another title or a later message in the thread.
+- The card keeps only header-level fields of the email (subject, sender, date, ids). An email body or anything that looks like a credential in the capture's metadata is rejected.
+- The MCP tool `kanban_capture_task` takes the same `email` object.
+
 ### Sync hardening (issue #9)
 - The done checkbox can no longer tick the wrong task. A card is found by its `kb:id` only, and a card without one only on its recorded line while that line still reads the same. The old fallback searched five lines up and down by title and ticked another task with the same title.
 - A card whose recorded line now holds a heading or other non-task line is still found by its `kb:id`; before, the write-back stopped with "Line is not a checkbox".

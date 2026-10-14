@@ -205,3 +205,120 @@ describe('ingestCard', () => {
     expect(positions).toEqual({ [result.card.id]: 0, 'old-a': 1, 'old-b': 2, binned: 7, 'done-a': 0 });
   });
 });
+
+describe('ingestCard from an email (EMAIL-1)', () => {
+  let vaultRoot: string;
+  const email = {
+    provider: 'gmail' as const,
+    account: 'owner@example.com',
+    message_id: 'msg-1',
+    thread_id: 'thread-1',
+    subject: 'Contract renewal',
+    from: 'Partner <partner@example.net>',
+  };
+
+  beforeEach(() => {
+    testDb = createDb();
+    vaultRoot = mkdtempSync(path.join(os.tmpdir(), 'kanban-ingest-email-'));
+    writeFileSync(path.join(vaultRoot, 'Private.md'), '# Private\n', 'utf-8');
+  });
+
+  afterEach(() => {
+    testDb.close();
+    rmSync(vaultRoot, { recursive: true, force: true });
+  });
+
+  it('derives source, source_uid, the email link and header-only source_meta', async () => {
+    const { ingestCard } = await import('../src/ingest.js');
+    const result = ingestCard({
+      boardId: 'private',
+      title: 'Reply about the contract renewal',
+      email,
+      sourceMeta: { client: 'claude_desktop' },
+    }, createConfig(vaultRoot));
+    if (!result.created) throw new Error('expected card creation');
+
+    expect(result.card).toMatchObject({
+      source: 'email',
+      source_uid: 'gmail:owner@example.com:thread:thread-1',
+      source_url: 'https://mail.google.com/mail/u/owner@example.com/#all/msg-1',
+      title: 'Reply about the contract renewal',
+    });
+    expect(result.card.source_meta).toEqual({
+      client: 'claude_desktop',
+      email: {
+        provider: 'gmail',
+        account: 'owner@example.com',
+        message_id: 'msg-1',
+        thread_id: 'thread-1',
+        subject: 'Contract renewal',
+        from: 'Partner <partner@example.net>',
+      },
+    });
+    expect(readFileSync(path.join(vaultRoot, 'Private.md'), 'utf-8')).toContain(
+      '- [ ] Reply about the contract renewal [from:email](https://mail.google.com/mail/u/owner@example.com/#all/msg-1)',
+    );
+  });
+
+  it('returns the existing card when the same thread is captured again with another message and title', async () => {
+    const { ingestCard } = await import('../src/ingest.js');
+    const config = createConfig(vaultRoot);
+    const first = ingestCard({ boardId: 'private', title: 'Reply about the contract renewal', email }, config);
+    if (!first.created) throw new Error('expected card creation');
+
+    const again = ingestCard({
+      boardId: 'private',
+      title: 'Partner asked again about renewal',
+      email: { ...email, message_id: 'msg-2' },
+    }, config);
+
+    if (!again.created) throw new Error('expected the existing card');
+    expect(again.duplicate).toBe(true);
+    expect(again.card.id).toBe(first.card.id);
+    expect((testDb.prepare('SELECT COUNT(*) AS n FROM cards').get() as { n: number }).n).toBe(1);
+    const file = readFileSync(path.join(vaultRoot, 'Private.md'), 'utf-8');
+    expect(file).not.toContain('Partner asked again');
+  });
+
+  it('keeps one card per mailbox: the same thread id in another account is another task', async () => {
+    const { ingestCard } = await import('../src/ingest.js');
+    const config = createConfig(vaultRoot);
+    ingestCard({ boardId: 'private', title: 'First mailbox', email }, config);
+    const other = ingestCard({ boardId: 'private', title: 'Second mailbox', email: { ...email, account: 'team@example.com' } }, config);
+
+    if (!other.created) throw new Error('expected card creation');
+    expect(other.duplicate).toBe(false);
+  });
+
+  it('still rejects a changed payload for a non-email capture key', async () => {
+    const { ingestCard, IngestError } = await import('../src/ingest.js');
+    const config = createConfig(vaultRoot);
+    ingestCard({ boardId: 'private', title: 'One', source: 'claude', sourceUid: 'msg-x' }, config);
+
+    expect(() => ingestCard({ boardId: 'private', title: 'Two', source: 'claude', sourceUid: 'msg-x' }, config))
+      .toThrow(expect.objectContaining({ code: 'capture_conflict' }) as unknown as typeof IngestError);
+  });
+
+  it.each([
+    ['source_uid next to email', { sourceUid: 'custom' }, 'email_provenance_conflict'],
+    ['source_url next to email', { sourceUrl: 'https://example.com/x' }, 'email_provenance_conflict'],
+    ['a non-email source with email', { source: 'claude' as const }, 'email_source_mismatch'],
+    ['an email body in source_meta', { sourceMeta: { body_html: '<p>Dear owner</p>' } }, 'source_meta_email_body'],
+    ['an invalid email reference', { email: { ...email, message_id: 'a/b' } }, 'invalid_email_ref'],
+  ])('rejects %s', async (_label, extra, code) => {
+    const { ingestCard } = await import('../src/ingest.js');
+    expect(() => ingestCard({ boardId: 'private', title: 'Task', email, ...extra }, createConfig(vaultRoot)))
+      .toThrow(expect.objectContaining({ code }) as unknown as Error);
+    expect((testDb.prepare('SELECT COUNT(*) AS n FROM inbox_captures').get() as { n: number }).n).toBe(0);
+  });
+
+  it('rejects credentials in source_meta for any source', async () => {
+    const { ingestCard } = await import('../src/ingest.js');
+    expect(() => ingestCard({
+      boardId: 'private',
+      title: 'Task',
+      source: 'telegram',
+      sourceMeta: { chat: { bot_token: '123:abc' } },
+    }, createConfig(vaultRoot))).toThrow(expect.objectContaining({ code: 'source_meta_secret', message: expect.stringContaining('chat.bot_token') }) as unknown as Error);
+  });
+});

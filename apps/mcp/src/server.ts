@@ -20,6 +20,18 @@ const SourceSchema = z.object({
   meta: z.record(z.unknown()).optional(),
 });
 
+/** The email a task came from. The Kanban API derives the card's link, dedup key and metadata from it. */
+const EmailSchema = z.object({
+  provider: z.enum(['gmail', 'outlook']).describe('Mailbox provider'),
+  account: z.string().describe('Address of the mailbox the email is in'),
+  message_id: z.string().describe('Provider message id: Gmail API id, or Microsoft Graph message id'),
+  thread_id: z.string().optional().describe('Gmail threadId or Graph conversationId; one card per thread'),
+  internet_message_id: z.string().optional().describe('RFC 5322 Message-ID header'),
+  subject: z.string().optional(),
+  from: z.string().optional(),
+  received_at: z.string().optional().describe('ISO 8601 date-time'),
+});
+
 function sourceForClient(client: z.infer<typeof SourceSchema>['client']): 'claude' | 'openai' | 'manual' {
   if (client === 'claude_desktop') return 'claude';
   if (client === 'openai_desktop' || client === 'codex') return 'openai';
@@ -106,7 +118,10 @@ server.tool(
 
 server.tool(
   'kanban_capture_task',
-  'Create a task in Obsidian Kanban, auto-routing when confident and returning clarification options when ambiguous.',
+  'Create a task in Obsidian Kanban, auto-routing when confident and returning clarification options when ambiguous. '
+    + 'For a task from an email, pass `email` with the provider ids and leave source.source_uid, source.source_url and '
+    + 'idempotency_key empty: the server builds the link to the email and returns the existing card (status "duplicate") '
+    + 'when the thread was captured before. Put a short summary in description, never the email body.',
   {
     title: z.string().min(1),
     description: z.string().optional(),
@@ -118,9 +133,10 @@ server.tool(
       column: z.string().optional(),
     }).default({ mode: 'auto' }),
     source: SourceSchema.default({ client: 'other' }),
+    email: EmailSchema.optional(),
     idempotency_key: z.string().optional(),
   },
-  async ({ title, description, links, route, source, idempotency_key }) => {
+  async ({ title, description, links, route, source, email, idempotency_key }) => {
     const sourceMeta = {
       ...(source.meta ?? {}),
       client: source.client,
@@ -133,10 +149,11 @@ server.tool(
       links,
       board_id: route.mode === 'explicit' ? route.board_id : undefined,
       column: route.column,
-      source: sourceForClient(source.client),
+      source: email ? 'email' : sourceForClient(source.client),
       source_uid: source.source_uid ?? idempotency_key,
       source_url: source.source_url,
       source_meta: sourceMeta,
+      email,
       context: route.domain,
     };
     return jsonContent(await apiRequest('/api/inbox/capture', {

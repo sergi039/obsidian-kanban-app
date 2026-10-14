@@ -10,6 +10,7 @@ import { suppressWatcher, unsuppressWatcher } from './watcher.js';
 import { updateSyncStateHash } from './writeback.js';
 import { fireEvent } from './automations.js';
 import { formatCard } from './utils.js';
+import { EmailRefSchema, emailSourceMeta, emailSourceUid, emailSourceUrl, type EmailRef } from './email-provenance.js';
 
 export const SOURCE_VALUES = ['telegram', 'email', 'web-clipper', 'claude', 'openai', 'mobile', 'manual'] as const;
 export type IngestSource = (typeof SOURCE_VALUES)[number];
@@ -29,6 +30,8 @@ export interface IngestCardInput {
   sourceUid?: string;
   sourceUrl?: string;
   sourceMeta?: Record<string, unknown>;
+  /** The email this task came from; the server derives source_uid, source_url and source_meta.email. */
+  email?: EmailRef;
   context?: string;
   allowDefaultOnAmbiguous?: boolean;
 }
@@ -61,6 +64,10 @@ export type IngestCardResult =
 
 const MAX_SOURCE_META_BYTES = 4096;
 const MAX_TITLE_BYTES = 1000;
+/** source_meta is stored on the card and shown to every client: no credentials in it. */
+const SECRET_META_KEY_RE = /(token|secret|password|passwd|authorization|cookie|api[_-]?key|credential)/i;
+/** Email captures keep header-level fields only; the body belongs in the mailbox, a summary in description. */
+const EMAIL_BODY_META_KEY_RE = /^(body|html|text|raw|mime|content|body_html|body_text|html_body|text_body)$/i;
 
 export class IngestError extends Error {
   constructor(
@@ -150,8 +157,39 @@ function appendCanonicalLinks(title: string, links: Array<{ url: string; title: 
   return result;
 }
 
-function boundedSourceMeta(meta: Record<string, unknown> | undefined): string {
+/** Dotted path of the first key (at any depth) that matches, or null. */
+function findMetaKey(value: unknown, re: RegExp, prefix = ''): string | null {
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const hit = findMetaKey(value[i], re, `${prefix}[${i}]`);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (value === null || typeof value !== 'object') return null;
+  for (const [key, child] of Object.entries(value)) {
+    const keyPath = prefix ? `${prefix}.${key}` : key;
+    if (re.test(key)) return keyPath;
+    const hit = findMetaKey(child, re, keyPath);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function boundedSourceMeta(meta: Record<string, unknown> | undefined, source: IngestSource): string {
   const normalized = meta ?? {};
+  const secretKey = findMetaKey(normalized, SECRET_META_KEY_RE);
+  if (secretKey) {
+    throw new IngestError(`source_meta must not carry credentials (key "${secretKey}")`, 400, 'source_meta_secret');
+  }
+  const bodyKey = source === 'email' ? findMetaKey(normalized, EMAIL_BODY_META_KEY_RE) : null;
+  if (bodyKey) {
+    throw new IngestError(
+      `source_meta must not carry the email body (key "${bodyKey}"); put a short summary in description`,
+      400,
+      'source_meta_email_body',
+    );
+  }
   const raw = JSON.stringify(normalized);
   if (Buffer.byteLength(raw, 'utf-8') > MAX_SOURCE_META_BYTES) {
     throw new IngestError(`source_meta must be ${MAX_SOURCE_META_BYTES} bytes or less`, 400, 'source_meta_too_large');
@@ -195,17 +233,50 @@ function routeForExistingCard(card: Record<string, unknown>): RouteTaskResult {
   };
 }
 
+interface Provenance {
+  source: IngestSource;
+  sourceUid: string;
+  sourceUrl: string | null;
+  sourceMeta: Record<string, unknown> | undefined;
+}
+
+/** Provenance of a capture from an email: everything is derived from the email's provider ids. */
+function emailProvenance(input: IngestCardInput, email: unknown): Provenance {
+  const parsed = EmailRefSchema.safeParse(email);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    throw new IngestError(`email.${issue.path.join('.')}: ${issue.message}`, 400, 'invalid_email_ref');
+  }
+  if (input.source !== undefined && input.source !== 'email') {
+    throw new IngestError('a capture with email must use source "email"', 400, 'email_source_mismatch');
+  }
+  if (input.sourceUid?.trim() || input.sourceUrl) {
+    throw new IngestError('source_uid and source_url come from email; leave them out', 400, 'email_provenance_conflict');
+  }
+  return {
+    source: 'email',
+    sourceUid: emailSourceUid(parsed.data),
+    sourceUrl: emailSourceUrl(parsed.data),
+    sourceMeta: { ...input.sourceMeta, email: emailSourceMeta(parsed.data) },
+  };
+}
+
+function provenance(input: IngestCardInput): Provenance {
+  if (input.email !== undefined) return emailProvenance(input, input.email);
+  const source = input.source ?? 'manual';
+  assertSource(source);
+  return { source, sourceUid: makeSourceUid(source, input.sourceUid), sourceUrl: input.sourceUrl ?? null, sourceMeta: input.sourceMeta };
+}
+
 export function ingestCard(input: IngestCardInput, config: AppConfig = loadConfig()): IngestCardResult {
   const title = sanitizeTaskTitle(input.title);
 
-  const source = input.source ?? 'manual';
-  assertSource(source);
-
-  const sourceUrl = normalizeHttpUrl(input.sourceUrl);
-  const sourceUid = makeSourceUid(source, input.sourceUid);
+  const origin = provenance(input);
+  const { source, sourceUid } = origin;
+  const sourceUrl = normalizeHttpUrl(origin.sourceUrl ?? undefined);
   const captureKey = makeCaptureKey(source, sourceUid);
   const links = normalizeLinks(input.links, source, sourceUrl);
-  const sourceMeta = boundedSourceMeta(input.sourceMeta);
+  const sourceMeta = boundedSourceMeta(origin.sourceMeta, source);
   const requestHash = makeRequestHash({
     title,
     boardId: input.boardId,
@@ -224,7 +295,10 @@ export function ingestCard(input: IngestCardInput, config: AppConfig = loadConfi
     | undefined;
   let retryFailedCapture = false;
   if (existingCapture) {
-    if (existingCapture.request_hash && existingCapture.request_hash !== requestHash) {
+    const payloadChanged = !!existingCapture.request_hash && existingCapture.request_hash !== requestHash;
+    // One email thread is one task: capturing it again (another message, another summary)
+    // returns the card it already has instead of a conflict or a second card.
+    if (payloadChanged && input.email === undefined) {
       throw new IngestError('capture_key already exists with a different payload', 409, 'capture_conflict');
     }
     if (existingCapture.status === 'failed' && !existingCapture.card_id) {

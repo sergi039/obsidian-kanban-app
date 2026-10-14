@@ -29,7 +29,7 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 - **Bulk actions** — Cmd/Ctrl-click cards to select several, then move or close them at once
 - **Trash** — delete a card from its detail view; its Markdown lines leave the file, its comments/fields/reminders stay, and the Trash panel in the toolbar restores it to the same place in the file
 - **Obsidian context on close** — when a card is closed (board, table, bulk, or `[x]` typed in Obsidian), the notes it is linked with get a dated `✅ Карточка закрыта` line in their `## Канбан` section and a fresh `updated:` date; the card gets an `obsidian` comment naming them
-- **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance
+- **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance; a task from an email links back to it and one thread stays one card ([docs/desktop-mcp.md](docs/desktop-mcp.md#tasks-from-email))
 
 **Organization**
 - **Custom priorities** — configurable per board with emoji, color, and card visibility; the emoji is the marker written to Markdown, the UI shows a flag in the priority color
