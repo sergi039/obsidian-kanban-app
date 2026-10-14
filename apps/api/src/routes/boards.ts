@@ -176,8 +176,12 @@ boards.get('/:id', (c) => {
   if (!board) return c.json({ error: 'Board not found' }, 404);
 
   const db = getDb();
+  // comment_count lets the web filter evaluate has:comments like the server filter engine does.
   const cards = db
-    .prepare('SELECT * FROM cards WHERE board_id = ? AND deleted_at IS NULL ORDER BY position')
+    .prepare(
+      `SELECT cards.*, (SELECT COUNT(*) FROM comments WHERE comments.card_id = cards.id) AS comment_count
+       FROM cards WHERE board_id = ? AND deleted_at IS NULL ORDER BY position`,
+    )
     .all(boardId) as Array<Record<string, unknown>>;
   const trashCount = (db
     .prepare('SELECT COUNT(*) AS c FROM cards WHERE board_id = ? AND deleted_at IS NOT NULL')
@@ -264,13 +268,15 @@ boards.post('/sync/reload', async (c) => {
   try {
     resetConfigCache();
     const config = loadConfig();
+    // A config edited on disk may add boards or move vaultRoot: watch what was just reloaded.
+    rebindWatcher(config);
     const { reconcileAll } = await import('../reconciler.js');
     const results = reconcileAll(config.vaultRoot, config.boards);
     broadcast({ type: 'sync-complete', timestamp: new Date().toISOString() });
     return c.json({ ok: true, results });
   } catch (err) {
     console.error('[sync/reload] Error:', err);
-    return c.json({ ok: false, error: String(err) }, 500);
+    return c.json({ ok: false, error: 'Sync reload failed' }, 500);
   }
 });
 
@@ -465,6 +471,11 @@ const RenameColumnSchema = z.object({ oldName: z.string(), newName: z.string().m
 const DeleteColumnSchema = z.object({ name: z.string(), moveTo: z.string().optional() });
 const ReorderColumnsSchema = z.object({ columns: z.array(z.string()).min(1) });
 
+/** Column changes alter the board itself: other open tabs reload it. */
+function broadcastColumnsChanged(boardId: string): void {
+  broadcast({ type: 'board-updated', boardId, timestamp: new Date().toISOString() });
+}
+
 // POST /api/boards/:id/columns — add a column
 boards.post('/:id/columns', async (c) => {
   const boardId = c.req.param('id');
@@ -483,6 +494,7 @@ boards.post('/:id/columns', async (c) => {
 
   const newColumns = [...board.columns, parsed.data.name];
   updateBoardColumns(boardId, newColumns);
+  broadcastColumnsChanged(boardId);
   return c.json({ ok: true, columns: newColumns }, 201);
 });
 
@@ -498,8 +510,17 @@ boards.put('/:id/columns', async (c) => {
   const board = config.boards.find((b) => b.id === boardId);
   if (!board) return c.json({ error: 'Board not found' }, 404);
 
-  updateBoardColumns(boardId, parsed.data.columns);
-  return c.json({ ok: true, columns: parsed.data.columns });
+  // A reorder may only permute: a dropped or invented column would strand its cards.
+  const next = parsed.data.columns;
+  const samePermutation = next.length === board.columns.length &&
+    new Set(next).size === next.length && next.every((col) => board.columns.includes(col));
+  if (!samePermutation) {
+    return c.json({ error: 'Columns must be a reordering of the current columns' }, 400);
+  }
+
+  updateBoardColumns(boardId, next);
+  broadcastColumnsChanged(boardId);
+  return c.json({ ok: true, columns: next });
 });
 
 // PATCH /api/boards/:id/columns/rename — rename a column
@@ -517,6 +538,9 @@ boards.patch('/:id/columns/rename', async (c) => {
   const { oldName, newName } = parsed.data;
   const idx = board.columns.indexOf(oldName);
   if (idx === -1) return c.json({ error: `Column "${oldName}" not found` }, 404);
+  if (newName !== oldName && board.columns.includes(newName)) {
+    return c.json({ error: `Column "${newName}" already exists` }, 409);
+  }
 
   const newColumns = [...board.columns];
   newColumns[idx] = newName;
@@ -539,6 +563,7 @@ boards.patch('/:id/columns/rename', async (c) => {
     }
   }
 
+  broadcastColumnsChanged(boardId);
   return c.json({ ok: true, columns: newColumns });
 });
 
@@ -557,9 +582,13 @@ boards.delete('/:id/columns', async (c) => {
   const { name, moveTo } = parsed.data;
   if (!board.columns.includes(name)) return c.json({ error: `Column "${name}" not found` }, 404);
 
-  const target = moveTo || board.columns.find((c) => c !== name) || 'Backlog';
   const newColumns = board.columns.filter((c) => c !== name);
   if (newColumns.length === 0) return c.json({ error: 'Cannot delete last column' }, 400);
+  // Cards must land in a column that stays on the board, or they drop out of view.
+  if (moveTo !== undefined && !newColumns.includes(moveTo)) {
+    return c.json({ error: `Column "${moveTo}" is not a remaining column of the board` }, 400);
+  }
+  const target = moveTo ?? newColumns[0];
 
   updateBoardColumns(boardId, newColumns);
 
@@ -580,6 +609,7 @@ boards.delete('/:id/columns', async (c) => {
     }
   }
 
+  broadcastColumnsChanged(boardId);
   return c.json({ ok: true, columns: newColumns, movedTo: target });
 });
 

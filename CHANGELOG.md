@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-14
+
+### Sync hardening (issue #9)
+- The done checkbox can no longer tick the wrong task. A card is found by its `kb:id` only, and a card without one only on its recorded line while that line still reads the same. The old fallback searched five lines up and down by title and ticked another task with the same title.
+- A card whose recorded line now holds a heading or other non-task line is still found by its `kb:id`; before, the write-back stopped with "Line is not a checkbox".
+- Editing a card (`PATCH`) or moving it now returns every failed write to the `.md` file in `_writeBackWarning`: priority, done state and column, not only the title. Before, those failures answered 200 while the file and the board disagreed.
+- Error responses no longer carry raw exception text with absolute vault paths: card create, inbox capture, sync reload and `.md` write-back failures answer with a short message, and the details stay in the server log.
+- Adding, reordering, renaming or deleting a column now refreshes the board in other open tabs.
+- Column edits can no longer hide cards: a reorder must keep every column, a rename cannot take another column's name, and a delete only moves cards into a column that stays on the board.
+- The filter `has:comments` in the web now shows the cards with comments; it used to hide every card. An unknown `has:` or `due:` value is ignored, as the server filter does, instead of emptying the board.
+- "Sync" (reload) now also re-watches the board files, so boards added to `config.boards.json` by hand or a changed `vaultRoot` are picked up without a restart.
+
 ## 2026-10-13
 
 ### Even icons

@@ -74,105 +74,69 @@ export function writeBackDoneState(
   try {
     const content = readFileSync(filePath, 'utf-8');
     const lines = content.split('\n');
-    const lineIdx = card.line_number - 1; // 1-indexed → 0-indexed
-
-    if (lineIdx < 0 || lineIdx >= lines.length) {
-      return { success: false, changed: false, lineNumber: card.line_number, error: 'Line number out of range' };
+    const lineIdx = locateDoneStateLine(lines, card.line_number - 1, card.raw_line);
+    if (typeof lineIdx === 'string') {
+      return { success: false, changed: false, lineNumber: card.line_number, error: lineIdx };
     }
 
-    const line = lines[lineIdx];
-
-    // Verify this is actually a checkbox line
-    const checkboxMatch = line.match(CHECKBOX_RE);
+    const checkboxMatch = lines[lineIdx].match(CHECKBOX_RE);
     if (!checkboxMatch) {
-      return { success: false, changed: false, lineNumber: card.line_number, error: 'Line is not a checkbox' };
-    }
-
-    // Validate line identity: first try kb:id match, then normalized content
-    const fileKbId = extractKbId(line);
-    const cardKbId = extractKbId(card.raw_line);
-    const identityMatch = (fileKbId && cardKbId && fileKbId === cardKbId) ||
-      normalizeForMatch(line) === normalizeForMatch(card.raw_line);
-
-    if (!identityMatch) {
-      // Lines shifted — try to find the correct line (search entire file, prefer kb:id match)
-      let found = -1;
-
-      // First pass: find by kb:id (most reliable)
-      if (cardKbId) {
-        for (let si = 0; si < lines.length; si++) {
-          if (si === lineIdx) continue;
-          const lkb = extractKbId(lines[si]);
-          if (lkb === cardKbId) { found = si; break; }
-        }
-      }
-
-      // Second pass: find by normalized content nearby (±5 lines)
-      if (found === -1) {
-        const cardLineNorm = normalizeForMatch(card.raw_line);
-        for (let offset = -5; offset <= 5; offset++) {
-          const searchIdx = lineIdx + offset;
-          if (searchIdx < 0 || searchIdx >= lines.length || searchIdx === lineIdx) continue;
-          if (normalizeForMatch(lines[searchIdx]) === cardLineNorm) {
-            found = searchIdx;
-            break;
-          }
-        }
-      }
-
-      if (found === -1) {
-        return {
-          success: false,
-          changed: false,
-          lineNumber: card.line_number,
-          error: `Line content mismatch: expected "${normalizeForMatch(card.raw_line).slice(0, 40)}…" but found "${normalizeForMatch(line).slice(0, 40)}…"`,
-        };
-      }
-
-      // Use the found line instead
-      const foundMatch = lines[found].match(CHECKBOX_RE);
-      if (!foundMatch) {
-        return { success: false, changed: false, lineNumber: found + 1, error: 'Found line is not a checkbox' };
-      }
-
-      const foundDone = foundMatch[2].toLowerCase() === 'x';
-      if (foundDone === isDone) {
-        return { success: true, changed: false, lineNumber: found + 1 };
-      }
-
-      lines[found] = `${foundMatch[1]}${isDone ? 'x' : ' '}${foundMatch[3]}`;
-      const foundContent = lines.join('\n');
-      atomicWrite(filePath, foundContent);
-      updateSyncStateHash(filePath, foundContent);
-
-      // Update line_number in DB
-      db.prepare('UPDATE cards SET line_number = ? WHERE id = ?').run(found + 1, cardId);
-
-      return { success: true, changed: true, lineNumber: found + 1 };
+      return { success: false, changed: false, lineNumber: lineIdx + 1, error: 'Line is not a checkbox' };
     }
 
     const currentlyDone = checkboxMatch[2].toLowerCase() === 'x';
     if (currentlyDone === isDone) {
-      return { success: true, changed: false, lineNumber: card.line_number };
+      return { success: true, changed: false, lineNumber: lineIdx + 1 };
     }
 
-    // Replace checkbox state
-    const newMark = isDone ? 'x' : ' ';
-    lines[lineIdx] = `${checkboxMatch[1]}${newMark}${checkboxMatch[3]}`;
-
+    lines[lineIdx] = `${checkboxMatch[1]}${isDone ? 'x' : ' '}${checkboxMatch[3]}`;
     const updatedContent = lines.join('\n');
     atomicWrite(filePath, updatedContent);
     updateSyncStateHash(filePath, updatedContent);
 
-    return { success: true, changed: true, lineNumber: card.line_number };
+    if (lineIdx + 1 !== card.line_number) {
+      db.prepare('UPDATE cards SET line_number = ? WHERE id = ?').run(lineIdx + 1, cardId);
+    }
+
+    return { success: true, changed: true, lineNumber: lineIdx + 1 };
   } catch (err) {
-    return {
-      success: false,
-      changed: false,
-      lineNumber: card.line_number,
-      error: String(err),
-    };
+    return fileFailure(cardId, card.line_number, err);
   }
+}
+
+/**
+ * Find the line a done-state write-back may toggle (0-based), or an error message.
+ *
+ * A card with a kb:id is matched by kb:id only: its recorded line first, else
+ * anywhere in the file. A card without one may only toggle its recorded line,
+ * and only while that line still reads the same: searching nearby lines by
+ * text toggled the wrong task when two tasks shared a title.
+ */
+function locateDoneStateLine(lines: string[], recordedIdx: number, rawLine: string): number | string {
+  const cardKbId = extractKbId(rawLine);
+  const inRange = recordedIdx >= 0 && recordedIdx < lines.length;
+
+  if (cardKbId) {
+    if (inRange && extractKbId(lines[recordedIdx]) === cardKbId) return recordedIdx;
+    const found = lines.findIndex((l) => extractKbId(l) === cardKbId);
+    return found === -1 ? 'Line not found by kb:id' : found;
+  }
+
+  if (!inRange) return 'Line number out of range';
+  if (normalizeForMatch(lines[recordedIdx]) !== normalizeForMatch(rawLine)) {
+    return 'Line changed since the last sync and the card has no kb:id';
+  }
+  return recordedIdx;
+}
+
+/**
+ * A read/write of the board file threw. The full error (it carries absolute
+ * vault paths) stays in the server log; callers and API clients get a short
+ * message.
+ */
+function fileFailure(cardId: string, lineNumber: number, err: unknown): WriteBackResult {
+  console.error(`[writeback] Board file read/write failed for card ${cardId}:`, err);
+  return { success: false, changed: false, lineNumber, error: 'Board file read/write failed' };
 }
 
 /**
@@ -274,7 +238,7 @@ export function writeBackPriority(
     console.log(`[writeback] Card ${cardId} priority → ${priority ?? 'none'} at line ${lineIdx + 1}`);
     return { success: true, changed: true, lineNumber: lineIdx + 1 };
   } catch (err) {
-    return { success: false, changed: false, lineNumber: card.line_number, error: String(err) };
+    return fileFailure(cardId, card.line_number, err);
   }
 }
 
@@ -339,7 +303,7 @@ export function writeBackColumn(
 
     return { success: true, changed: true, lineNumber: lineIdx + 1 };
   } catch (err) {
-    return { success: false, changed: false, lineNumber: card.line_number, error: String(err) };
+    return fileFailure(cardId, card.line_number, err);
   }
 }
 
@@ -462,7 +426,7 @@ export function writeBackTitle(
     console.log(`[writeback] Card ${cardId} title updated at line ${lineIdx + 1}`);
     return { success: true, changed: true, lineNumber: lineIdx + 1 };
   } catch (err) {
-    return { success: false, changed: false, lineNumber: card.line_number, error: String(err) };
+    return fileFailure(cardId, card.line_number, err);
   }
 }
 

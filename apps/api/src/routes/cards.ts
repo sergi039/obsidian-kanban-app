@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { getDb } from '../db.js';
 import { DEFAULT_PRIORITIES, loadConfig } from '../config.js';
-import { writeBackDoneState, writeBackPriority, writeBackColumn, writeBackTitle } from '../writeback.js';
+import { writeBackDoneState, writeBackPriority, writeBackColumn, writeBackTitle, type WriteBackResult } from '../writeback.js';
 import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
 import { isDoneColumn } from '../parser.js';
@@ -56,6 +56,39 @@ const BulkMoveSchema = z.object({
   card_ids: z.array(z.string().min(1)).min(1).max(200),
   column: z.string(),
 });
+
+/**
+ * Run one .md write-back for a card. The DB change already happened, so a
+ * failure does not fail the request: it is logged and kept in `warnings`,
+ * which the route returns as `_writeBackWarning` so the client knows the
+ * file and the board now differ.
+ */
+function writeBackOrWarn(
+  what: string,
+  cardId: string,
+  warnings: string[],
+  run: () => WriteBackResult,
+): WriteBackResult | null {
+  suppressWatcher();
+  try {
+    const result = run();
+    if (!result.success) {
+      warnings.push(`${what}: ${result.error}`);
+      console.warn(`[writeback] ${what} failed for card ${cardId}: ${result.error}`);
+    }
+    return result;
+  } catch (err) {
+    warnings.push(`${what}: unexpected error`);
+    console.error(`[writeback] ${what} threw for card ${cardId}:`, err);
+    return null;
+  } finally {
+    unsuppressWatcher();
+  }
+}
+
+function withWriteBackWarnings(card: Record<string, unknown>, warnings: string[]): Record<string, unknown> {
+  return warnings.length > 0 ? { ...card, _writeBackWarning: warnings.join('; ') } : card;
+}
 
 
 async function safeParseJson(c: { req: { json: () => Promise<unknown> } }): Promise<unknown | null> {
@@ -153,7 +186,8 @@ cards.post('/', async (c) => {
     if (err instanceof IngestError) {
       return c.json({ error: err.message, code: err.code }, err.status as 400 | 409);
     }
-    return c.json({ error: `Failed to create card: ${err}` }, 500);
+    console.error('[cards] Failed to create card:', err);
+    return c.json({ error: 'Failed to create card' }, 500);
   }
 });
 
@@ -419,57 +453,20 @@ cards.patch('/:id', async (c) => {
     db.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   }
 
-  let writeBackWarning: string | undefined;
+  const writeBackWarnings: string[] = [];
 
-  // Write back title to .md file (writeBackTitle also updates title/raw_line/links in DB).
+  // Write back to the .md file (writeBackTitle also updates title/raw_line/links in DB).
   if (fields.title !== undefined) {
-    suppressWatcher();
-    try {
-      const result = writeBackTitle(id, fields.title);
-      if (!result.success) {
-        writeBackWarning = result.error;
-        console.warn(`[writeback] Title failed for card ${id}: ${result.error}`);
-      }
-    } finally {
-      unsuppressWatcher();
-    }
+    writeBackOrWarn('title', id, writeBackWarnings, () => writeBackTitle(id, fields.title!));
   }
-
-  // Write back priority to .md file
   if (fields.priority !== undefined) {
-    suppressWatcher();
-    try {
-      const result = writeBackPriority(id, fields.priority ?? null);
-      if (!result.success) {
-        console.warn(`[writeback] Priority failed for card ${id}: ${result.error}`);
-      }
-    } finally {
-      unsuppressWatcher();
-    }
+    writeBackOrWarn('priority', id, writeBackWarnings, () => writeBackPriority(id, fields.priority ?? null));
   }
-
-  // Write back done state and column to .md file
   if (columnChanging) {
     if (movingToDone || movingFromDone) {
-      suppressWatcher();
-      try {
-        const result = writeBackDoneState(id, movingToDone);
-        if (!result.success) {
-          console.warn(`[writeback] Done state failed for card ${id}: ${result.error}`);
-        }
-      } finally {
-        unsuppressWatcher();
-      }
+      writeBackOrWarn('done state', id, writeBackWarnings, () => writeBackDoneState(id, movingToDone));
     }
-    suppressWatcher();
-    try {
-      const result = writeBackColumn(id, fields.column_name!);
-      if (!result.success) {
-        console.warn(`[writeback] Column failed for card ${id}: ${result.error}`);
-      }
-    } finally {
-      unsuppressWatcher();
-    }
+    writeBackOrWarn('column', id, writeBackWarnings, () => writeBackColumn(id, fields.column_name!));
   }
 
   const updated = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
@@ -491,11 +488,7 @@ cards.patch('/:id', async (c) => {
   }
   if (movingToDone) notifyCardsClosed([id]);
 
-  const response = formatCard(updated);
-  if (writeBackWarning) {
-    return c.json({ ...response, _writeBackWarning: writeBackWarning });
-  }
-  return c.json(response);
+  return c.json(withWriteBackWarnings(formatCard(updated), writeBackWarnings));
 });
 
 // POST /api/cards/:id/move — move card to column + position (atomic transaction)
@@ -533,37 +526,16 @@ cards.post('/:id/move', async (c) => {
     db, id, boardId, oldColumn, oldPosition, column, position, board,
   );
 
-  // Write-back to .md file if moving to/from Done
-  let writeBackError: string | undefined;
+  const writeBackWarnings: string[] = [];
   if (movingToDone || movingFromDone) {
-    suppressWatcher();
-    try {
-      const result = writeBackDoneState(id, movingToDone);
-      if (!result.success) {
-        writeBackError = result.error;
-        console.warn(`[writeback] Failed for card ${id}: ${result.error}`);
-      } else if (result.changed) {
-        console.log(`[writeback] Card ${id} → ${movingToDone ? '[x]' : '[ ]'} at line ${result.lineNumber}`);
-      }
-    } catch (err) {
-      writeBackError = String(err);
-      console.error(`[writeback] Unexpected error for card ${id}:`, err);
-    } finally {
-      unsuppressWatcher();
+    const result = writeBackOrWarn('done state', id, writeBackWarnings, () => writeBackDoneState(id, movingToDone));
+    if (result?.changed) {
+      console.log(`[writeback] Card ${id} → ${movingToDone ? '[x]' : '[ ]'} at line ${result.lineNumber}`);
     }
   }
-
   // Always write back column to .md for recovery
   if (oldColumn !== column) {
-    suppressWatcher();
-    try {
-      const colResult = writeBackColumn(id, column);
-      if (!colResult.success) {
-        console.warn(`[writeback] Column failed for card ${id}: ${colResult.error}`);
-      }
-    } finally {
-      unsuppressWatcher();
-    }
+    writeBackOrWarn('column', id, writeBackWarnings, () => writeBackColumn(id, column));
   }
 
   const final = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
@@ -585,11 +557,7 @@ cards.post('/:id/move', async (c) => {
   }
   if (movingToDone) notifyCardsClosed([id]);
 
-  const response = formatCard(final);
-  if (writeBackError) {
-    return c.json({ ...response, _writeBackWarning: writeBackError });
-  }
-  return c.json(response);
+  return c.json(withWriteBackWarnings(formatCard(final), writeBackWarnings));
 });
 
 // DELETE /api/cards/:id — move a card to the trash (its lines leave the .md file, its data stays)
@@ -703,11 +671,13 @@ cards.delete('/:id/comments/:commentId', (c) => {
 
   const db = getDb();
   const existing = db
-    .prepare('SELECT id FROM comments WHERE id = ? AND card_id = ?')
-    .get(commentId, cardId);
+    .prepare('SELECT comments.id, cards.board_id FROM comments JOIN cards ON cards.id = comments.card_id WHERE comments.id = ? AND comments.card_id = ?')
+    .get(commentId, cardId) as { id: string; board_id: string } | undefined;
   if (!existing) return c.json({ error: 'Comment not found' }, 404);
 
   db.prepare('DELETE FROM comments WHERE id = ?').run(commentId);
+  // Other tabs refresh the card's comment count (has:comments filter).
+  broadcast({ type: 'card-updated', cardId, boardId: existing.board_id, timestamp: new Date().toISOString() });
   return c.json({ ok: true });
 });
 

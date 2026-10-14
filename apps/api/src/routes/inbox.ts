@@ -149,7 +149,8 @@ inbox.post('/capture', async (c) => {
     if (err instanceof IngestError) {
       return c.json({ status: 'rejected', error: err.message, code: err.code }, err.status as 400 | 409);
     }
-    return c.json({ status: 'rejected', error: `Failed to capture card: ${err}` }, 500);
+    console.error('[inbox] Failed to capture card:', err);
+    return c.json({ status: 'rejected', error: 'Failed to capture card' }, 500);
   }
 });
 

@@ -72,6 +72,8 @@ export interface Card {
   source_meta: Record<string, unknown>;
   /** ISO UTC timestamp when the card was moved to the trash; null for live cards. */
   deleted_at?: string | null;
+  /** Number of comments; sent with the board detail (used by the has:comments filter). */
+  comment_count?: number;
   created_at: string;
   updated_at: string;
 }

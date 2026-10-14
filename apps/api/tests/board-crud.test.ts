@@ -345,3 +345,148 @@ describe('sync reload', () => {
     );
   });
 });
+
+describe('column mutations', () => {
+  async function app() {
+    const { default: boardRoutes } = await import('../src/routes/boards.js');
+    const a = new Hono();
+    a.route('/api/boards', boardRoutes);
+    return a;
+  }
+  function send(a: Hono, method: string, path: string, body: unknown) {
+    return a.request(`/api/boards/b1/columns${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  beforeEach(async () => {
+    testDb = new Database(':memory:');
+    testDb.pragma('foreign_keys = ON');
+    testDb.exec(SCHEMA);
+    testDb.prepare(`INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run('c1', 'b1', 'Backlog', 0, 'Task 1', '- [ ] Task 1', 1, 0);
+    const { broadcast } = await import('../src/ws.js');
+    vi.mocked(broadcast).mockClear();
+    const { updateBoardColumns } = await import('../src/config.js');
+    vi.mocked(updateBoardColumns).mockClear();
+  });
+
+  afterEach(() => testDb.close());
+
+  it('broadcasts board-updated for add, reorder, rename and delete', async () => {
+    const { broadcast } = await import('../src/ws.js');
+    const a = await app();
+
+    expect((await send(a, 'POST', '', { name: 'Review' })).status).toBe(201);
+    expect((await send(a, 'PUT', '', { columns: ['Done', 'Backlog'] })).status).toBe(200);
+    expect((await send(a, 'PATCH', '/rename', { oldName: 'Backlog', newName: 'Inbox' })).status).toBe(200);
+    expect((await send(a, 'DELETE', '', { name: 'Backlog' })).status).toBe(200);
+
+    const events = vi.mocked(broadcast).mock.calls.map(([e]) => e);
+    expect(events).toHaveLength(4);
+    for (const event of events) {
+      expect(event).toMatchObject({ type: 'board-updated', boardId: 'b1' });
+    }
+  });
+
+  it('rejects a reorder that drops or invents a column', async () => {
+    const { updateBoardColumns } = await import('../src/config.js');
+    const a = await app();
+
+    expect((await send(a, 'PUT', '', { columns: ['Done'] })).status).toBe(400);
+    expect((await send(a, 'PUT', '', { columns: ['Done', 'Backlog', 'Ghost'] })).status).toBe(400);
+    expect((await send(a, 'PUT', '', { columns: ['Done', 'Done'] })).status).toBe(400);
+    expect(updateBoardColumns).not.toHaveBeenCalled();
+  });
+
+  it('rejects a rename onto another existing column', async () => {
+    const a = await app();
+    const res = await send(a, 'PATCH', '/rename', { oldName: 'Backlog', newName: 'Done' });
+    expect(res.status).toBe(409);
+    const row = testDb.prepare('SELECT column_name FROM cards WHERE id = ?').get('c1') as { column_name: string };
+    expect(row.column_name).toBe('Backlog');
+  });
+
+  it('rejects deleting a column into a column that will not exist', async () => {
+    const a = await app();
+    for (const moveTo of ['Ghost', 'Backlog']) {
+      const res = await send(a, 'DELETE', '', { name: 'Backlog', moveTo });
+      expect(res.status).toBe(400);
+    }
+    const row = testDb.prepare('SELECT column_name FROM cards WHERE id = ?').get('c1') as { column_name: string };
+    expect(row.column_name).toBe('Backlog');
+  });
+
+  it('moves cards of a deleted column to the first remaining column by default', async () => {
+    const a = await app();
+    const res = await send(a, 'DELETE', '', { name: 'Backlog' });
+    expect(await res.json()).toMatchObject({ ok: true, movedTo: 'Done' });
+    const row = testDb.prepare('SELECT column_name FROM cards WHERE id = ?').get('c1') as { column_name: string };
+    expect(row.column_name).toBe('Done');
+  });
+});
+
+describe('sync reload hardening', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    testDb.pragma('foreign_keys = ON');
+    testDb.exec(SCHEMA);
+    mockRebindWatcher.mockClear();
+  });
+
+  afterEach(() => testDb.close());
+
+  it('rebinds the watcher to the reloaded config', async () => {
+    const { default: boardRoutes } = await import('../src/routes/boards.js');
+    const app = new Hono();
+    app.route('/api/boards', boardRoutes);
+
+    const res = await app.request('/api/boards/sync/reload', { method: 'POST' });
+    expect(res.status).toBe(200);
+    expect(mockRebindWatcher).toHaveBeenCalledWith(expect.objectContaining({ vaultRoot: '/tmp/test-vault' }));
+  });
+
+  it('answers a failed reload without internal paths', async () => {
+    const { reconcileAll } = await import('../src/reconciler.js');
+    vi.mocked(reconcileAll).mockImplementationOnce(() => {
+      throw new Error("ENOENT: no such file or directory, open '/Users/someone/vault/Tasks/Test.md'");
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { default: boardRoutes } = await import('../src/routes/boards.js');
+    const app = new Hono();
+    app.route('/api/boards', boardRoutes);
+
+    const res = await app.request('/api/boards/sync/reload', { method: 'POST' });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body).toEqual({ ok: false, error: 'Sync reload failed' });
+    expect(JSON.stringify(body)).not.toContain('/Users/');
+    errorSpy.mockRestore();
+  });
+});
+
+describe('board detail comment count', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    testDb.pragma('foreign_keys = ON');
+    testDb.exec(SCHEMA);
+    testDb.prepare(`INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run('c1', 'b1', 'Backlog', 0, 'Task 1', '- [ ] Task 1', 1, 0);
+    testDb.prepare(`INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, is_done) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run('c2', 'b1', 'Backlog', 1, 'Task 2', '- [ ] Task 2', 2, 0);
+    testDb.prepare(`INSERT INTO comments (id, card_id, author, text) VALUES (?, ?, ?, ?)`).run('cm1', 'c1', 'user', 'First');
+    testDb.prepare(`INSERT INTO comments (id, card_id, author, text) VALUES (?, ?, ?, ?)`).run('cm2', 'c1', 'user', 'Second');
+  });
+
+  afterEach(() => testDb.close());
+
+  it('sends comment_count with each card', async () => {
+    const { default: boardRoutes } = await import('../src/routes/boards.js');
+    const app = new Hono();
+    app.route('/api/boards', boardRoutes);
+
+    const res = await app.request('/api/boards/b1');
+    const body = await res.json() as { columns: Array<{ name: string; cards: Array<{ id: string; comment_count: number }> }> };
+    const backlog = body.columns.find((c) => c.name === 'Backlog')!;
+    expect(backlog.cards.map((c) => [c.id, c.comment_count])).toEqual([['c1', 2], ['c2', 0]]);
+  });
+});
