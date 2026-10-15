@@ -2,6 +2,11 @@
 
 ## 2026-10-15
 
+### One command to let Gmail follow-ups notice the answer (backlog B-2)
+- `./node_modules/.bin/tsx apps/api/src/cli/google-consent.ts` renews the personal Google grant with read access to email headers (`gmail.metadata`) on top of the calendar. It opens Google's consent page; the owner signs in and allows. The new grant replaces the old one only if it has a refresh token, both permissions and the configured account's verified address.
+- The token file is written owner-only and atomically, and only into a directory nobody else can change (mode bits, symlinks and macOS ACLs are checked before the consent page opens).
+- The tool always says how long Google lets the refresh token live: an OAuth app still in "Testing" gets 7-day tokens, which would also end the calendar sync. It also checks that Gmail answers, and if the Gmail API is off in the Google Cloud project it gives the link to turn it on.
+
 ### Board settings can no longer leave a broken config file (backlog B-1)
 - Every change of `config.boards.json` from the app (columns, board create/rename/archive/delete, priorities, categories) now writes a new owner-only file next to it, flushes it to disk and swaps it in at once. A crash, a full disk or a failed write leaves the previous config untouched; before, the file was rewritten in place and could be left cut off, and the API would not start until it was restored from a backup.
 - A change that the server could not boot with (for example a board pointing at an unknown calendar account) is refused and nothing is written.

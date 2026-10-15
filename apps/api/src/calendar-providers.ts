@@ -37,7 +37,8 @@ const MAX_PAGES = 40;
 const MAX_RETRIES = 2;
 const MAX_RETRY_WAIT_MS = 10_000;
 
-function expandHome(file: string): string {
+/** `~/` at the start means the owner's home directory. */
+export function expandHome(file: string): string {
   return file.startsWith('~/') ? `${os.homedir()}${file.slice(1)}` : file;
 }
 
