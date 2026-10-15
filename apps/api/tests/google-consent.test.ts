@@ -57,6 +57,7 @@ describe('readCallback', () => {
     ['/?state=s1&error=access_denied', { kind: 'denied', error: 'access_denied' }],
     ['/?state=s1', { kind: 'ignore', status: 400 }],
     ['/?state=s1&code=4%2Fabc', { kind: 'code', code: '4/abc' }],
+    ['http://[', { kind: 'ignore', status: 400 }],
   ])('%s', (url, expected) => {
     expect(readCallback(url, 's1')).toEqual(expected);
   });
@@ -77,6 +78,8 @@ describe('acceptGrant', () => {
     ['another Google account', { id_token: idToken({ email: 'someone@else.example', email_verified: true }) }, /given by someone@else\.example, not Me@Home\.example/],
     ['an unverified address', { id_token: idToken({ email: 'me@home.example', email_verified: false }) }, /not a verified address/],
     ['no id_token', { id_token: undefined }, /no id_token/],
+    ['a truncated id_token payload', { id_token: `h.${Buffer.from('{"email":"me@home.example","sub":"1234').toString('base64url')}.s` }, /^the id_token payload is not JSON$/],
+    ['a null id_token payload', { id_token: `h.${Buffer.from('null').toString('base64url')}.s` }, /not an object/],
   ])('refuses %s', (_label, patch, message) => {
     expect(() => acceptGrant({ ...goodResponse, ...patch }, ACCOUNT, NOW)).toThrow(message);
   });
@@ -101,8 +104,8 @@ describe('probeGmail', () => {
 
   it('points at the console when the Gmail API is off in the client\'s project', async () => {
     const body = { error: { code: 403, status: 'PERMISSION_DENIED', details: [{ reason: 'SERVICE_DISABLED' }] } };
-    expect(await probeGmail('t', '43071142-abc.apps.googleusercontent.com', respond(403, body))).toEqual({
-      kind: 'api-disabled', enableUrl: 'https://console.cloud.google.com/apis/library/gmail.googleapis.com?project=43071142',
+    expect(await probeGmail('t', '1234567890-abc.apps.googleusercontent.com', respond(403, body))).toEqual({
+      kind: 'api-disabled', enableUrl: 'https://console.cloud.google.com/apis/library/gmail.googleapis.com?project=1234567890',
     });
   });
 
@@ -128,5 +131,23 @@ describe('loopback callback', () => {
     const { server } = await listenLoopback();
     await expect(awaitCallback(server, 's', 50)).rejects.toThrow(/no answer from the browser/);
     expect(server.listening).toBe(false);
+  });
+});
+
+describe('loopback callback, malformed request line', () => {
+  it('answers 400 to a request whose URL cannot be parsed and keeps waiting', async () => {
+    const net = await import('node:net');
+    const { server, port } = await listenLoopback();
+    const waiting = awaitCallback(server, 'right-state', 5000);
+    const reply = await new Promise<string>((resolve) => {
+      const socket = net.connect(port, '127.0.0.1', () => socket.write('GET http://[ HTTP/1.1\r\nHost: x\r\n\r\n'));
+      let data = '';
+      socket.on('data', (chunk) => { data += chunk; socket.end(); });
+      socket.on('close', () => resolve(data));
+    });
+    expect(reply).toMatch(/^HTTP\/1\.1 400/);
+    expect(server.listening).toBe(true);
+    await fetch(`http://127.0.0.1:${port}/?state=right-state&code=real`);
+    await expect(waiting).resolves.toEqual({ kind: 'code', code: 'real' });
   });
 });

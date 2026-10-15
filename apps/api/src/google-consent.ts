@@ -66,7 +66,12 @@ function sameSecret(a: string, b: string): boolean {
 
 /** What a request to the loopback server means; only `/` with the right state counts. */
 export function readCallback(rawUrl: string, expectedState: string): CallbackOutcome {
-  const url = new URL(rawUrl, 'http://127.0.0.1');
+  let url: URL;
+  try {
+    url = new URL(rawUrl, 'http://127.0.0.1');
+  } catch {
+    return { kind: 'ignore', status: 400 }; // a malformed request line must not end the flow
+  }
   if (url.pathname !== '/') return { kind: 'ignore', status: 404 };
   const state = url.searchParams.get('state');
   if (!state || !sameSecret(state, expectedState)) return { kind: 'ignore', status: 400 };
@@ -89,7 +94,15 @@ export interface TokenResponse {
 export function idTokenClaims(idToken: string): Record<string, unknown> {
   const payload = idToken.split('.')[1];
   if (!payload) throw new Error('the id_token has no payload');
-  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf-8')) as Record<string, unknown>;
+  let claims: unknown;
+  try {
+    claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf-8'));
+  } catch {
+    // The parser's own message quotes the payload; never let it reach the terminal.
+    throw new Error('the id_token payload is not JSON');
+  }
+  if (claims === null || typeof claims !== 'object' || Array.isArray(claims)) throw new Error('the id_token payload is not an object');
+  return claims as Record<string, unknown>;
 }
 
 export interface AcceptedGrant {
