@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync as writeFsSync } from 'node:fs';
+import { closeSync, fsyncSync, lstatSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -142,17 +143,85 @@ export function resetConfigCache(): void {
   cached = null;
 }
 
-/** Update a board's columns in config file and reset cache */
-export function updateBoardColumns(boardId: string, columns: string[]): boolean {
+/**
+ * Replace `target` so that a crash, a full disk or a failed write never leaves it
+ * half-written: the content goes to an owner-only temporary file with a random name
+ * in the same directory (created exclusively, never an existing path), is flushed to
+ * disk, and is renamed over the target in one step; the directory is flushed after.
+ * A symbolic link at `target` is refused rather than replaced.
+ */
+export function writeFileAtomic(target: string, content: string): void {
+  if (lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    throw new Error(`${path.basename(target)} is a symbolic link; refusing to replace it`);
+  }
+  const dir = path.dirname(target);
+  const tmp = path.join(dir, `.${path.basename(target)}.${randomBytes(6).toString('hex')}.tmp`);
+  const fd = openSync(tmp, 'wx', 0o600);
+  let renamed = false;
+  try {
+    try {
+      writeFileSync(fd, content, 'utf-8');
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(tmp, target);
+    renamed = true;
+    const dirFd = openSync(dir, 'r');
+    try {
+      fsyncSync(dirFd);
+    } finally {
+      closeSync(dirFd);
+    }
+  } finally {
+    if (!renamed) {
+      try {
+        unlinkSync(tmp);
+      } catch (cleanupErr) {
+        console.warn(`[config] could not remove temporary file ${path.basename(tmp)}:`, cleanupErr);
+      }
+    }
+  }
+}
+
+export function configFilePath(): string {
+  return path.join(PROJECT_ROOT, 'config.boards.json');
+}
+
+type RawConfig = { boards?: Array<Record<string, unknown> & { id: string }> } & Record<string, unknown>;
+
+/**
+ * The one way config.boards.json is changed: read it, let `mutate` edit the parsed
+ * JSON (returning false when there is nothing to change), check the result against
+ * the schema the server boots with, then write it atomically. A change that would
+ * leave an unbootable config throws and writes nothing.
+ */
+export function mutateConfig(mutate: (raw: RawConfig) => boolean, configPath = configFilePath()): boolean {
   return withConfigWrite(() => {
     resetConfigCache();
-    const p = path.join(PROJECT_ROOT, 'config.boards.json');
-    const raw = JSON.parse(readFileSync(p, 'utf-8'));
-    const board = raw.boards?.find((b: { id: string }) => b.id === boardId);
+    const raw = JSON.parse(readFileSync(configPath, 'utf-8')) as RawConfig;
+    if (!mutate(raw)) return false;
+    const checked = ConfigSchema.safeParse(raw);
+    if (!checked.success) {
+      const issue = checked.error.issues[0];
+      throw new Error(`config change rejected: ${issue.path.join('.') || '(root)'}: ${issue.message}`);
+    }
+    writeFileAtomic(configPath, JSON.stringify(raw, null, 2) + '\n');
+    resetConfigCache();
+    return true;
+  });
+}
+
+function findBoard(raw: RawConfig, boardId: string) {
+  return raw.boards?.find((b) => b.id === boardId);
+}
+
+/** Update a board's columns in config file and reset cache */
+export function updateBoardColumns(boardId: string, columns: string[]): boolean {
+  return mutateConfig((raw) => {
+    const board = findBoard(raw, boardId);
     if (!board) return false;
     board.columns = columns;
-    writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
-    resetConfigCache();
     return true;
   });
 }
@@ -165,14 +234,9 @@ export function addBoardToConfig(board: {
   columns: string[];
   priorities?: PriorityDef[];
 }): boolean {
-  return withConfigWrite(() => {
-    resetConfigCache();
-    const p = path.join(PROJECT_ROOT, 'config.boards.json');
-    const raw = JSON.parse(readFileSync(p, 'utf-8'));
-    if (raw.boards?.find((b: { id: string }) => b.id === board.id)) return false; // already exists
-    raw.boards.push(board);
-    writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
-    resetConfigCache();
+  return mutateConfig((raw) => {
+    if (findBoard(raw, board.id)) return false; // already exists
+    raw.boards = [...(raw.boards ?? []), board];
     return true;
   });
 }
@@ -182,48 +246,23 @@ export function updateBoardInConfig(
   boardId: string,
   patch: Partial<{ name: string; archived: boolean; priorities: PriorityDef[]; categories: CategoryDef[] }>,
 ): boolean {
-  return withConfigWrite(() => {
-    resetConfigCache();
-    const p = path.join(PROJECT_ROOT, 'config.boards.json');
-    const raw = JSON.parse(readFileSync(p, 'utf-8'));
-    const board = raw.boards?.find((b: { id: string }) => b.id === boardId);
+  return mutateConfig((raw) => {
+    const board = findBoard(raw, boardId);
     if (!board) return false;
     if (patch.name !== undefined) board.name = patch.name;
     if (patch.archived !== undefined) board.archived = patch.archived;
     if (patch.priorities !== undefined) board.priorities = patch.priorities;
     if (patch.categories !== undefined) board.categories = patch.categories;
-    writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
-    resetConfigCache();
     return true;
   });
 }
 
 /** Delete a board from config (does NOT delete .md file) */
 export function deleteBoardFromConfig(boardId: string): boolean {
-  return withConfigWrite(() => {
-    resetConfigCache();
-    const p = path.join(PROJECT_ROOT, 'config.boards.json');
-    const raw = JSON.parse(readFileSync(p, 'utf-8'));
-    const idx = raw.boards?.findIndex((b: { id: string }) => b.id === boardId);
-    if (idx === undefined || idx === -1) return false;
-    raw.boards.splice(idx, 1);
-    writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
-    resetConfigCache();
-    return true;
-  });
-}
-
-/** Update a board's priorities in config file and reset cache */
-export function updateBoardPriorities(boardId: string, priorities: PriorityDef[]): boolean {
-  return withConfigWrite(() => {
-    resetConfigCache();
-    const p = path.join(PROJECT_ROOT, 'config.boards.json');
-    const raw = JSON.parse(readFileSync(p, 'utf-8'));
-    const board = raw.boards?.find((b: { id: string }) => b.id === boardId);
-    if (!board) return false;
-    board.priorities = priorities;
-    writeFsSync(p, JSON.stringify(raw, null, 2) + '\n', 'utf-8');
-    resetConfigCache();
+  return mutateConfig((raw) => {
+    const idx = raw.boards?.findIndex((b) => b.id === boardId) ?? -1;
+    if (idx === -1) return false;
+    raw.boards!.splice(idx, 1);
     return true;
   });
 }

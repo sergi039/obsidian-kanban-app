@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-15
+
+### Board settings can no longer leave a broken config file (backlog B-1)
+- Every change of `config.boards.json` from the app (columns, board create/rename/archive/delete, priorities, categories) now writes a new owner-only file next to it, flushes it to disk and swaps it in at once. A crash, a full disk or a failed write leaves the previous config untouched; before, the file was rewritten in place and could be left cut off, and the API would not start until it was restored from a backup.
+- A change that the server could not boot with (for example a board pointing at an unknown calendar account) is refused and nothing is written.
+- An unused second writer for priorities was removed; all changes go through one path.
+
 ## 2026-10-14
 
 ### Remind me if they don't answer (issue #2, EMAIL-3)
