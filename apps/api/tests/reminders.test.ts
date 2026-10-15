@@ -14,6 +14,13 @@ vi.mock('../src/ws.js', () => ({
   broadcast: (...args: unknown[]) => broadcast(...args),
 }));
 
+let testConfig: { vaultRoot: string; boards: never[]; defaultColumns: string[]; publicUrl?: string };
+
+vi.mock('../src/config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/config.js')>();
+  return { ...actual, loadConfig: () => testConfig };
+});
+
 const { default: reminderRoutes } = await import('../src/routes/reminders.js');
 
 function createApp(): Hono {
@@ -34,6 +41,7 @@ async function createReminder(app: Hono, body: Record<string, unknown>) {
 describe('reminders routes', () => {
   beforeEach(() => {
     broadcast.mockClear();
+    testConfig = { vaultRoot: '/tmp/unused', boards: [], defaultColumns: ['Backlog'] };
     testDb = new Database(':memory:');
     testDb.pragma('foreign_keys = ON');
     testDb.exec(`
@@ -321,5 +329,19 @@ describe('reminders routes', () => {
     expect(del.status).toBe(200);
     const get = await app.request(`/api/reminders/${created.json.id}`);
     expect(get.status).toBe(404);
+  });
+
+  it('links the card on the public address, and gives no link without one', async () => {
+    const app = createApp();
+    testConfig.publicUrl = 'https://kanban.example/';
+    const { json } = await createReminder(app, { card_id: 'c1', channel: 'email', trigger_at: '2026-06-04T09:00:00Z' });
+    expect(json.card_url).toBe('https://kanban.example/?board=b1&card=c1');
+
+    const due = await app.request('/api/reminders/due?channel=email&before=2026-06-05T00:00:00Z');
+    expect((await due.json() as Array<Record<string, unknown>>)[0].card_url).toBe('https://kanban.example/?board=b1&card=c1');
+
+    delete testConfig.publicUrl;
+    const single = await app.request(`/api/reminders/${json.id}`);
+    expect((await single.json() as Record<string, unknown>).card_url).toBeNull();
   });
 });

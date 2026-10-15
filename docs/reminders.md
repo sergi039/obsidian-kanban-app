@@ -127,6 +127,8 @@ When the browser permission is granted, due reminders are shown with `new Notifi
 
 These channels are delivered by `scripts/reminder-agent.mjs`.
 
+The card link in an email, a Calendar event or a notification is the reminder's `card_url`: the card on `publicUrl` from `config.boards.json`, so it opens outside the local network. Only without `publicUrl` (the API then returns `card_url: null`) does the agent link to `KANBAN_APP_URL`.
+
 Run once:
 
 ```bash

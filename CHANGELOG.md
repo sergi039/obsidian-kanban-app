@@ -7,6 +7,10 @@
 - A change that the server could not boot with (for example a board pointing at an unknown calendar account) is refused and nothing is written.
 - An unused second writer for priorities was removed; all changes go through one path.
 
+### Reminder links open outside the home network
+- Reminder emails, Calendar events and macOS notifications linked the card at `http://127.0.0.1:4000`, which opens only on the Mac mini. They now link it on the public address (`publicUrl`, https://kanban.cervantes50.com behind Cloudflare Access); the local address is used only when no public address is configured.
+- Every reminder from the API carries this link as `card_url` (`null` without `publicUrl`).
+
 ## 2026-10-14
 
 ### Remind me if they don't answer (issue #2, EMAIL-3)

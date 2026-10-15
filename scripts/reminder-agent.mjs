@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { reminderCardUrl } from './reminder-links.mjs';
 
 const API_URL = (process.env.KANBAN_API_URL || 'http://127.0.0.1:4000').replace(/\/$/, '');
 const APP_URL = (process.env.KANBAN_APP_URL || API_URL).replace(/\/$/, '');
@@ -66,11 +67,7 @@ function appleString(value) {
 }
 
 function cardUrl(reminder) {
-  const params = new URLSearchParams({
-    board: String(reminder.board_id),
-    card: String(reminder.card_id),
-  });
-  return `${APP_URL}/?${params.toString()}`;
+  return reminderCardUrl(reminder, APP_URL);
 }
 
 function reminderTitle(reminder) {

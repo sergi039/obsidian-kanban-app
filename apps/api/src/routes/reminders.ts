@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import { getDb } from '../db.js';
 import { broadcast } from '../ws.js';
 import { safeJsonParse } from '../utils.js';
+import { loadConfig } from '../config.js';
+import { cardUrl } from '../card-links.js';
 import { createFollowUp, FollowUpError, FOLLOW_UP_MODES } from '../mail-followup.js';
 
 const reminders = new Hono();
@@ -80,10 +82,13 @@ function nowIso(): string {
 }
 
 function formatReminder(row: Record<string, unknown>) {
+  const { publicUrl } = loadConfig();
   return {
     ...row,
     source_meta: safeJsonParse<Record<string, unknown>>(row.source_meta as string, {}),
     card_is_done: row.card_is_done === undefined ? undefined : Boolean(row.card_is_done),
+    // The card on the public address, so a reminder opens outside the local network; null without one.
+    card_url: publicUrl ? cardUrl(publicUrl, String(row.board_id), String(row.card_id)) : null,
   };
 }
 
