@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
-import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, mkdtempSync, symlinkSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import Database from 'better-sqlite3';
@@ -199,6 +199,73 @@ describe('providers', () => {
     writeFileSync(file, '# c\nM365_TENANT_ID="t"\nM365_CLIENT_ID=\'c\'\nOTHER=$(rm -rf /)\n');
     expect(providers.readEnvValues(file, ['M365_TENANT_ID', 'M365_CLIENT_ID'])).toEqual({ M365_TENANT_ID: 't', M365_CLIENT_ID: 'c' });
     expect(() => providers.readEnvValues(file, ['M365_CLIENT_SECRET'])).toThrow(/missing M365_CLIENT_SECRET/);
+    writeFileSync(file, 'M365_TENANT_ID=old\nM365_TENANT_ID=\n');
+    expect(() => providers.readEnvValues(file, ['M365_TENANT_ID'])).toThrow(/missing M365_TENANT_ID/);
+  });
+
+  describe('readGraphCredentials', () => {
+    const SECRET_FROM_FILE = 'file-secret-9f3a';
+    const SECRET_FROM_ENV = 'env-secret-1b2c';
+    let secretsDir: string;
+    beforeEach(() => {
+      secretsDir = path.join(tmpDir, 'secrets');
+      mkdirSync(secretsDir, { mode: 0o700 });
+    });
+    const writeEnv = (lines: string[]) => {
+      const file = path.join(tmpDir, 'm365.env');
+      writeFileSync(file, `${lines.join('\n')}\n`);
+      return file;
+    };
+    const writeSecret = (content: string, mode = 0o600) => writeFileSync(path.join(secretsDir, 'M365_CLIENT_SECRET'), content, { mode });
+
+    it('takes the secret from $VSDB_SECRETS_DIR/M365_CLIENT_SECRET, over an env line', () => {
+      writeSecret(`${SECRET_FROM_FILE}\n`);
+      const file = writeEnv(['M365_TENANT_ID=t', 'M365_CLIENT_ID=c', `VSDB_SECRETS_DIR=${secretsDir}`, `M365_CLIENT_SECRET=${SECRET_FROM_ENV}`]);
+      expect(providers.readGraphCredentials(file)).toEqual({ tenantId: 't', clientId: 'c', clientSecret: SECRET_FROM_FILE });
+    });
+
+    it('resolves a relative VSDB_SECRETS_DIR against the env file and expands ~', () => {
+      writeSecret(SECRET_FROM_FILE);
+      const file = writeEnv(['M365_TENANT_ID=t', 'M365_CLIENT_ID=c', 'VSDB_SECRETS_DIR=secrets']);
+      expect(providers.readGraphCredentials(file).clientSecret).toBe(SECRET_FROM_FILE);
+      const home = path.relative(os.homedir(), secretsDir);
+      if (!home.startsWith('..')) {
+        const tilde = writeEnv(['M365_TENANT_ID=t', 'M365_CLIENT_ID=c', `VSDB_SECRETS_DIR=~/${home}`]);
+        expect(providers.readGraphCredentials(tilde).clientSecret).toBe(SECRET_FROM_FILE);
+      }
+    });
+
+    it('falls back to the env line only when the secret file does not exist', () => {
+      const file = writeEnv(['M365_TENANT_ID=t', 'M365_CLIENT_ID=c', `VSDB_SECRETS_DIR=${secretsDir}`, `M365_CLIENT_SECRET="${SECRET_FROM_ENV}"`]);
+      expect(providers.readGraphCredentials(file).clientSecret).toBe(SECRET_FROM_ENV);
+      const noDir = writeEnv(['M365_TENANT_ID=t', 'M365_CLIENT_ID=c', `M365_CLIENT_SECRET=${SECRET_FROM_ENV}`]);
+      expect(providers.readGraphCredentials(noDir).clientSecret).toBe(SECRET_FROM_ENV);
+    });
+
+    it('reports a missing secret by name when neither the file nor the env line exists', () => {
+      const file = writeEnv(['M365_TENANT_ID=t', 'M365_CLIENT_ID=c', `VSDB_SECRETS_DIR=${secretsDir}`]);
+      expect(() => providers.readGraphCredentials(file)).toThrow(/^credentials file is missing M365_CLIENT_SECRET/);
+      const plain = writeEnv(['M365_TENANT_ID=t', 'M365_CLIENT_ID=c']);
+      expect(() => providers.readGraphCredentials(plain)).toThrow('credentials file is missing M365_CLIENT_SECRET');
+      expect(() => providers.readGraphCredentials(writeEnv(['M365_CLIENT_SECRET=x']))).toThrow('credentials file is missing M365_TENANT_ID, M365_CLIENT_ID');
+    });
+
+    it('refuses an unsafe secret file instead of the env line, naming the file and never a value', () => {
+      writeSecret(SECRET_FROM_FILE, 0o640);
+      const file = writeEnv(['M365_TENANT_ID=t', 'M365_CLIENT_ID=c', `VSDB_SECRETS_DIR=${secretsDir}`, `M365_CLIENT_SECRET=${SECRET_FROM_ENV}`]);
+      let message = '';
+      try { providers.readGraphCredentials(file); } catch (err) { message = (err as Error).message; }
+      expect(message).toContain(path.join(secretsDir, 'M365_CLIENT_SECRET'));
+      expect(message).toMatch(/readable by group or others/);
+      expect(message).not.toContain(SECRET_FROM_FILE);
+      expect(message).not.toContain(SECRET_FROM_ENV);
+    });
+
+    it('treats a dangling symlink at the secret path as an error, not as a missing file', () => {
+      symlinkSync(path.join(secretsDir, 'gone'), path.join(secretsDir, 'M365_CLIENT_SECRET'));
+      const file = writeEnv(['M365_TENANT_ID=t', 'M365_CLIENT_ID=c', `VSDB_SECRETS_DIR=${secretsDir}`, `M365_CLIENT_SECRET=${SECRET_FROM_ENV}`]);
+      expect(() => providers.readGraphCredentials(file)).toThrow(/is not a regular file/);
+    });
   });
 
   it('pages through Graph, skips cancelled events and normalizes times', async () => {

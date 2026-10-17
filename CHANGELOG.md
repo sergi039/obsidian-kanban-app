@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-17
+
+### Work calendar and email follow-ups read the Microsoft secret from its file
+- The work account (`graph-app` credentials) stopped syncing on 2026-10-15 when VSDB moved its vendor secrets out of `.env` into one owner-only file per secret (`VSDB_SECRETS_DIR`): `/api/health` → `calendar.work` reported «credentials file is missing M365_CLIENT_SECRET». The loader now takes the client secret from `$VSDB_SECRETS_DIR/M365_CLIENT_SECRET` (the directory named in the same env file) and uses a `M365_CLIENT_SECRET=` line only when that file does not exist; without either, health names the missing secret as before.
+- A secret file that is a symlink, a directory, readable by group or others, empty, several lines or oversized is refused by path and reason, never by content, and the env line is not used in its place.
+
 ## 2026-10-15
 
 ### One command to let Gmail follow-ups notice the answer (backlog B-2)

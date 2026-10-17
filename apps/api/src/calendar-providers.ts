@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import type { CalendarAccount } from './config.js';
+import { readSecretFile } from './secret-file.js';
 
 /**
  * Read-only calendar fetchers. Each returns every non-cancelled event of one account
@@ -42,8 +44,8 @@ export function expandHome(file: string): string {
   return file.startsWith('~/') ? `${os.homedir()}${file.slice(1)}` : file;
 }
 
-/** Parse KEY=VALUE lines (never executed) and return only the requested keys; missing keys throw. */
-export function readEnvValues(file: string, keys: string[]): Record<string, string> {
+/** Parse KEY=VALUE lines (never executed) and return the requested keys' last assignment (an empty one counts as unset). */
+function parseEnvValues(file: string, keys: string[]): Record<string, string> {
   const found: Record<string, string> = {};
   for (const raw of readFileSync(expandHome(file), 'utf-8').split(/\r?\n/)) {
     const line = raw.trim();
@@ -54,9 +56,57 @@ export function readEnvValues(file: string, keys: string[]): Record<string, stri
     if (!keys.includes(key)) continue;
     found[key] = line.slice(eq + 1).trim().replace(/^(['"])(.*)\1$/, '$2');
   }
+  for (const key of Object.keys(found)) if (!found[key]) delete found[key];
+  return found;
+}
+
+/** Parse KEY=VALUE lines (never executed) and return only the requested keys; missing keys throw. */
+export function readEnvValues(file: string, keys: string[]): Record<string, string> {
+  const found = parseEnvValues(file, keys);
   const missing = keys.filter((key) => !found[key]);
   if (missing.length > 0) throw new Error(`credentials file is missing ${missing.join(', ')}`);
   return found;
+}
+
+export interface GraphCredentials {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+/** Name of the env key, and of the secret file under `VSDB_SECRETS_DIR`, that holds the Graph client secret. */
+const GRAPH_SECRET_NAME = 'M365_CLIENT_SECRET';
+
+/**
+ * Graph app-only credentials of an account. Tenant and client ids come from the env
+ * file. The client secret is the one-line file `$VSDB_SECRETS_DIR/M365_CLIENT_SECRET`
+ * (VSDB keeps vendor secrets as owner-only files since VSDB #848; a relative
+ * `VSDB_SECRETS_DIR` is taken from the env file's directory); only when that file
+ * does not exist (ENOENT) is a `M365_CLIENT_SECRET=` line of the env file used; an
+ * unsafe or malformed file is an error, not a fallback. Neither present is an error
+ * that names what is missing, never a value.
+ */
+export function readGraphCredentials(envFile: string): GraphCredentials {
+  const env = parseEnvValues(envFile, ['M365_TENANT_ID', 'M365_CLIENT_ID', 'VSDB_SECRETS_DIR', GRAPH_SECRET_NAME]);
+  const missing = ['M365_TENANT_ID', 'M365_CLIENT_ID'].filter((key) => !env[key]);
+  if (missing.length > 0) throw new Error(`credentials file is missing ${missing.join(', ')}`);
+
+  let clientSecret = env[GRAPH_SECRET_NAME];
+  if (env.VSDB_SECRETS_DIR) {
+    const secretFile = path.resolve(path.dirname(expandHome(envFile)), expandHome(env.VSDB_SECRETS_DIR), GRAPH_SECRET_NAME);
+    try {
+      clientSecret = readSecretFile(secretFile);
+    } catch (err) {
+      // Only a file that does not exist at all leaves the env line in charge; a dangling
+      // symlink, an unsafe or malformed file is an error, never a silent fallback.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+  }
+  if (!clientSecret) {
+    const where = env.VSDB_SECRETS_DIR ? `${GRAPH_SECRET_NAME} (no such file under VSDB_SECRETS_DIR and no env line)` : GRAPH_SECRET_NAME;
+    throw new Error(`credentials file is missing ${where}`);
+  }
+  return { tenantId: env.M365_TENANT_ID, clientId: env.M365_CLIENT_ID, clientSecret };
 }
 
 /** GET/POST JSON with retries on 429/503; errors carry status and provider code, never tokens. */
@@ -136,16 +186,16 @@ export function outlookItemId(rawUrl: string): string | null {
 /** App-only Microsoft Graph token for an account with graph-app credentials (shared by calendar and mail). */
 export async function graphAccessToken(account: CalendarAccount, signal: AbortSignal): Promise<string> {
   if (account.credentials?.type !== 'graph-app') throw new Error('no graph-app credentials configured');
-  const env = readEnvValues(account.credentials.envFile, ['M365_TENANT_ID', 'M365_CLIENT_ID', 'M365_CLIENT_SECRET']);
-  return cachedToken(`graph:${env.M365_TENANT_ID}:${env.M365_CLIENT_ID}`, async () => {
+  const creds = readGraphCredentials(account.credentials.envFile);
+  return cachedToken(`graph:${creds.tenantId}:${creds.clientId}`, async () => {
     const body = new URLSearchParams({
-      client_id: env.M365_CLIENT_ID,
-      client_secret: env.M365_CLIENT_SECRET,
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
       scope: 'https://graph.microsoft.com/.default',
       grant_type: 'client_credentials',
     });
     const res = await fetchJson(
-      `https://login.microsoftonline.com/${encodeURIComponent(env.M365_TENANT_ID)}/oauth2/v2.0/token`,
+      `https://login.microsoftonline.com/${encodeURIComponent(creds.tenantId)}/oauth2/v2.0/token`,
       { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
       signal,
     ) as { access_token: string; expires_in: number };

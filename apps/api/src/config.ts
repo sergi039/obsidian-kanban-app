@@ -22,7 +22,7 @@ export const CategoryDefSchema = z.object({
   showOnCard: z.boolean(),
 });
 
-/** Microsoft Graph app-only access; the env file holds M365_TENANT_ID / M365_CLIENT_ID / M365_CLIENT_SECRET. */
+/** Microsoft Graph app-only access; the env file holds M365_TENANT_ID / M365_CLIENT_ID and either VSDB_SECRETS_DIR (the secret is the one-line file M365_CLIENT_SECRET there) or M365_CLIENT_SECRET itself. */
 const GraphCredentialsSchema = z.object({
   type: z.literal('graph-app'),
   envFile: z.string().min(1),

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { assertPrivateDirectory, macAclProblem, posixAclProblem, writeSecretFileAtomic } from '../src/secret-file.js';
+import { assertPrivateDirectory, macAclProblem, posixAclProblem, readSecretFile, writeSecretFileAtomic } from '../src/secret-file.js';
 
 const noAcl = { aclOf: () => [] as string[] };
 let root: string;
@@ -57,6 +58,55 @@ describe('assertPrivateDirectory', () => {
     expect(existsSync(other)).toBe(false);
     expect(readdirSync(dir)).toEqual(['token.json']);
     chmodSync(dir, 0o700);
+  });
+});
+
+describe('readSecretFile', () => {
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'kanban-secret-read-')));
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+  const write = (name: string, content: string, mode = 0o600) => {
+    const file = path.join(root, name);
+    writeFileSync(file, content, { mode });
+    return file;
+  };
+
+  it('returns the one line of an owner-only file, with or without a trailing newline', () => {
+    expect(readSecretFile(write('a', 'value-1\n'))).toBe('value-1');
+    expect(readSecretFile(write('b', 'value-2'))).toBe('value-2');
+    expect(readSecretFile(write('c', '  value-3 \r\n'))).toBe('value-3');
+  });
+
+  it.each([
+    ['', 'exactly one non-empty line'],
+    ['\n', 'exactly one non-empty line'],
+    ['one\ntwo\n', 'exactly one non-empty line'],
+    ['x'.repeat(16 * 1024 + 1), 'larger than'],
+  ])('refuses content %j naming the file and the reason', (content, reason) => {
+    const file = write('bad', content);
+    expect(() => readSecretFile(file)).toThrow(file);
+    expect(() => readSecretFile(file)).toThrow(reason);
+  });
+
+  it('refuses a file readable by group or others, a symlink and a directory', () => {
+    const open = write('open', 'v', 0o644);
+    expect(() => readSecretFile(open)).toThrow(`${open} is readable by group or others`);
+    const target = write('target', 'v');
+    const link = path.join(root, 'link');
+    symlinkSync(target, link);
+    expect(() => readSecretFile(link)).toThrow(`${link} is not a regular file`);
+    expect(() => readSecretFile(root)).toThrow(`${root} is not a regular file`);
+  });
+
+  it('refuses a FIFO without blocking on it', () => {
+    const fifo = path.join(root, 'fifo');
+    execFileSync('mkfifo', ['-m', '600', fifo]);
+    expect(() => readSecretFile(fifo)).toThrow(`${fifo} is not a regular file`);
+  });
+
+  it('throws ENOENT for a missing file (existence is the caller\'s decision)', () => {
+    expect(() => readSecretFile(path.join(root, 'none'))).toThrow(/ENOENT/);
   });
 });
 

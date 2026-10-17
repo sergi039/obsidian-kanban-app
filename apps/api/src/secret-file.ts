@@ -7,9 +7,13 @@
  * temporary file before the rename, and an inherited ACL can hand the new file to
  * someone else. assertPrivateDirectory refuses such a directory, naming the path,
  * before anything is written. Config files keep writeFileAtomic alone.
+ *
+ * Reading a secret kept as one file per value (VSDB's `VSDB_SECRETS_DIR` layout):
+ * readSecretFile accepts only an owner-only regular file holding one non-empty line
+ * and reports a problem by path and reason, never by content.
  */
 import { execFileSync } from 'node:child_process';
-import { realpathSync, statSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { writeFileAtomic } from './config.js';
@@ -104,4 +108,38 @@ export function assertPrivateDirectory(dir: string, deps: PrivateDirectoryDeps =
 export function writeSecretFileAtomic(target: string, content: string, deps: PrivateDirectoryDeps = {}): void {
   assertPrivateDirectory(path.dirname(target), deps);
   writeFileAtomic(target, content);
+}
+
+/** Largest secret file readSecretFile accepts; a bigger file is not a one-line secret. */
+const MAX_SECRET_FILE_BYTES = 16 * 1024;
+
+/**
+ * Read a one-line secret from an owner-only regular file. The file is opened without
+ * following symlinks and without blocking, then checked and read through that one
+ * descriptor, so nothing can be swapped in between the check and the read. Throws, naming the path and the reason (a
+ * symlink, a directory, group/other access bits, empty, several lines, oversized) and
+ * never the content. A missing file throws the ENOENT error of open, so a caller with a
+ * fallback can tell it from an unsafe file by `err.code`.
+ */
+export function readSecretFile(file: string): string {
+  let fd: number;
+  try {
+    // O_NONBLOCK: opening a FIFO with no writer would otherwise block the event loop.
+    fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ELOOP') throw new Error(`${file} is not a regular file; refusing to read a secret from it`);
+    throw err;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) throw new Error(`${file} is not a regular file; refusing to read a secret from it`);
+    if (stat.mode & 0o077) throw new Error(`${file} is readable by group or others; refusing to read a secret from it`);
+    if (stat.size > MAX_SECRET_FILE_BYTES) throw new Error(`${file} is larger than ${MAX_SECRET_FILE_BYTES} bytes; not a one-line secret`);
+    const lines = readFileSync(fd, 'utf-8').split(/\r?\n/);
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop(); // one trailing newline is allowed
+    if (lines.length !== 1 || lines[0].trim() === '') throw new Error(`${file} must hold exactly one non-empty line`);
+    return lines[0].trim();
+  } finally {
+    closeSync(fd);
+  }
 }
