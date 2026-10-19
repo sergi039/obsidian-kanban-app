@@ -29,6 +29,8 @@ BOARD_FILE="Задачи.md"
 BOARD_COLUMNS='["Backlog","In Progress","Done"]'
 MANAGED_MARK="<!-- managed by obsidian-kanban-app scripts/install-personal-mac.sh -->"
 HEALTH_TIMEOUT_SECONDS=90
+ACCESS_TIMEOUT_SECONDS=120
+DEFAULT_PORT="4000"
 
 RUNTIME_DIR="$HOME/.local/share/obsidian-kanban"
 LOCAL_BIN="$HOME/.local/bin"
@@ -44,7 +46,8 @@ RULE_TEMPLATE="$ROOT_DIR/ops/personal/claude-rule.md"
 GUI_DOMAIN="gui/$(id -u)"
 
 VAULT=""
-PORT="4000"
+PORT=""
+CURRENT_PORT=""
 ACTION="install"
 CLAUDE_BIN=""
 
@@ -55,7 +58,8 @@ Usage: scripts/install-personal-mac.sh [--vault PATH] [--port N]
 
   --vault PATH  Obsidian vault folder (absolute path); default ~/Obsidian/Notes.
                 Created if missing. Ignored on a rerun: config.boards.json keeps it.
-  --port N      Board server port on 127.0.0.1; default 4000.
+  --port N      Board server port on 127.0.0.1; default 4000, or the port of the
+                installed server on a rerun.
   --uninstall   Stop the board server and remove the Claude wiring. Keeps the vault,
                 this checkout and the downloaded runtimes.
 USAGE
@@ -84,6 +88,14 @@ xml_escape() {
 }
 
 port_in_use() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1; }
+
+# A rerun without --port keeps the port the installed server uses.
+resolve_port() {
+  if [[ -f "$PLIST" ]]; then
+    CURRENT_PORT="$(plutil -extract EnvironmentVariables.PORT raw -o - "$PLIST" 2>/dev/null || true)"
+  fi
+  [[ -n "$PORT" ]] || PORT="${CURRENT_PORT:-$DEFAULT_PORT}"
+}
 
 check_prerequisites() {
   [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "arm64" ]] || die "this installer supports Apple Silicon Macs only"
@@ -226,6 +238,51 @@ write_plist() {
 PLIST
 }
 
+# The server runs under launchd, where macOS privacy protection (Documents, Desktop,
+# iCloud Drive) can deny a folder this shell reads freely. Probe from that context,
+# with the same node binary, before the server depends on it.
+check_vault_access() {
+  step "Background access to the vault"
+  local label="$LABEL.access-check" probe_plist result waited=0 outcome
+  probe_plist="$RUNTIME_DIR/$label.plist"
+  result="$RUNTIME_DIR/access-check.result"
+  rm -f "$result"
+  cat > "$probe_plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$(xml_escape "$label")</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$(xml_escape "$NODE_DIR/bin/node")</string>
+    <string>$(xml_escape "$ROOT_DIR/scripts/vault-access-check.cjs")</string>
+    <string>$(xml_escape "$CONFIG")</string>
+    <string>$(xml_escape "$result")</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
+PLIST
+  launchctl bootout "$GUI_DOMAIN/$label" >/dev/null 2>&1 || true
+  launchctl bootstrap "$GUI_DOMAIN" "$probe_plist"
+  echo "If macOS asks whether \"node\" may access this folder, click Allow."
+  while [[ ! -s "$result" && $waited -lt $ACCESS_TIMEOUT_SECONDS ]]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  launchctl bootout "$GUI_DOMAIN/$label" >/dev/null 2>&1 || true
+  rm -f "$probe_plist"
+  outcome="$(cat "$result" 2>/dev/null || true)"
+  rm -f "$result"
+  if [[ "$outcome" != "ok" ]]; then
+    die "macOS does not let the background board server read and write $VAULT (${outcome:-no answer in ${ACCESS_TIMEOUT_SECONDS}s}). Either keep the vault outside Documents, Desktop and iCloud Drive (e.g. ~/Obsidian/Notes), or add $NODE_DIR/bin/node in System Settings → Privacy & Security → Full Disk Access; then rerun"
+  fi
+  echo "The server can read and write the vault"
+}
+
 stop_server() {
   launchctl bootout "$GUI_DOMAIN/$LABEL" >/dev/null 2>&1 || true
   local waited=0
@@ -234,6 +291,10 @@ stop_server() {
 
 start_server() {
   step "Board server on http://127.0.0.1:$PORT"
+  # Moving to another port must not stop the running server before the new port is known free.
+  if [[ "$PORT" != "$CURRENT_PORT" ]] && port_in_use; then
+    die "port $PORT is used by another program; rerun with --port and a free number, e.g. --port 4100"
+  fi
   stop_server
   port_in_use && die "port $PORT is used by another program; rerun with --port and a free number, e.g. --port 4100"
   write_plist
@@ -256,14 +317,32 @@ install_basic_memory() {
   step "Basic Memory $BASIC_MEMORY_VERSION (Obsidian access for Claude)"
   unpack_verified "https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-aarch64-apple-darwin.tar.gz" \
     "$UV_SHA256" "$UV_DIR"
-  if [[ -x "$BM_BIN" ]]; then
-    echo "Keeping the installed $("$BM_BIN" --version 2>/dev/null | tail -n 1)"
-  else
-    "$UV_DIR/uv" tool install --python "$BASIC_MEMORY_PYTHON" "basic-memory==$BASIC_MEMORY_VERSION"
+  local installed=""
+  [[ -x "$BM_BIN" ]] && installed="$("$BM_BIN" --version 2>/dev/null | tail -n 1 | awk '{print $NF}')"
+  if [[ "$installed" != "$BASIC_MEMORY_VERSION" ]]; then
+    "$UV_DIR/uv" tool install --force --python "$BASIC_MEMORY_PYTHON" "basic-memory==$BASIC_MEMORY_VERSION"
   fi
   [[ -x "$BM_BIN" ]] || die "basic-memory did not land in $LOCAL_BIN"
 
   local bm_config="$HOME/.basic-memory/config.json" current=""
+  [[ -f "$bm_config" ]] || "$BM_BIN" project list >/dev/null 2>&1 || true
+  [[ -f "$bm_config" ]] || die "Basic Memory did not create $bm_config"
+  # Before the vault is added: Basic Memory must not add frontmatter to existing
+  # notes on sync, and the installer, not Basic Memory itself, picks its version.
+  node -e '
+    const fs = require("fs");
+    const target = process.argv[1];
+    const config = JSON.parse(fs.readFileSync(target, "utf8"));
+    if (config.ensure_frontmatter_on_sync === false && config.auto_update === false) process.exit(0);
+    config.ensure_frontmatter_on_sync = false;
+    config.auto_update = false;
+    const tmp = `${target}.tmp-${process.pid}`;
+    const fd = fs.openSync(tmp, "wx", 0o600);
+    fs.writeSync(fd, JSON.stringify(config, null, 2) + "\n");
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fs.renameSync(tmp, target);
+  ' "$bm_config" || die "$bm_config is not valid JSON"
   if [[ -f "$bm_config" ]]; then
     current="$(node -e '
       const projects = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).projects || {};
@@ -354,11 +433,13 @@ if [[ "$ACTION" == "uninstall" ]]; then
   exit 0
 fi
 
+resolve_port
 check_prerequisites
 install_toolchain
 resolve_vault
 build_app
 write_config
+check_vault_access
 start_server
 install_basic_memory
 wire_claude
