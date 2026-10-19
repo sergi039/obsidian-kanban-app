@@ -4,7 +4,14 @@
  */
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server, IncomingMessage } from 'node:http';
-import { validateWsAuth, MAX_WS_CONNECTIONS } from './middleware/security.js';
+import { loadConfig } from './config.js';
+import {
+  getCorsOrigins,
+  hostOriginRefusal,
+  logHostOriginRefusal,
+  validateWsAuth,
+  MAX_WS_CONNECTIONS,
+} from './middleware/security.js';
 
 let wss: WebSocketServer | null = null;
 let pingInterval: ReturnType<typeof setInterval> | null = null;
@@ -34,12 +41,36 @@ export function createWsServer(server: Server): WebSocketServer {
   wss = new WebSocketServer({ noServer: true });
 
   const aliveMap = new WeakMap<WebSocket, boolean>();
+  const corsOrigins = getCorsOrigins();
 
   // Handle upgrade manually for auth validation
   server.on('upgrade', (req: IncomingMessage, socket, head) => {
-    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-    if (url.pathname !== '/ws') {
+    // Fixed base: the path is all we need here; a malformed Host or target must not throw in this listener.
+    let pathname: string | null;
+    try {
+      pathname = new URL(req.url || '/', 'http://localhost').pathname;
+    } catch {
+      pathname = null;
+    }
+    if (pathname !== '/ws') {
       socket.destroy();
+      return;
+    }
+
+    // Same Host/Origin rule as HTTP (hostOriginGuard): browsers always send Origin on a WebSocket
+    let refusal: string | null;
+    try {
+      refusal = hostOriginRefusal(req.headers.host, req.headers.origin, loadConfig().publicUrl, corsOrigins);
+    } catch (err) {
+      socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+      socket.destroy();
+      console.error('[ws] Rejected connection: could not check host/origin:', err);
+      return;
+    }
+    if (refusal) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      logHostOriginRefusal('ws', refusal, req.headers.host, req.headers.origin);
       return;
     }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-19
+
+### Other web pages can no longer change the boards (issue #47, backlog B-3)
+- The server runs without `API_TOKEN` on the Mac mini and on personal installs, so any web page open in a browser on the same Mac could create or change cards (a `text/plain` POST needs no CORS preflight), and a DNS-rebinding page could also read the boards. Through `kanban.cervantes50.com` the same worked from any site while the owner was signed in to Cloudflare Access, whose cookie is sent on cross-site requests (SameSite None by default).
+- Every request and the WebSocket upgrade are now refused with `403` unless the `Host` is a loopback name or the `publicUrl` host and a present `Origin` is that same address (scheme included) or a `CORS_ORIGIN` entry. The board page, the public address, curl, the MCP server and the reminder agent work as before.
+- A WebSocket upgrade with a malformed address (`GET http://[/ws`) threw inside the server's upgrade handler and stopped the process; it is now dropped.
+
 ## 2026-10-17
 
 ### Work calendar and email follow-ups read the Microsoft secret from its file

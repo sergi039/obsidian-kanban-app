@@ -181,7 +181,7 @@ See [Desktop MCP setup](docs/desktop-mcp.md) for Claude/OpenAI/Codex configurati
 
 ### Public Address (Cloudflare Access)
 
-`https://kanban.cervantes50.com` reaches the server on the Mac mini through Cloudflare Tunnel `obsidian-kanban` (one route to `127.0.0.1:4000`, any other hostname gets 404) behind Cloudflare Access: a one-time PIN sent only to the addresses in `~/.config/obsidian-kanban-tunnel/allowed_emails`, session 30 days. The server itself still listens on loopback only and runs without `API_TOKEN`, so Access is the only gate. Local clients (MCP server, reminder agent) keep using `http://127.0.0.1:4000`.
+`https://kanban.cervantes50.com` reaches the server on the Mac mini through Cloudflare Tunnel `obsidian-kanban` (one route to `127.0.0.1:4000`, any other hostname gets 404) behind Cloudflare Access: a one-time PIN sent only to the addresses in `~/.config/obsidian-kanban-tunnel/allowed_emails`, session 30 days. The server itself still listens on loopback only and runs without `API_TOKEN`, so Access is the only sign-in; the server itself refuses requests from other web pages (see [Requests from other web pages](#requests-from-other-web-pages)). Local clients (MCP server, reminder agent) keep using `http://127.0.0.1:4000`.
 
 ```bash
 python3 cloudflare/kanban_access_setup.py verify   # API token + one-time PIN login method
@@ -261,6 +261,15 @@ Obsidian (.md files)  ←→  Reconciler  ←→  SQLite DB  ←→  Web UI
 | DB only | Column position, labels, categories, custom fields, comments, descriptions, checklists, managed links, reminders |
 | Trash | Deleting a card removes its task block from `.md` and keeps it in the DB; restore writes the same lines back. Re-adding the line in Obsidian also restores it |
 | Context notes | Closing a card appends a dated line to the `## Канбан` section of each linked note and sets its frontmatter `updated:` — see [Obsidian context](#obsidian-context) |
+
+### Requests from other web pages
+
+The server answers only requests addressed to it, on every path and with or without `API_TOKEN`:
+
+- the `Host` must be `localhost`, `127.0.0.1` or `[::1]` (any port) or the host of `publicUrl` — a DNS-rebinding page cannot send these;
+- a request that carries `Origin` must come from exactly the address the server is reached at, scheme included (`http://localhost:4000`, `http://127.0.0.1:4100`, the `publicUrl` origin such as `https://kanban.cervantes50.com`) or from `CORS_ORIGIN` (default: the local dev origins `http://localhost:3456` and `:4000`). Browsers send `Origin` on every cross-site write and every WebSocket.
+
+Anything else gets `403` (the WebSocket upgrade too) and one `[security] Refused …` line in the log with the Host and Origin it saw. This keeps a page open in a browser on the same Mac (a cross-site form or `fetch`, DNS rebinding) away from a server without `API_TOKEN`, and a site visited while signed in to Cloudflare Access away from the public address. Clients that send no `Origin` — curl, the MCP server, the reminder agent — are not affected. To open the app under another name (a LAN address, Docker on another host), set that address as `publicUrl`.
 
 ## 🛠 Configuration Reference
 

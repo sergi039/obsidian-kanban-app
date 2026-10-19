@@ -1,12 +1,97 @@
 /**
- * Security middleware: API token auth, body size limit, CORS origin restriction, security headers.
+ * Security middleware: Host/Origin check, API token auth, body size limit, CORS origin restriction, security headers.
  */
 import { timingSafeEqual } from 'node:crypto';
 import type { MiddlewareHandler } from 'hono';
 import type { IncomingMessage } from 'node:http';
+import { loadConfig } from '../config.js';
 
 const MAX_BODY_SIZE = Number(process.env.MAX_BODY_SIZE) || 1_048_576; // 1 MB default
 const MAX_WS_CONNECTIONS = Number(process.env.MAX_WS_CONNECTIONS) || 50;
+
+/** Names this server is reached by on the machine itself; the local server speaks plain HTTP. */
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
+const LOGGED_HEADER_MAX = 200;
+
+/** A Host header in canonical `host[:port]` form, or null (missing, malformed, userinfo, path, `127.1`…). */
+function parseHostHeader(host: string | undefined): URL | null {
+  if (!host) return null;
+  let url: URL;
+  try {
+    url = new URL(`http://${host}`);
+  } catch {
+    return null;
+  }
+  return url.host === host.toLowerCase() ? url : null;
+}
+
+/** A serialized http(s) origin as browsers send it, or null ("null", file:, a path…). */
+function parseOriginHeader(origin: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  return url.origin === origin ? url : null;
+}
+
+/**
+ * Why a request's Host/Origin pair is refused, or null when it may proceed.
+ * The API has no token on loopback installs, so this is what keeps other web pages out:
+ * - Host must name this server: a loopback name or the `publicUrl` host. A DNS-rebinding page
+ *   cannot forge that name; the port is not compared, as proxies (vite, `--port`) present their own.
+ * - A present Origin must be the exact origin the server is reached at, scheme included
+ *   (`http://<loopback host>` or the `publicUrl` origin), or an entry of the CORS allowlist.
+ *   A cross-site browser write always carries Origin; curl, Node fetch and agents send none.
+ */
+export function hostOriginRefusal(
+  host: string | undefined,
+  origin: string | undefined,
+  publicUrl: string | undefined,
+  corsOrigins: string[],
+): string | null {
+  const hostUrl = parseHostHeader(host);
+  if (!hostUrl) return 'Host header missing or malformed';
+  const isLoopback = LOOPBACK_HOSTNAMES.has(hostUrl.hostname);
+  const publicOrigin = publicUrl ? new URL(publicUrl) : null;
+  const isPublic = publicOrigin !== null && hostUrl.hostname === publicOrigin.hostname;
+  if (!isLoopback && !isPublic) return 'Host not allowed';
+
+  if (origin === undefined) return null;
+  const originUrl = parseOriginHeader(origin);
+  if (!originUrl) return 'Origin malformed';
+  if (corsOrigins.includes(origin)) return null;
+  if (isLoopback && origin === `http://${hostUrl.host}`) return null;
+  if (isPublic && origin === publicOrigin.origin) return null;
+  return 'Origin not allowed';
+}
+
+/** One log line per refusal; header values are length-capped and JSON-quoted (no log injection). */
+export function logHostOriginRefusal(kind: 'http' | 'ws', reason: string, host: string | undefined, origin: string | undefined): void {
+  const quote = (value: string | undefined) => (value === undefined ? 'absent' : JSON.stringify(value.slice(0, LOGGED_HEADER_MAX)));
+  console.warn(`[security] Refused ${kind} request: ${reason} (host=${quote(host)} origin=${quote(origin)})`);
+}
+
+/**
+ * Refuses requests from other web pages: a foreign Origin (cross-site form/fetch) or a Host that is
+ * not this server (DNS rebinding). Applies to every path and independently of API_TOKEN.
+ * Reads the Host header, never `c.req.url`: the node bridge in index.ts always builds that URL on localhost.
+ */
+export function hostOriginGuard(getPublicUrl: () => string | undefined = () => loadConfig().publicUrl): MiddlewareHandler {
+  const corsOrigins = getCorsOrigins();
+  return async (c, next) => {
+    const host = c.req.header('host');
+    const origin = c.req.header('origin');
+    const reason = hostOriginRefusal(host, origin, getPublicUrl(), corsOrigins);
+    if (reason) {
+      logHostOriginRefusal('http', reason, host, origin);
+      return c.json({ error: 'Request refused: host or origin not allowed' }, 403);
+    }
+    return next();
+  };
+}
 
 /** Timing-safe token comparison to prevent timing attacks. */
 function safeTokenCompare(a: string, b: string): boolean {

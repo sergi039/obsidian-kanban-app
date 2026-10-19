@@ -22,7 +22,7 @@ import { getCalendarSyncStatus, startCalendarSync, stopCalendarSync } from './ca
 import { getFollowUpSyncStatus, startFollowUpSync, stopFollowUpSync } from './mail-followup.js';
 import { startObsidianContext, stopObsidianContext } from './obsidian-context.js';
 import { createWsServer } from './ws.js';
-import { apiTokenAuth, bodyLimit, getCorsOrigins, securityHeaders } from './middleware/security.js';
+import { apiTokenAuth, bodyLimit, getCorsOrigins, hostOriginGuard, securityHeaders } from './middleware/security.js';
 import boardRoutes from './routes/boards.js';
 import cardRoutes from './routes/cards.js';
 import exportRoutes from './routes/export.js';
@@ -35,6 +35,8 @@ import reminderRoutes from './routes/reminders.js';
 const app = new Hono();
 
 // Security middleware
+// First: other web pages (foreign Origin, DNS-rebinding Host) never reach CORS, static files or routes
+app.use('*', hostOriginGuard());
 const corsOrigins = getCorsOrigins();
 app.use('*', cors({
   origin: corsOrigins,
