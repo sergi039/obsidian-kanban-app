@@ -277,6 +277,9 @@ PLIST
   rm -f "$probe_plist"
   outcome="$(cat "$result" 2>/dev/null || true)"
   rm -f "$result"
+  if [[ "$outcome" == missing:* ]]; then
+    die "the board file ${outcome#missing: } is missing; put it back (Obsidian's trash or a backup), or delete that board in the board page, then rerun"
+  fi
   if [[ "$outcome" != "ok" ]]; then
     die "macOS does not let the background board server read and write $VAULT (${outcome:-no answer in ${ACCESS_TIMEOUT_SECONDS}s}). Either keep the vault outside Documents, Desktop and iCloud Drive (e.g. ~/Obsidian/Notes), or add $NODE_DIR/bin/node in System Settings → Privacy & Security → Full Disk Access; then rerun"
   fi
