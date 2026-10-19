@@ -13,8 +13,9 @@ boards or vault. The owner-specific rules in [AGENTS.md](../AGENTS.md)
 | Rule for «в канбан: …» and «обсидиан» | `~/.claude/rules/obsidian-kanban.md` |
 | Node.js, pnpm, uv (pinned, checksum-verified) | `~/.local/share/obsidian-kanban/` |
 
-No administrator password is needed. The first run downloads about 500 MB and
-takes 5–10 minutes.
+No administrator password is needed. The first run downloads about 1 GB, takes
+about 1.7 GB of disk and 5–10 minutes. Basic Memory also creates an empty
+`~/basic-memory` folder (its default project); leave it.
 
 ## For Claude: how to install
 
@@ -77,8 +78,9 @@ The vault, boards and cards stay as they are.
 - **Port 4000 is taken** (the installer says so): rerun with `--port 4100`; the
   board is then at `http://localhost:4100`, and the rule follows.
 - **Claude has no Obsidian tools** in a new session: `claude mcp get
-  obsidian-basic-memory` must show `Connected`. If it does not, rerun the
-  installer; it re-registers the server.
+  obsidian-basic-memory` (`~/.local/bin/claude` when `claude` is not found)
+  must show `Connected`. If it does not, rerun the installer; it re-registers
+  the server.
 - **Claude does not react to «в канбан»** in a new session: check that
   `~/.claude/rules/obsidian-kanban.md` exists; rerun the installer if not.
 
