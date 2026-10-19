@@ -47,6 +47,8 @@ A GitHub Projects-style Kanban board synced to your Obsidian vault. Tasks live i
 
 ## 🚀 Quick Start
 
+> **One Mac, one person, with Claude Code:** [docs/personal-install.md](docs/personal-install.md) installs the board, Obsidian access for Claude and the «в канбан» rule with one script, no admin password.
+
 ### Prerequisites
 
 - **Node.js** 20+ (recommended: 22+)

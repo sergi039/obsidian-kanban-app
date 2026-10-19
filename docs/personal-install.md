@@ -1,0 +1,93 @@
+# Personal install: one Mac, one person
+
+This sets up the board and Obsidian access for Claude Code on another person's
+Mac. Everything runs on that Mac; nothing connects to the owner's Mac mini,
+boards or vault. The owner-specific rules in [AGENTS.md](../AGENTS.md)
+(calendars, mailboxes, `~/Skills-runtime`) do not apply to such an install.
+
+| Part | Where it ends up |
+|---|---|
+| Board server (API + web page), LaunchAgent `com.obsidian-kanban` | `http://localhost:4000`, logs in `~/Library/Logs/ObsidianKanban/` |
+| Boards | Markdown files in the vault; the first one is `Задачи.md` |
+| Obsidian access for Claude: Basic Memory, project `obsidian` | Claude Code MCP server `obsidian-basic-memory` (user scope, `~/.claude.json`) |
+| Rule for «в канбан: …» and «обсидиан» | `~/.claude/rules/obsidian-kanban.md` |
+| Node.js, pnpm, uv (pinned, checksum-verified) | `~/.local/share/obsidian-kanban/` |
+
+No administrator password is needed. The first run downloads about 500 MB and
+takes 5–10 minutes.
+
+## For Claude: how to install
+
+The person is not technical. Speak plainly, do the commands yourself, and ask
+them only for what the steps below name. Do not paste long output at them.
+
+1. **Check the Mac.** `uname -m` must print `arm64`. Run `git --version`; if
+   macOS offers to install the command line developer tools, ask them to click
+   *Install*, wait until it finishes, then go on.
+2. **Ask about Obsidian.** "Do you already use Obsidian? If so, which vault
+   should the tasks live in?" Find the folder of the vault they name (for an
+   iCloud vault, `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/<name>`).
+   If they don't use Obsidian, take `~/Obsidian/Notes`.
+3. **Get the code.**
+   `git clone https://github.com/sergi039/obsidian-kanban-app.git ~/obsidian-kanban-app`,
+   or, if that folder exists, `git -C ~/obsidian-kanban-app pull --ff-only`.
+4. **Run the installer** in the background (it runs for minutes), with the
+   vault from step 2:
+   `~/obsidian-kanban-app/scripts/install-personal-mac.sh --vault "<vault folder>"`.
+   It stops at the first problem with a line starting `ERROR:` that says what
+   to do; fix that and rerun the same command. A rerun is always safe.
+5. **Obsidian app.** If `/Applications/Obsidian.app` is missing, ask them to
+   download it from <https://obsidian.md> and install it. In Obsidian: *Open
+   folder as vault* → the vault folder. They will see `Задачи.md` there.
+6. **Show the board.** Open <http://localhost:4000> for them (`open
+   http://localhost:4000`) and point out the board «Задачи».
+7. **Try it.** Ask them to start a *new* Claude Code session (the rule and the
+   Obsidian tools load only in new sessions) and type
+   «в канбан: проверить установку». A card must appear on the board. When the
+   new session asks for permission to run `curl` or a Basic Memory tool, they
+   may choose *Always allow*.
+8. **Report.** If this install started from a GitHub issue, post a short
+   comment there: done or the exact `ERROR:` line, and the installer's last
+   20 lines.
+
+## Daily use
+
+- «в канбан: позвонить в банк до пятницы» — Claude creates or updates a card.
+- «обсидиан: найди заметку про …», «запиши в обсидиан …» — Claude works in the
+  vault through Basic Memory.
+- The board page is <http://localhost:4000>; the same tasks are lines in
+  `Задачи.md` in Obsidian, and edits on either side show up on the other.
+- A new board: in the board page, the board switcher → create, or a new
+  Markdown file with `- [ ]` lines in the vault.
+
+## Update
+
+```bash
+git -C ~/obsidian-kanban-app pull --ff-only && ~/obsidian-kanban-app/scripts/install-personal-mac.sh
+```
+
+The vault, boards and cards stay as they are.
+
+## Troubleshooting
+
+- **The board page does not open.** Check the server:
+  `launchctl print gui/$(id -u)/com.obsidian-kanban | grep -E 'state|last exit'`
+  and the end of `~/Library/Logs/ObsidianKanban/api.err.log`. Rerunning the
+  installer restarts it.
+- **Port 4000 is taken** (the installer says so): rerun with `--port 4100`; the
+  board is then at `http://localhost:4100`, and the rule follows.
+- **Claude has no Obsidian tools** in a new session: `claude mcp get
+  obsidian-basic-memory` must show `Connected`. If it does not, rerun the
+  installer; it re-registers the server.
+- **Claude does not react to «в канбан»** in a new session: check that
+  `~/.claude/rules/obsidian-kanban.md` exists; rerun the installer if not.
+
+## Uninstall
+
+```bash
+~/obsidian-kanban-app/scripts/install-personal-mac.sh --uninstall
+```
+
+It stops the board server and removes the Claude wiring. The vault with all
+boards, the checkout and the downloaded runtimes stay; delete them by hand if
+wanted.
