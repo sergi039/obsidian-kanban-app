@@ -9,9 +9,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Pinned downloads; checksums from the vendors' release pages.
-NODE_VERSION="24.21.0"
-NODE_SHA256="bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057"
+# Pinned downloads; checksums from the vendors' release pages. Node stays on 22:
+# better-sqlite3 11.10 ships prebuilt binaries up to Node 23, and building one
+# needs a compiler a fresh Mac does not have.
+NODE_VERSION="22.23.3"
+NODE_SHA256="23b25245dcfb9af7262f8ff142e9e2e0af025368117329e7a7458a51e5922f53"
 PNPM_VERSION="10.25.0"
 UV_VERSION="0.12.23"
 UV_SHA256="50487ae565ccd96e499056b4674d438f4c53170202617b4c759defe0c6a1b544"
