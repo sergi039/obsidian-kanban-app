@@ -19,7 +19,7 @@ or just tell Claude or Codex: *“add to kanban: renew the car insurance by Nov 
 
 <img src="docs/assets/agent-demo.gif" alt="An AI assistant is asked to add a task; it asks which board, then the card appears on the Kanban board" width="100%">
 
-<sub>Demo data. The chat panel is drawn; the board and the new card are real — the card also became line 19 of <code>Tasks/Personal.md</code>. The tool names shown are from the first version of the MCP server; today the assistant reads the boards with <code>kanban_list_boards</code>, asks, and adds the card with <code>kanban_create_card</code>.</sub>
+<sub>Demo data. The chat panel is drawn; the board and the new card are real — the card also became line 19 of <code>Tasks/Personal.md</code>. Real screenshots of the Claude and Codex apps are <a href="#save-tasks-from-claude-and-codex">just below</a>.</sub>
 
 </div>
 
@@ -104,10 +104,6 @@ The task file is any note with checkboxes:
 ```
 
 `⏫` marks a high priority, indented lines become sub-items, `- [x]` is done.
-
-### 3. Docker
-
-Create `config.boards.json` as above, then run `VAULT_PATH=/path/to/vault docker compose up -d`. More in the [reference](docs/reference.md#docker).
 
 ## Connect your AI assistant
 
