@@ -14,6 +14,7 @@ and as a `- [ ]` line in your notes. Drag it in the browser, tick it in Obsidian
 [![Codex](https://img.shields.io/badge/OpenAI-Codex-111111)](#connect-your-ai-assistant)
 [![MCP](https://img.shields.io/badge/MCP-server_included-1f1b2e?logo=modelcontextprotocol&logoColor=white)](docs/desktop-mcp.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e)](LICENSE)
+[![CI](https://github.com/sergi039/obsidian-kanban-app/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sergi039/obsidian-kanban-app/actions/workflows/ci.yml)
 
 [From Claude & Codex](#save-tasks-from-claude-and-codex) · [Quick start](#quick-start) · [Connect your AI](#connect-your-ai-assistant) · [Screenshots](#a-closer-look) · [How it works](#how-it-works) · [FAQ](#faq) · [Docs](#documentation)
 
