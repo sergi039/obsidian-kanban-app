@@ -37,15 +37,15 @@ jobs:
     name: Docker compose serves the board
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      # docker-compose.yml requires it for every command, not only `up`
-      VAULT_PATH: ${{ runner.temp }}/vault
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Demo vault and config
         run: |
+          # docker-compose.yml requires VAULT_PATH for every command, not only `up`
+          echo "VAULT_PATH=$RUNNER_TEMP/vault" >> "$GITHUB_ENV"
+          VAULT_PATH="$RUNNER_TEMP/vault"
           mkdir -p config "$VAULT_PATH/Tasks"
           printf -- '- [ ] CI smoke task\n' > "$VAULT_PATH/Tasks/Personal.md"
           printf '%s\n' '{"vaultRoot":"/vault","boards":[{"id":"personal","name":"Personal","file":"Tasks/Personal.md","columns":["Backlog","Done"]}],"defaultColumns":["Backlog","Done"]}' > config/config.boards.json
