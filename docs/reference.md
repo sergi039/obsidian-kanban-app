@@ -122,6 +122,8 @@ The Vite dev server runs on `http://localhost:3456` and proxies API calls to `:4
 
 ## Docker
 
+> **Not working at the moment** (backlog B-6 in [BACKLOG.md](BACKLOG.md)): inside the container the server listens on `127.0.0.1` only, and board edits cannot save the read-only `config.boards.json`. Use the [Mac install](personal-install.md) or the [manual setup](#manual-setup) instead.
+
 ```bash
 # config.boards.json must exist in the repository root (see Board configuration);
 # inside the container VAULT_ROOT=/vault replaces its vaultRoot
