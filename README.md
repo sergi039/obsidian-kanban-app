@@ -31,7 +31,7 @@ Ask your AI app in plain words. Moments later the task is a card on your board a
 
 <img src="docs/assets/from-codex.png" alt="In the Codex app the user asks to put “send the signed contract to Northwind by Friday” on the Work board; the card appears there" width="100%">
 
-<sub>Real screenshots of the Claude desktop app (Claude Code in its Code tab; it answered in its user's language, Russian) and the Codex app, both connected to a demo board. Only the purple outline was added.</sub>
+<sub>Real screenshots of the Claude desktop app (Claude Code in its Code tab; it answered in its user's language, Russian) and the Codex app, both connected to a demo board. The titles, the arrows and the purple outline around each new card were added on top.</sub>
 
 ## Why Obsidian Kanban
 
