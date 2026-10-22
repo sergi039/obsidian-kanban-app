@@ -2,6 +2,10 @@
 
 ## 2026-10-22
 
+### Other sites can no longer use the owner's sign-in to kanban.cervantes50.com (backlog B-4)
+- The Cloudflare Access cookies of the public address were sent with requests from any other site for the whole 30-day session (Cloudflare's default, SameSite None). They are now SameSite Lax: a page on another site cannot make the browser attach them, while a link to a card from an email, a calendar event or a notification still opens signed in.
+- `cloudflare/kanban_access_setup.py audit` now fails when the setting is anything but Lax, including unset. A browser keeps the old cookie until the next sign-in.
+
 ### Card times show the local time (backlog B-5)
 - "Created" and "Updated" in the card detail, and the "Updated" date in the table view, were off by the viewer's UTC offset: the database stores these times in UTC without a zone, and the page read them as local time, so in Madrid a card created at 07:17 showed 5:17. They now show the local time of the event. Comment times and the table's "hide done after N days" already read them as UTC; all of these now go through one helper.
 
