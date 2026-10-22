@@ -20,7 +20,8 @@ Invariants (`audit`):
   * exactly one Access app on the host; one policy: allow, include = exactly ALLOWED_EMAILS;
     no bypass / non_identity / service_auth policies;
   * the app is self_hosted, its only login method is the one-time PIN, OPTIONS preflight does not
-    bypass it; session SESSION_DURATION;
+    bypass it; session SESSION_DURATION; its cookies are SameSite SAME_SITE_COOKIE, so another site
+    cannot ride the owner's Access session (links from mail and calendar still open signed in);
   * the DNS record is a proxied CNAME to this tunnel (grey cloud would skip Access);
   * the tunnel config file equals the canonical text byte for byte (one route + 404);
   * the tunnel carries no other hostnames in ZONE_NAME (checked before the config is written, too);
@@ -54,6 +55,9 @@ CONFIG_DIR = Path.home() / ".config" / "obsidian-kanban-tunnel"
 # Allowed addresses live outside the repo (one per line, mode 600): CONFIG_DIR / allowed_emails
 ALLOWED_EMAILS_FILE = CONFIG_DIR / "allowed_emails"
 SESSION_DURATION = "720h"   # 30 days, as the WhatsApp desk (owner 2026-10-11)
+# Access cookies default to SameSite None, sent with requests from any site for the whole session;
+# Lax sends them only on same-site requests and top-level navigations (backlog B-4)
+SAME_SITE_COOKIE = "lax"
 ORIGIN_URL = "http://127.0.0.1:4000"
 TOKEN_FILE = Path.home() / ".config" / "vc-site" / "cloudflare_api_token"
 CREDENTIALS_FILE = CONFIG_DIR / "obsidian-kanban-tunnel.json"
@@ -226,6 +230,7 @@ def app_payload(idp: str) -> dict:
         "allowed_idps": [idp],              # exactly one login method, never "all enabled IdPs"
         "auto_redirect_to_identity": True, "app_launcher_visible": False,
         "http_only_cookie_attribute": True, "enable_binding_cookie": True,
+        "same_site_cookie_attribute": SAME_SITE_COOKIE,
         "options_preflight_bypass": False, "service_auth_401_redirect": False, "skip_interstitial": True,
     }
 
@@ -292,6 +297,8 @@ def audit(api: Api, acc: str, zid: str, require_dns: bool = True) -> list[str]:
             problems.append(f"app type {app.get('type')} != self_hosted")
         if app.get("options_preflight_bypass"):
             problems.append("OPTIONS preflight bypasses Access")
+        if app.get("same_site_cookie_attribute") != SAME_SITE_COOKIE:
+            problems.append(f"cookie SameSite {app.get('same_site_cookie_attribute')} != {SAME_SITE_COOKIE}")
         policies = api("GET", f"/accounts/{acc}/access/apps/{app['id']}/policies") or []
         if len(policies) != 1:
             problems.append(f"expected 1 policy, found {len(policies)}")

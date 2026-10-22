@@ -108,7 +108,8 @@ def world(tmp_path, monkeypatch):
     setup.write_private(setup.CREDENTIALS_FILE, "{}\n")
     setup.write_private(setup.TUNNEL_CONFIG_FILE, setup.render_tunnel_config(TUNNEL))
     app = {"id": "app1", "name": setup.APP_NAME, "domain": setup.PUBLIC_HOST, "type": "self_hosted",
-           "allowed_idps": ["otp1"], "session_duration": setup.SESSION_DURATION, "options_preflight_bypass": False}
+           "allowed_idps": ["otp1"], "session_duration": setup.SESSION_DURATION, "options_preflight_bypass": False,
+           "same_site_cookie_attribute": "lax"}
     tunnel = {"id": TUNNEL, "name": setup.TUNNEL_NAME, "remote_config": False, "config_src": "local"}
     # Insertion order matters: RoutedApi answers with the first matching prefix.
     return {
@@ -140,6 +141,19 @@ def test_audit_flags_tunnel_switched_to_dashboard_config(world):
 def test_audit_flags_preflight_bypass(world):
     world["/accounts/acc/access/apps/app1"]["options_preflight_bypass"] = True
     assert any("preflight" in p for p in run_audit(world))
+
+
+@pytest.mark.parametrize("value", [None, "none", "strict"])
+def test_audit_flags_cookie_samesite_other_than_lax(world, value):
+    # None: the attribute is unset, so Cloudflare uses its default, SameSite None
+    world["/accounts/acc/access/apps/app1"]["same_site_cookie_attribute"] = value
+    assert f"cookie SameSite {value} != lax" in run_audit(world)
+
+
+def test_app_payload_sets_cookies_samesite_lax():
+    payload = setup.app_payload("otp1")
+    assert payload["same_site_cookie_attribute"] == "lax"
+    assert payload["http_only_cookie_attribute"] is True and payload["enable_binding_cookie"] is True
 
 
 def test_audit_flags_bypass_policy(world):
