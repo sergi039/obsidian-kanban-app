@@ -4,10 +4,10 @@
 
 # Obsidian Kanban
 
-**Your Obsidian tasks as a visual board — and your AI assistant can add to it.**
+**Save tasks from Claude and Codex to a visual Kanban board — kept as plain Markdown in your Obsidian vault.**
 
-Every `- [ ]` line in your vault becomes a card. Drag cards in the browser, edit them in Obsidian,<br>
-or just tell Claude or Codex: *“add to kanban: renew the car insurance by Nov 30”*.
+Tell the Claude app or the Codex app *“add to kanban: renew the car insurance by Nov 30”* — the card appears on your board<br>
+and as a `- [ ]` line in your notes. Drag it in the browser, tick it in Obsidian: both stay in sync.
 
 [![Obsidian](https://img.shields.io/badge/Obsidian-two--way_sync-7c3aed?logo=obsidian&logoColor=white)](#how-it-works)
 [![Claude](https://img.shields.io/badge/Claude-Desktop_·_Code-d97757?logo=claude&logoColor=white)](#connect-your-ai-assistant)
@@ -15,7 +15,7 @@ or just tell Claude or Codex: *“add to kanban: renew the car insurance by Nov 
 [![MCP](https://img.shields.io/badge/MCP-server_included-1f1b2e?logo=modelcontextprotocol&logoColor=white)](docs/desktop-mcp.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e)](LICENSE)
 
-[Quick start](#quick-start) · [Connect your AI](#connect-your-ai-assistant) · [Screenshots](#a-closer-look) · [How it works](#how-it-works) · [FAQ](#faq) · [Docs](#documentation)
+[From Claude & Codex](#save-tasks-from-claude-and-codex) · [Quick start](#quick-start) · [Connect your AI](#connect-your-ai-assistant) · [Screenshots](#a-closer-look) · [How it works](#how-it-works) · [FAQ](#faq) · [Docs](#documentation)
 
 <img src="docs/assets/agent-demo.gif" alt="An AI assistant is asked to add a task; it asks which board, then the card appears on the Kanban board" width="100%">
 
@@ -23,11 +23,21 @@ or just tell Claude or Codex: *“add to kanban: renew the car insurance by Nov 
 
 </div>
 
+## Save tasks from Claude and Codex
+
+Ask your AI app in plain words. Moments later the task is a card on your board and a `- [ ]` line in your Obsidian note — no copying, no switching apps. Both apps reach the board through the MCP server that comes with it ([setup](#connect-your-ai-assistant)).
+
+<img src="docs/assets/from-claude.png" alt="In the Claude app the user asks to add “renew the car insurance by Nov 30”; the card appears at the top of the Personal board" width="100%">
+
+<img src="docs/assets/from-codex.png" alt="In the Codex app the user asks to put “send the signed contract to Northwind by Friday” on the Work board; the card appears there" width="100%">
+
+<sub>Real screenshots of the Claude desktop app (Claude Code in its Code tab; it answered in its user's language, Russian) and the Codex app, both connected to a demo board. Only the purple outline was added.</sub>
+
 ## Why Obsidian Kanban
 
 - 📝 **Your tasks stay plain Markdown.** Cards are ordinary `- [ ]` lines in your Obsidian notes. No new format, no account, nothing to import or export.
 - 👀 **See everything at a glance.** Columns, priorities, colors, due dates, checklists and comments — a board instead of a long list.
-- 🤖 **Talk instead of click.** Ask Claude or Codex to add a task. When it is unclear which board you mean, the assistant asks one short question instead of guessing.
+- 🤖 **Your AI apps keep the board up to date.** Ask the Claude app, Claude Code or the Codex app to add a task, move it, comment on it or close it. When it is unclear which board you mean, the assistant asks one short question instead of guessing.
 - 🏠 **Runs on your own computer.** The board is a small web app on `localhost`. Your tasks do not leave your machine unless you decide to publish the board.
 
 ## A closer look
