@@ -5,3 +5,11 @@ dist/
 apps/web/dist/
 *.rtf
 .git
+.claude
+.env
+config/
+config.boards.json
+config.routing.json
+logs/
+*.db
+docs/assets/

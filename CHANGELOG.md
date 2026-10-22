@@ -2,6 +2,12 @@
 
 ## 2026-10-22
 
+### Docker works again (backlog B-6)
+- `docker compose up` had not worked since February: inside the container the server listened on `127.0.0.1` only, so the published port answered nothing. The image did not build either: `pnpm@latest` now stops at `pnpm install` (`ERR_PNPM_IGNORED_BUILDS`), and `pnpm prune`, which pnpm does not support in a workspace, emptied the API's dependencies. The image now listens on every container interface, and `docker-compose.yml` publishes the board on the host's loopback only (`127.0.0.1:4000`), as the native install does.
+- Board and column edits are saved in Docker: the config now lives in a mounted `config/` folder (`KANBAN_CONFIG_PATH=/config/config.boards.json`) instead of a read-only mounted file, which the atomic config write could not replace.
+- The image installs a pinned pnpm (10.25.0, the version used in development) on a Node 22 base pinned by digest, keeps production dependencies by reinstalling with `--prod`, starts the API without fetching anything at run time (`tsx` is now a runtime dependency of the API), and no longer copies `.env`, a local `config.boards.json`, logs or databases from the checkout into the image.
+- The MCP server stays on the host and talks to the container at `http://localhost:4000`. The Docker option is back in the README.
+
 ### Claude Code and Codex work with the board through its MCP server
 - The MCP server (`apps/mcp`) no longer needs a token: it calls the same API as the board page, so it works on the owner's Mac mini and on personal installs, which run without `API_TOKEN`. Before, its three tools went through `/api/inbox/*`, which answered 401 without `INGEST_API_TOKEN`, and no client had it registered.
 - Eight tools instead of three: list boards, find cards, create a card (with description, due date, links, or from an email), update a card, rewrite its description, move or close it, comment, follow up an email. The routing tools `kanban_route_task` and `kanban_capture_task` and `kanban_list_destinations` are gone; `/api/inbox/*` stays for external sources.

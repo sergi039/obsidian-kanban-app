@@ -1,21 +1,19 @@
-version: '3.8'
-
 services:
   kanban:
     build: .
     ports:
-      - '4000:4000'
+      # Only this computer can open the board (http://localhost:4000)
+      - '127.0.0.1:4000:4000'
     volumes:
       # Mount Obsidian vault (read-write for bidirectional sync)
       - ${VAULT_PATH:?Set VAULT_PATH to your Obsidian vault directory}:/vault
-      # Persist SQLite database
+      # Persist SQLite database and config backups
       - kanban-data:/app/data
-      # Config
-      - ./config.boards.json:/app/config.boards.json:ro
+      # Folder with config.boards.json; the folder, not the file, so board edits can replace the file
+      - ./config:/config
     environment:
-      PORT: '4000'
       VAULT_ROOT: /vault
-      # Set a secure token for API authentication (required for production)
+      # Set a token to require it on every API request
       API_TOKEN: ${API_TOKEN:-}
     restart: unless-stopped
 

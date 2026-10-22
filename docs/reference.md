@@ -122,15 +122,21 @@ The Vite dev server runs on `http://localhost:3456` and proxies API calls to `:4
 
 ## Docker
 
-> **Not working at the moment** (backlog B-6 in [BACKLOG.md](BACKLOG.md)): inside the container the server listens on `127.0.0.1` only, and board edits cannot save the read-only `config.boards.json`. Use the [Mac install](personal-install.md) or the [manual setup](#manual-setup) instead.
-
 ```bash
-# config.boards.json must exist in the repository root (see Board configuration);
-# inside the container VAULT_ROOT=/vault replaces its vaultRoot
+mkdir -p config
+cp config.boards.example.json config/config.boards.json   # then edit it (see Board configuration)
 VAULT_PATH=/path/to/vault docker compose up -d
 ```
 
-Optionally set `API_TOKEN` for authenticated access.
+Open `http://localhost:4000`. The board is published on this computer's loopback only (`127.0.0.1:4000`), like the native install; other machines on the network cannot reach it.
+
+- **Vault:** `VAULT_PATH` is mounted read-write at `/vault`, and `VAULT_ROOT=/vault` replaces the `vaultRoot` in the config.
+- **Config:** the `config/` folder is mounted at `/config` and the server reads `/config/config.boards.json` (`KANBAN_CONFIG_PATH`). The folder is mounted rather than the file because board and column edits replace the file atomically.
+- **Data:** the SQLite database and the boot backups live in the `kanban-data` volume.
+- **MCP:** the MCP server is not in the image; your AI app starts it on the host. Build it there with `pnpm install && pnpm --filter @kanban/mcp build` and point it at the container with `KANBAN_API_URL=http://localhost:4000` (see [AI assistants](#ai-assistants-mcp)).
+- **Token:** set `API_TOKEN` to require a bearer token on every API request.
+
+The container runs as an unprivileged user, so the vault and `config/` must be writable by it. Docker Desktop on a Mac handles this; on Linux, with the host folders owned by another user, board edits and write-back fail with a permission error (not tested here).
 
 ## AI assistants (MCP)
 
@@ -201,6 +207,8 @@ Anything else gets `403` (the WebSocket upgrade too) and one `[security] Refused
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | Server port |
+| `HOST` | `127.0.0.1` | Address the server listens on (`0.0.0.0` inside the Docker image) |
+| `KANBAN_CONFIG_PATH` | `config.boards.json` in the repository root | Path of the board configuration (`/config/config.boards.json` in the Docker image) |
 | `SERVE_STATIC` | — | Set to `1` to serve frontend from `apps/web/dist` |
 | `API_TOKEN` | — | Bearer token for API authentication |
 | `INGEST_API_TOKEN` | — | Required bearer token for the `/api/inbox/*` capture routes (external sources; the MCP server does not use them) |

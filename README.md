@@ -115,6 +115,10 @@ The task file is any note with checkboxes:
 
 `⏫` marks a high priority, indented lines become sub-items, `- [x]` is done.
 
+### 3. Docker
+
+Put the same `config.boards.json` into a `config/` folder next to `docker-compose.yml`, then run `VAULT_PATH=/path/to/vault docker compose up -d` and open `http://localhost:4000`. Details: [reference](docs/reference.md#docker).
+
 ## Connect your AI assistant
 
 The app includes an **MCP server** — the standard way AI apps use tools. With it your assistant can list your boards, find cards, add a task, add to a card, move or close it, comment on it and follow up an email. It talks only to your local board, never directly to your files.

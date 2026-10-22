@@ -126,7 +126,7 @@ function withConfigWrite<T>(fn: () => T): T {
 
 export function loadConfig(configPath?: string): AppConfig {
   if (cached) return cached;
-  const p = configPath || path.join(PROJECT_ROOT, 'config.boards.json');
+  const p = configPath || configFilePath();
   const raw = JSON.parse(readFileSync(p, 'utf-8'));
   const config = ConfigSchema.parse(raw);
 
@@ -184,8 +184,14 @@ export function writeFileAtomic(target: string, content: string): void {
   }
 }
 
+/**
+ * Where config.boards.json lives: `KANBAN_CONFIG_PATH` when set (the Docker setup keeps it
+ * in a mounted folder, because the atomic write renames a file next to it), else the
+ * repository root.
+ */
 export function configFilePath(): string {
-  return path.join(PROJECT_ROOT, 'config.boards.json');
+  const fromEnv = process.env.KANBAN_CONFIG_PATH;
+  return fromEnv ? path.resolve(fromEnv) : path.join(PROJECT_ROOT, 'config.boards.json');
 }
 
 type RawConfig = { boards?: Array<Record<string, unknown> & { id: string }> } & Record<string, unknown>;

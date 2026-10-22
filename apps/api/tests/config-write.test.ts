@@ -94,3 +94,42 @@ describe('config writes', () => {
     expect(readFileSync(file, 'utf-8')).toBe(original);
   });
 });
+
+describe('config location (KANBAN_CONFIG_PATH)', () => {
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), 'kanban-config-'));
+    file = path.join(dir, 'config.boards.json');
+    original = JSON.stringify(CONFIG, null, 2) + '\n';
+    writeFileSync(file, original, { mode: 0o600 });
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    (await import('../src/config.js')).resetConfigCache();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('is the repository root when the variable is not set', async () => {
+    vi.stubEnv('KANBAN_CONFIG_PATH', '');
+    const { configFilePath, PROJECT_ROOT } = await import('../src/config.js');
+    expect(configFilePath()).toBe(path.join(PROJECT_ROOT, 'config.boards.json'));
+  });
+
+  it('reads and changes the file the variable names, without a path argument', async () => {
+    vi.stubEnv('KANBAN_CONFIG_PATH', file);
+    const { configFilePath, loadConfig, mutateConfig, resetConfigCache } = await import('../src/config.js');
+    resetConfigCache();
+
+    expect(configFilePath()).toBe(file);
+    expect(loadConfig().boards[0].name).toBe('Board');
+    expect(mutateConfig((raw) => { raw.boards![0].name = 'Renamed'; return true; })).toBe(true);
+    expect(JSON.parse(readFileSync(file, 'utf-8')).boards[0].name).toBe('Renamed');
+    expect(leftovers()).toEqual([]);
+  });
+
+  it('resolves a relative path against the working directory', async () => {
+    vi.stubEnv('KANBAN_CONFIG_PATH', 'conf/boards.json');
+    const { configFilePath } = await import('../src/config.js');
+    expect(configFilePath()).toBe(path.resolve('conf/boards.json'));
+  });
+});

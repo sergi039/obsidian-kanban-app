@@ -118,9 +118,9 @@ if (process.env.NODE_ENV === 'production' || process.env.SERVE_STATIC) {
 
 // --- Bootstrap ---
 import { copyFileSync, existsSync, readdirSync, statSync, unlinkSync } from 'node:fs';
-import { PROJECT_ROOT } from './config.js';
+import { configFilePath, PROJECT_ROOT } from './config.js';
 
-const CONFIG_PATH = path.join(PROJECT_ROOT, 'config.boards.json');
+const CONFIG_PATH = configFilePath();
 const DATA_DIR = path.join(PROJECT_ROOT, 'data');
 
 // Rotate oversized LaunchAgent logs — a crash loop can grow them unbounded
