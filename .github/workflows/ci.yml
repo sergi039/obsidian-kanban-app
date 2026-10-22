@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10.25.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+
+  docker:
+    # The Docker setup broke unnoticed for months (backlog B-6): run it the way the README does
+    name: Docker compose serves the board
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # docker-compose.yml requires it for every command, not only `up`
+      VAULT_PATH: ${{ runner.temp }}/vault
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Demo vault and config
+        run: |
+          mkdir -p config "$VAULT_PATH/Tasks"
+          printf -- '- [ ] CI smoke task\n' > "$VAULT_PATH/Tasks/Personal.md"
+          printf '%s\n' '{"vaultRoot":"/vault","boards":[{"id":"personal","name":"Personal","file":"Tasks/Personal.md","columns":["Backlog","Done"]}],"defaultColumns":["Backlog","Done"]}' > config/config.boards.json
+          # The container runs as its own unprivileged user
+          chmod -R a+rwX config "$VAULT_PATH"
+      - name: docker compose up
+        run: docker compose up --detach --build --wait --wait-timeout 60
+      - name: Board answers on the host, a column edit is saved, the card is on the board
+        run: |
+          curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-all-errors http://localhost:4000/api/health > /dev/null
+          curl --fail --silent --show-error -X POST -H 'Content-Type: application/json' \
+            --data '{"name":"Waiting"}' http://localhost:4000/api/boards/personal/columns
+          docker compose exec -T kanban cat /config/config.boards.json | grep -q '"Waiting"'
+          curl --fail --silent --show-error http://localhost:4000/api/boards/personal/cards | grep -q 'CI smoke task'
+      - name: Container logs
+        if: always()
+        run: docker compose logs --no-color
