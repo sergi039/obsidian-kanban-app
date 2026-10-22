@@ -2,6 +2,9 @@
 
 ## 2026-10-22
 
+### Card times show the local time (backlog B-5)
+- "Created" and "Updated" in the card detail, and the "Updated" date in the table view, were off by the viewer's UTC offset: the database stores these times in UTC without a zone, and the page read them as local time, so in Madrid a card created at 07:17 showed 5:17. They now show the local time of the event. Comment times and the table's "hide done after N days" already read them as UTC; all of these now go through one helper.
+
 ### Docker works again (backlog B-6)
 - `docker compose up` had not worked since February: inside the container the server listened on `127.0.0.1` only, so the published port answered nothing. The image did not build either: `pnpm@latest` now stops at `pnpm install` (`ERR_PNPM_IGNORED_BUILDS`), and `pnpm prune`, which pnpm does not support in a workspace, emptied the API's dependencies. The image now listens on every container interface, and `docker-compose.yml` publishes the board on the host's loopback only (`127.0.0.1:4000`), as the native install does.
 - Board and column edits are saved in Docker: the config now lives in a mounted `config/` folder (`KANBAN_CONFIG_PATH=/config/config.boards.json`) instead of a read-only mounted file, which the atomic config write could not replace.

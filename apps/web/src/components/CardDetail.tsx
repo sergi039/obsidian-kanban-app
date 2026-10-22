@@ -27,6 +27,7 @@ import type {
   ReminderChannel,
 } from '../types';
 import { extractLinks, linkifyText, safeHostname, normalizeUrl } from '../lib/link-utils';
+import { parseServerTime } from '../lib/server-time';
 import {
   activeReminders,
   formatReminderTime,
@@ -67,7 +68,7 @@ function cleanTitle(t: string, priorities: PriorityDef[]): string {
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
-  const then = new Date(dateStr + (dateStr.endsWith('Z') ? '' : 'Z')).getTime();
+  const then = parseServerTime(dateStr).getTime();
   const diff = now - then;
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return 'just now';
@@ -1323,8 +1324,8 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
               {/* Metadata */}
               <div className="pt-3 border-t border-board-border space-y-1 text-[11px] text-board-text-muted">
                 <div>ID: <span className="font-mono">{card.id}</span></div>
-                <div>Created: {new Date(card.created_at).toLocaleString()}</div>
-                <div>Updated: {new Date(card.updated_at).toLocaleString()}</div>
+                <div>Created: {parseServerTime(card.created_at).toLocaleString()}</div>
+                <div>Updated: {parseServerTime(card.updated_at).toLocaleString()}</div>
               </div>
 
               {saving && (

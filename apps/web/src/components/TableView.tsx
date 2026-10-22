@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import type { Card, PriorityDef, CategoryDef } from '../types';
 import { moveCard, patchCard } from '../api/client';
 import { toggleDoneTargetColumn } from '../lib/done-utils';
+import { parseServerTime } from '../lib/server-time';
 import { Icon } from './Icon';
 
 interface Props {
@@ -37,7 +38,7 @@ function compareCategory(aLabels: string[], bLabels: string[], catMap: Map<strin
 }
 
 function daysSince(dateStr: string): number {
-  const then = new Date(dateStr + (dateStr.endsWith('Z') ? '' : 'Z')).getTime();
+  const then = parseServerTime(dateStr).getTime();
   return Math.floor((Date.now() - then) / 86400000);
 }
 
@@ -317,7 +318,7 @@ export function TableView({ cards, columns, priorities, categories, boardId, onC
       </td>
       {/* Updated */}
       <td className="px-3 py-2.5 text-xs text-board-text-muted">
-        {new Date(card.updated_at).toLocaleDateString()}
+        {parseServerTime(card.updated_at).toLocaleDateString()}
       </td>
     </tr>
   );
