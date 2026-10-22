@@ -11,7 +11,9 @@ let dir: string;
 
 describe('assertPrivateDirectory', () => {
   beforeEach(() => {
-    root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'kanban-secret-')));
+    // Under the home folder, not os.tmpdir(): every ancestor is checked, and on Linux the
+    // temp dir is /tmp (world-writable), which the check rightly refuses
+    root = realpathSync(mkdtempSync(path.join(os.homedir(), '.kanban-secret-test-')));
     dir = path.join(root, 'tokens');
     mkdirSync(dir, { mode: 0o700 });
   });
