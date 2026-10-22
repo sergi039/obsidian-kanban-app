@@ -19,7 +19,7 @@ or just tell Claude or Codex: *“add to kanban: renew the car insurance by Nov 
 
 <img src="docs/assets/agent-demo.gif" alt="An AI assistant is asked to add a task; it asks which board, then the card appears on the Kanban board" width="100%">
 
-<sub>Demo data. The chat panel is drawn; the board, the MCP calls and the new card are real — the card also became line 19 of <code>Tasks/Personal.md</code>.</sub>
+<sub>Demo data. The chat panel is drawn; the board and the new card are real — the card also became line 19 of <code>Tasks/Personal.md</code>. The tool names shown are from the first version of the MCP server; today the assistant reads the boards with <code>kanban_list_boards</code>, asks, and adds the card with <code>kanban_create_card</code>.</sub>
 
 </div>
 
@@ -111,24 +111,46 @@ Create `config.boards.json` as above, then run `VAULT_PATH=/path/to/vault docker
 
 ## Connect your AI assistant
 
-The app includes an **MCP server** — the standard way AI apps use tools. It gives your assistant three tools: list your boards, check where a task belongs, and add a task. It talks only to your local board, never directly to your files.
+The app includes an **MCP server** — the standard way AI apps use tools. With it your assistant can list your boards, find cards, add a task, add to a card, move or close it, comment on it and follow up an email. It talks only to your local board, never directly to your files.
 
-**Step 1.** Build the MCP server and start the board with a token the assistant will use:
+**After the [one-script install](#1-let-claude-code-install-it-mac-10-minutes)** there is nothing to do: it registers the server for Claude Code, and for Codex when Codex is on the Mac.
+
+**Otherwise, step 1.** Build the MCP server (the board must be running, see above):
 
 ```bash
 pnpm --filter @kanban/mcp build
-export KANBAN_TOKEN=$(openssl rand -hex 24)   # the same value goes into your assistant below
-SERVE_STATIC=1 INGEST_API_TOKEN=$KANBAN_TOKEN pnpm --filter @kanban/api start
 ```
 
-**Step 2.** Add the server to your assistant (replace the path and the token):
+**Step 2.** Add it to your assistant (replace the path):
 
 | Assistant | Status | How |
 |---|---|---|
-| **Claude Desktop** | ✅ Primary, tested | Settings → Developer → Edit Config — see below |
-| **Claude Code** | ✅ Local MCP | one command — see below |
-| **OpenAI Codex** (CLI, IDE extension, ChatGPT desktop app) | ✅ Local MCP | `~/.codex/config.toml` — see below |
-| **ChatGPT chat** | 🚧 Not yet | needs a remote HTTPS MCP server, which this project does not ship ([why](docs/decisions/0002-desktop-agent-client-strategy.md)) |
+| **Claude Code** (terminal and the Code tab of the Claude app) | ✅ Local MCP | one command — see below |
+| **OpenAI Codex** (app, CLI, IDE extension) | ✅ Local MCP | one command — see below |
+| **Claude Desktop** (chat) | ✅ Local MCP | Settings → Developer → Edit Config — see below |
+| **ChatGPT chat**, **claude.ai** in the browser or on the phone | 🚧 Not yet | they need a remote HTTPS MCP server with sign-in, which this project does not ship ([why](docs/decisions/0003-agent-access-through-local-mcp.md)) |
+
+<details>
+<summary><b>Claude Code</b></summary>
+
+```bash
+claude mcp add --scope user obsidian-kanban -e KANBAN_API_URL=http://127.0.0.1:4000 \
+  -- node /path/to/obsidian-kanban-app/apps/mcp/dist/server.js
+```
+
+Check with `/mcp` in a new session.
+</details>
+
+<details>
+<summary><b>OpenAI Codex</b></summary>
+
+```bash
+codex mcp add obsidian-kanban --env KANBAN_API_URL=http://127.0.0.1:4000 \
+  -- node /path/to/obsidian-kanban-app/apps/mcp/dist/server.js
+```
+
+The Codex app, the CLI and the IDE extension read the same `~/.codex/config.toml`. Check with `/mcp` in Codex. Codex uses the tools without asking, except rewriting a card's whole description, which it asks you to approve.
+</details>
 
 <details>
 <summary><b>Claude Desktop</b></summary>
@@ -139,45 +161,18 @@ Settings → Developer → Edit Config opens `claude_desktop_config.json`. Add:
 {
   "mcpServers": {
     "obsidian-kanban": {
-      "command": "node",
+      "command": "/absolute/path/to/node",
       "args": ["/path/to/obsidian-kanban-app/apps/mcp/dist/server.js"],
-      "env": {
-        "KANBAN_API_URL": "http://127.0.0.1:4000",
-        "KANBAN_API_TOKEN": "your-token"
-      }
+      "env": { "KANBAN_API_URL": "http://127.0.0.1:4000" }
     }
   }
 }
 ```
 
-Quit Claude Desktop completely and open it again.
+The app may not see your shell's `PATH`, so give `node` by its full path (`which node`). Quit Claude Desktop completely and open it again.
 </details>
 
-<details>
-<summary><b>Claude Code</b></summary>
-
-```bash
-claude mcp add --env KANBAN_API_URL=http://127.0.0.1:4000 --env KANBAN_API_TOKEN=your-token \
-  --transport stdio obsidian-kanban -- node /path/to/obsidian-kanban-app/apps/mcp/dist/server.js
-```
-
-Check with `/mcp` in a new session. (The [one-script install](#1-let-claude-code-install-it-mac-10-minutes) sets up Claude Code differently — with a rule that calls the board directly — so you can skip this there.)
-</details>
-
-<details>
-<summary><b>OpenAI Codex</b></summary>
-
-Add to `~/.codex/config.toml` (the Codex CLI, the IDE extension and the ChatGPT desktop app share it):
-
-```toml
-[mcp_servers.obsidian-kanban]
-command = "node"
-args = ["/path/to/obsidian-kanban-app/apps/mcp/dist/server.js"]
-env = { KANBAN_API_URL = "http://127.0.0.1:4000", KANBAN_API_TOKEN = "your-token" }
-```
-
-Check with `/mcp` in Codex.
-</details>
+If the board runs with `API_TOKEN`, add `KANBAN_API_TOKEN` with the same value. Card links in the answers open `KANBAN_APP_URL` when you set it (your board's public address), else `KANBAN_API_URL`.
 
 **Step 3.** Ask in plain words:
 
@@ -188,7 +183,7 @@ Check with `/mcp` in Codex.
 | *“make a task from this email”* (an assistant that can read your mail) | The card links back to the email; the same thread never becomes a second card. |
 | *“which boards do I have?”* | Boards, columns, categories and priorities. |
 
-More: [docs/desktop-mcp.md](docs/desktop-mcp.md) — routing rules, tasks from email, the safety model.
+More: [docs/desktop-mcp.md](docs/desktop-mcp.md) — the tools, tasks from email, a board on another Mac, the safety model.
 
 ## How it works
 
@@ -257,7 +252,7 @@ The Codex part of OpenAI's apps — yes, through the same local MCP server. Regu
 | Guide | What is inside |
 |---|---|
 | [Personal install](docs/personal-install.md) | The one-script Mac install, daily use, update, uninstall |
-| [AI assistants (MCP)](docs/desktop-mcp.md) | Client setup, routing, tasks from email, safety model |
+| [AI assistants (MCP)](docs/desktop-mcp.md) | The tools, client setup, tasks from email, a board on another Mac, safety model |
 | [Reminders](docs/reminders.md) | Reminder channels, the macOS agent, email follow-ups |
 | [Reference](docs/reference.md) | Configuration, Markdown format, sync internals, security, calendars, troubleshooting, project structure |
 | [Changelog](CHANGELOG.md) | What changed and when |

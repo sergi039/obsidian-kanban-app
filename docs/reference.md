@@ -10,7 +10,7 @@ context and troubleshooting. For the friendly overview start at the
 - [Board configuration](#board-configuration)
 - [Development mode](#development-mode)
 - [Docker](#docker)
-- [Desktop agent capture (MCP)](#desktop-agent-capture-mcp)
+- [AI assistants (MCP)](#ai-assistants-mcp)
 - [Public address (Cloudflare Access)](#public-address-cloudflare-access)
 - [How sync works](#how-sync-works)
 - [Requests from other web pages](#requests-from-other-web-pages)
@@ -130,25 +130,23 @@ VAULT_PATH=/path/to/vault docker compose up -d
 
 Optionally set `API_TOKEN` for authenticated access.
 
-## Desktop agent capture (MCP)
+## AI assistants (MCP)
 
-Claude Desktop, OpenAI/Codex-style local agents, and other MCP clients can create Kanban cards through the bundled MCP server. The server calls the API only; it does not write Markdown or SQLite directly.
+Claude Code, Codex, Claude Desktop and other MCP clients work with the boards through the bundled MCP server (`apps/mcp`). It calls the board API over HTTP like the web page does; it never writes Markdown or SQLite itself.
 
 ```bash
 pnpm --filter @kanban/mcp build
-PORT=4000 SERVE_STATIC=1 API_TOKEN=... INGEST_API_TOKEN=... pnpm --filter @kanban/api start
 ```
 
-Configure the desktop app to run `apps/mcp/dist/server.js` with:
+The client runs `node apps/mcp/dist/server.js` with:
 
-```bash
-KANBAN_API_URL=http://127.0.0.1:4000
-KANBAN_API_TOKEN=...
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KANBAN_API_URL` | `http://127.0.0.1:4000` | The board server |
+| `KANBAN_API_TOKEN` | — | Only when the board runs with `API_TOKEN`: the same value |
+| `KANBAN_APP_URL` | `KANBAN_API_URL` | Address the card links in answers open, e.g. the board's public address |
 
-Routing rules live in `config.routing.json` (gitignored — copy `config.routing.example.json` to start; sensible defaults are derived from your boards if the file is absent). Agents auto-create only when routing is confident; otherwise they return clarification options so the user can choose work, personal, or another board.
-
-See [Desktop MCP setup](desktop-mcp.md) for Claude/OpenAI/Codex configuration and agent instructions.
+The one-script install registers it for Claude Code and Codex. See [AI assistants (MCP)](desktop-mcp.md) for the tools and the setup of each client.
 
 ## Public address (Cloudflare Access)
 
@@ -203,7 +201,7 @@ Anything else gets `403` (the WebSocket upgrade too) and one `[security] Refused
 | `PORT` | `4000` | Server port |
 | `SERVE_STATIC` | — | Set to `1` to serve frontend from `apps/web/dist` |
 | `API_TOKEN` | — | Bearer token for API authentication |
-| `INGEST_API_TOKEN` | — | Required bearer token for `/api/inbox/*` agent ingestion routes |
+| `INGEST_API_TOKEN` | — | Required bearer token for the `/api/inbox/*` capture routes (external sources; the MCP server does not use them) |
 
 ### Reminders
 
@@ -315,11 +313,11 @@ You can also configure `doneColumns` per board for custom done-state column name
 lsof -ti:4000 | xargs kill
 ```
 
-**Desktop agent cannot create tasks?**
-- Confirm the API process was started with `INGEST_API_TOKEN`
-- Confirm the MCP process has `KANBAN_API_TOKEN` set to the same value
+**The assistant cannot reach the board?**
+- A tool error saying the board server does not answer: check `curl http://127.0.0.1:4000/api/health` and that `KANBAN_API_URL` names that server
+- `Kanban API 401`: the board runs with `API_TOKEN`; give the MCP server `KANBAN_API_TOKEN` with the same value
+- No kanban tools at all: `claude mcp get obsidian-kanban` or `codex mcp get obsidian-kanban`, then start a new session
 - Rebuild MCP after code changes: `pnpm --filter @kanban/mcp build`
-- Restart the API after editing `config.routing.json`
 
 ## Project structure
 
@@ -346,7 +344,7 @@ obsidian-kanban-app/
 │   │       ├── filter-engine.ts ← Query parser for filters
 │   │       ├── utils.ts     ← Shared utilities
 │   │       └── routes/      ← API endpoints (cards, boards, views, fields, automations, reminders)
-│   ├── mcp/                 ← MCP server for Claude/OpenAI/Codex desktop capture
+│   ├── mcp/                 ← MCP server: the board tools for Claude and Codex
 │   └── web/                 ← Frontend (React 19 + Tailwind + @dnd-kit)
 │       └── src/
 │           ├── App.tsx
@@ -400,7 +398,7 @@ obsidian-kanban-app/
 - **Bulk actions** — Cmd/Ctrl-click cards to select several, then move or close them at once
 - **Trash** — delete a card from its detail view; its Markdown lines leave the file, its comments/fields/reminders stay, and the Trash panel in the toolbar restores it to the same place in the file
 - **Obsidian context on close** — when a card is closed (board, table, bulk, or `[x]` typed in Obsidian), the notes it is linked with get a dated `✅ Карточка закрыта` line in their `## Канбан` section and a fresh `updated:` date; the card gets an `obsidian` comment naming them
-- **Desktop agent capture** — Claude/OpenAI/Codex clients can create tasks through MCP with safe routing and provenance; a task from an email links back to it and one thread stays one card ([desktop-mcp.md](desktop-mcp.md#tasks-from-email))
+- **AI assistants** — Claude Code, Codex and Claude Desktop find, add, update, move and close cards through MCP; a task from an email links back to it and one thread stays one card ([desktop-mcp.md](desktop-mcp.md#tasks-from-email))
 
 **Organization**
 - **Custom priorities** — configurable per board with emoji, color, and card visibility; the emoji is the marker written to Markdown, the UI shows a flag in the priority color

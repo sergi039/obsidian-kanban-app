@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-22
+
+### Claude Code and Codex work with the board through its MCP server
+- The MCP server (`apps/mcp`) no longer needs a token: it calls the same API as the board page, so it works on the owner's Mac mini and on personal installs, which run without `API_TOKEN`. Before, its three tools went through `/api/inbox/*`, which answered 401 without `INGEST_API_TOKEN`, and no client had it registered.
+- Eight tools instead of three: list boards, find cards, create a card (with description, due date, links, or from an email), update a card, rewrite its description, move or close it, comment, follow up an email. The routing tools `kanban_route_task` and `kanban_capture_task` and `kanban_list_destinations` are gone; `/api/inbox/*` stays for external sources.
+- Adding to a card no longer risks losing what it had: `PATCH /api/cards/:id` takes `append_description` and `add_links`, merged in the same step that reads the card, so an edit made meanwhile in the browser stays and a link is not added twice. Rewriting a whole description is a separate tool, which Codex asks to approve.
+- The one-script install builds the server and registers it for Claude Code and, when Codex is on the Mac, for Codex; uninstall removes both. The «в канбан» rule it writes uses the tools instead of `curl`.
+- Answers carry each card's link (`card_url`) on `KANBAN_APP_URL` when set, the board's public address, else on the API address.
+
 ## 2026-10-19
 
 ### Other web pages can no longer change the boards (issue #47, backlog B-3)

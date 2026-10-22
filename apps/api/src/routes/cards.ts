@@ -8,7 +8,7 @@ import { broadcast } from '../ws.js';
 import { suppressWatcher, unsuppressWatcher } from '../watcher.js';
 import { isDoneColumn } from '../parser.js';
 import { fireEvent } from '../automations.js';
-import { formatCard, normalizePositions } from '../utils.js';
+import { formatCard, normalizePositions, safeJsonParse } from '../utils.js';
 import { trashCard, restoreCard, TrashError } from '../trash.js';
 import { ingestCard, IngestError } from '../ingest.js';
 import { EmailRefSchema } from '../email-provenance.js';
@@ -25,6 +25,11 @@ const CreateCardSchema = z.object({
   email: EmailRefSchema.optional(),
 });
 
+const LinkSchema = z.object({
+  url: z.string(), title: z.string(),
+});
+type Link = z.infer<typeof LinkSchema>;
+
 const PatchCardSchema = z.object({
   title: z.string().trim().min(1).max(500).optional(),
   column_name: z.string().optional(),
@@ -33,13 +38,21 @@ const PatchCardSchema = z.object({
   priority: z.string().nullable().optional(),
   due_date: z.string().nullable().optional(),
   description: z.string().optional(),
+  /** Added to the current description as a new paragraph, read and written in one step. */
+  append_description: z.string().min(1).optional(),
   checklist: z.array(z.object({
     id: z.string(), title: z.string(), done: z.boolean(),
   })).optional(),
-  links: z.array(z.object({
-    url: z.string(), title: z.string(),
-  })).optional(),
-});
+  links: z.array(LinkSchema).optional(),
+  /** Added to the current links; a URL the card already has is skipped. */
+  add_links: z.array(LinkSchema).optional(),
+})
+  .refine((f) => f.description === undefined || f.append_description === undefined, {
+    message: 'Send description or append_description, not both',
+  })
+  .refine((f) => f.links === undefined || f.add_links === undefined, {
+    message: 'Send links or add_links, not both',
+  });
 
 const CreateCommentSchema = z.object({
   text: z.string().min(1),
@@ -59,6 +72,24 @@ const BulkMoveSchema = z.object({
   card_ids: z.array(z.string().min(1)).min(1).max(200),
   column: z.string(),
 });
+
+/** `current` with `addition` as a new paragraph after it. */
+function appendParagraph(current: string | null, addition: string): string {
+  const base = (current ?? '').trimEnd();
+  return base ? `${base}\n\n${addition}` : addition;
+}
+
+/** `current` plus each link of `added` whose URL is not among them yet. */
+function mergeLinks(current: Link[], added: Link[]): Link[] {
+  const urls = new Set(current.map((link) => link.url));
+  const merged = [...current];
+  for (const link of added) {
+    if (urls.has(link.url)) continue;
+    urls.add(link.url);
+    merged.push(link);
+  }
+  return merged;
+}
 
 /**
  * Run one .md write-back for a card. The DB change already happened, so a
@@ -391,8 +422,8 @@ cards.patch('/:id', async (c) => {
   const columnChanging = fields.column_name !== undefined && fields.column_name !== existing.column_name;
   const positionChanging = fields.position !== undefined;
   const hasMetadataChanges = fields.title !== undefined || fields.labels !== undefined || fields.priority !== undefined ||
-    fields.due_date !== undefined || fields.description !== undefined || fields.checklist !== undefined ||
-    fields.links !== undefined;
+    fields.due_date !== undefined || fields.description !== undefined || fields.append_description !== undefined ||
+    fields.checklist !== undefined || fields.links !== undefined || fields.add_links !== undefined;
 
   if (!columnChanging && !positionChanging && !hasMetadataChanges) {
     return c.json({ error: 'No fields to update' }, 400);
@@ -441,9 +472,13 @@ cards.patch('/:id', async (c) => {
     sets.push('due_date = ?');
     params.push(fields.due_date);
   }
+  // `existing` was read in this same synchronous run, so an append cannot lose a concurrent edit.
   if (fields.description !== undefined) {
     sets.push('description = ?');
     params.push(fields.description);
+  } else if (fields.append_description !== undefined) {
+    sets.push('description = ?');
+    params.push(appendParagraph(existing.description as string | null, fields.append_description));
   }
   if (fields.checklist !== undefined) {
     sets.push('checklist = ?');
@@ -452,6 +487,9 @@ cards.patch('/:id', async (c) => {
   if (fields.links !== undefined) {
     sets.push('links = ?');
     params.push(JSON.stringify(fields.links));
+  } else if (fields.add_links !== undefined) {
+    sets.push('links = ?');
+    params.push(JSON.stringify(mergeLinks(safeJsonParse<Link[]>(existing.links as string, []), fields.add_links)));
   }
 
   if (sets.length > 0) {

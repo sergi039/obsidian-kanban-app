@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Personal install on one Apple Silicon Mac, for one person: the board server as a
-# LaunchAgent on 127.0.0.1, Basic Memory as Claude Code's Obsidian MCP server, and a
-# Claude rule for «в канбан: …». Needs no admin password; a rerun updates in place.
+# LaunchAgent on 127.0.0.1, the board's MCP server for Claude Code (and Codex when it is
+# installed), Basic Memory as Claude Code's Obsidian MCP server, and a Claude rule for
+# «в канбан: …». Needs no admin password; a rerun updates in place.
 # Runbook: docs/personal-install.md
 # The node -e programs below are single-quoted on purpose: ${...} there is JavaScript.
 # shellcheck disable=SC2016
@@ -22,6 +23,7 @@ BASIC_MEMORY_PYTHON="3.14"
 
 LABEL="com.obsidian-kanban"
 MCP_NAME="obsidian-basic-memory"
+KANBAN_MCP_NAME="obsidian-kanban"
 BM_PROJECT="obsidian"
 BOARD_ID="tasks"
 BOARD_NAME="Задачи"
@@ -38,6 +40,8 @@ NODE_DIR="$RUNTIME_DIR/node-v$NODE_VERSION"
 PNPM_DIR="$RUNTIME_DIR/pnpm-$PNPM_VERSION"
 UV_DIR="$RUNTIME_DIR/uv-$UV_VERSION"
 BM_BIN="$LOCAL_BIN/basic-memory"
+KANBAN_MCP_SERVER="$ROOT_DIR/apps/mcp/dist/server.js"
+CODEX_APP_CLI="/Applications/Codex.app/Contents/Resources/codex-cli/bin/codex"
 CONFIG="$ROOT_DIR/config.boards.json"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_DIR="$HOME/Library/Logs/ObsidianKanban"
@@ -50,6 +54,7 @@ PORT=""
 CURRENT_PORT=""
 ACTION="install"
 CLAUDE_BIN=""
+CODEX_BIN=""
 
 usage() {
   cat <<'USAGE'
@@ -60,8 +65,8 @@ Usage: scripts/install-personal-mac.sh [--vault PATH] [--port N]
                 Created if missing. Ignored on a rerun: config.boards.json keeps it.
   --port N      Board server port on 127.0.0.1; default 4000, or the port of the
                 installed server on a rerun.
-  --uninstall   Stop the board server and remove the Claude wiring. Keeps the vault,
-                this checkout and the downloaded runtimes.
+  --uninstall   Stop the board server and remove the Claude and Codex wiring. Keeps
+                the vault, this checkout and the downloaded runtimes.
 USAGE
 }
 
@@ -146,13 +151,14 @@ install_toolchain() {
 }
 
 build_app() {
-  step "Board app: dependencies and web build"
+  step "Board app: dependencies, web build and MCP server"
   (cd "$ROOT_DIR" && CI=1 pnpm install --frozen-lockfile)
   # A Node change leaves a native module built for the old ABI.
   if ! (cd "$ROOT_DIR/apps/api" && node -e "new (require('better-sqlite3'))(':memory:').close()" 2>/dev/null); then
     (cd "$ROOT_DIR" && pnpm rebuild better-sqlite3)
   fi
   (cd "$ROOT_DIR" && pnpm --filter @kanban/web build)
+  (cd "$ROOT_DIR" && pnpm --filter @kanban/mcp build)
 }
 
 # The vault lives in config.boards.json once written; a rerun keeps it.
@@ -371,7 +377,7 @@ find_claude() {
 }
 
 wire_claude() {
-  step "Claude Code: Obsidian tools and the kanban rule"
+  step "Claude Code: kanban and Obsidian tools, and the kanban rule"
   find_claude
   if [[ -z "$CLAUDE_BIN" ]]; then
     echo "Installing the Claude Code command line (official installer, claude.ai)"
@@ -381,6 +387,9 @@ wire_claude() {
   fi
   "$CLAUDE_BIN" mcp remove --scope user "$MCP_NAME" >/dev/null 2>&1 || true
   "$CLAUDE_BIN" mcp add --scope user "$MCP_NAME" -- "$BM_BIN" mcp --project "$BM_PROJECT"
+  "$CLAUDE_BIN" mcp remove --scope user "$KANBAN_MCP_NAME" >/dev/null 2>&1 || true
+  "$CLAUDE_BIN" mcp add --scope user "$KANBAN_MCP_NAME" -e "KANBAN_API_URL=http://127.0.0.1:$PORT" \
+    -- "$NODE_DIR/bin/node" "$KANBAN_MCP_SERVER"
 
   mkdir -p "$(dirname "$RULE_FILE")"
   if [[ -e "$RULE_FILE" ]] && ! head -n 1 "$RULE_FILE" | grep -qF -- "$MANAGED_MARK"; then
@@ -388,16 +397,41 @@ wire_claude() {
   fi
   node -e '
     const fs = require("fs");
-    const [template, target, mark, apiUrl, mcpName, project] = process.argv.slice(1);
+    const [template, target, mark, apiUrl, mcpName, project, kanbanMcpName] = process.argv.slice(1);
     const body = mark + "\n" + fs.readFileSync(template, "utf8")
       .replaceAll("{{API_URL}}", apiUrl)
       .replaceAll("{{MCP_NAME}}", mcpName)
-      .replaceAll("{{BM_PROJECT}}", project);
+      .replaceAll("{{BM_PROJECT}}", project)
+      .replaceAll("{{KANBAN_MCP_NAME}}", kanbanMcpName);
     const tmp = `${target}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, body, { mode: 0o644, flag: "wx" });
     fs.renameSync(tmp, target);
-  ' "$RULE_TEMPLATE" "$RULE_FILE" "$MANAGED_MARK" "http://127.0.0.1:$PORT" "$MCP_NAME" "$BM_PROJECT"
+  ' "$RULE_TEMPLATE" "$RULE_FILE" "$MANAGED_MARK" "http://127.0.0.1:$PORT" "$MCP_NAME" "$BM_PROJECT" "$KANBAN_MCP_NAME"
   echo "Rule → $RULE_FILE"
+}
+
+# Codex is optional: the command line, or the one inside the Codex app. Both read
+# ~/.codex/config.toml, so one registration serves the app and the command line.
+find_codex() {
+  if command -v codex >/dev/null 2>&1; then
+    CODEX_BIN="$(command -v codex)"
+  elif [[ -x "$LOCAL_BIN/codex" ]]; then
+    CODEX_BIN="$LOCAL_BIN/codex"
+  elif [[ -x "$CODEX_APP_CLI" ]]; then
+    CODEX_BIN="$CODEX_APP_CLI"
+  fi
+}
+
+wire_codex() {
+  step "Codex: kanban tools"
+  find_codex
+  if [[ -z "$CODEX_BIN" ]]; then
+    echo "Codex is not installed: skipped. After installing it, rerun this installer."
+    return 0
+  fi
+  "$CODEX_BIN" mcp remove "$KANBAN_MCP_NAME" >/dev/null 2>&1 || true
+  "$CODEX_BIN" mcp add "$KANBAN_MCP_NAME" --env "KANBAN_API_URL=http://127.0.0.1:$PORT" \
+    -- "$NODE_DIR/bin/node" "$KANBAN_MCP_SERVER"
 }
 
 verify_install() {
@@ -409,11 +443,18 @@ verify_install() {
     if (boards.length === 0) { console.error("no active boards"); process.exit(1); }
     for (const b of boards) console.log(`Board ${b.id} "${b.name}": ${b.totalCards} cards`);
   ' "$boards" || die "the board API returned no active board"
-  local mcp_status
-  mcp_status="$("$CLAUDE_BIN" mcp get "$MCP_NAME" 2>&1 || true)"
-  [[ "$mcp_status" == *Connected* ]] \
-    || die "Claude Code cannot start $MCP_NAME; run '$CLAUDE_BIN mcp get $MCP_NAME' for details"
-  echo "Claude Code reaches $MCP_NAME"
+  local name mcp_status
+  for name in "$KANBAN_MCP_NAME" "$MCP_NAME"; do
+    mcp_status="$("$CLAUDE_BIN" mcp get "$name" 2>&1 || true)"
+    [[ "$mcp_status" == *Connected* ]] \
+      || die "Claude Code cannot start $name; run '$CLAUDE_BIN mcp get $name' for details"
+    echo "Claude Code reaches $name"
+  done
+  if [[ -n "$CODEX_BIN" ]]; then
+    "$CODEX_BIN" mcp get "$KANBAN_MCP_NAME" >/dev/null 2>&1 \
+      || die "Codex has no $KANBAN_MCP_NAME server; run '$CODEX_BIN mcp get $KANBAN_MCP_NAME' for details"
+    echo "Codex has $KANBAN_MCP_NAME"
+  fi
 }
 
 uninstall() {
@@ -423,11 +464,16 @@ uninstall() {
   find_claude
   if [[ -n "$CLAUDE_BIN" ]]; then
     "$CLAUDE_BIN" mcp remove --scope user "$MCP_NAME" >/dev/null 2>&1 || true
+    "$CLAUDE_BIN" mcp remove --scope user "$KANBAN_MCP_NAME" >/dev/null 2>&1 || true
+  fi
+  find_codex
+  if [[ -n "$CODEX_BIN" ]]; then
+    "$CODEX_BIN" mcp remove "$KANBAN_MCP_NAME" >/dev/null 2>&1 || true
   fi
   if [[ -e "$RULE_FILE" ]] && head -n 1 "$RULE_FILE" | grep -qF -- "$MANAGED_MARK"; then
     rm -f "$RULE_FILE"
   fi
-  echo "Removed the board server, $MCP_NAME and the rule."
+  echo "Removed the board server, $KANBAN_MCP_NAME, $MCP_NAME and the rule."
   echo "Kept: the vault, $ROOT_DIR, $RUNTIME_DIR and $BM_BIN."
 }
 
@@ -446,6 +492,7 @@ check_vault_access
 start_server
 install_basic_memory
 wire_claude
+wire_codex
 verify_install
 
 cat <<DONE
@@ -454,5 +501,6 @@ Done.
   Board:     http://localhost:$PORT
   Vault:     $VAULT  (open it in Obsidian: "Open folder as vault")
   Claude:    start a NEW Claude Code session, then say «в канбан: …»
+  Codex:     the same in a new Codex session, if Codex is installed
   Update:    git -C "$ROOT_DIR" pull --ff-only && "$ROOT_DIR/scripts/install-personal-mac.sh"
 DONE

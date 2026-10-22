@@ -1,7 +1,7 @@
 # Personal install: one Mac, one person
 
-This sets up the board and Obsidian access for Claude Code on another person's
-Mac. Everything runs on that Mac; nothing connects to the owner's Mac mini,
+This sets up the board, its tools for Claude Code and Codex, and Obsidian access
+for Claude Code on another person's Mac. Everything runs on that Mac; nothing connects to the owner's Mac mini,
 boards or vault. The owner-specific rules in [AGENTS.md](../AGENTS.md)
 (calendars, mailboxes, `~/Skills-runtime`) do not apply to such an install.
 
@@ -9,6 +9,7 @@ boards or vault. The owner-specific rules in [AGENTS.md](../AGENTS.md)
 |---|---|
 | Board server (API + web page), LaunchAgent `com.obsidian-kanban` | `http://localhost:4000`, logs in `~/Library/Logs/ObsidianKanban/` |
 | Boards | Markdown files in the vault; the first one is `Задачи.md` |
+| Kanban tools for the assistant: MCP server `obsidian-kanban` ([what it offers](desktop-mcp.md#tools)) | Claude Code user scope (`~/.claude.json`); Codex (`~/.codex/config.toml`) when Codex is on the Mac |
 | Obsidian access for Claude: Basic Memory, project `obsidian` | Claude Code MCP server `obsidian-basic-memory` (user scope, `~/.claude.json`); it changes notes only when asked to write one (`ensure_frontmatter_on_sync` and `auto_update` are off) |
 | Rule for «в канбан: …» and «обсидиан» | `~/.claude/rules/obsidian-kanban.md` |
 | Node.js, pnpm, uv (pinned, checksum-verified) | `~/.local/share/obsidian-kanban/` |
@@ -48,15 +49,17 @@ them only for what the steps below name. Do not paste long output at them.
 7. **Try it.** Ask them to start a *new* Claude Code session (the rule and the
    Obsidian tools load only in new sessions) and type
    «в канбан: проверить установку». A card must appear on the board. When the
-   new session asks for permission to run `curl` or a Basic Memory tool, they
-   may choose *Always allow*.
+   new session asks for permission to use a kanban or Basic Memory tool, they
+   may choose *Always allow*. If they use Codex, the same works in a new Codex
+   session.
 8. **Report.** If this install started from a GitHub issue, post a short
    comment there: done or the exact `ERROR:` line, and the installer's last
    20 lines.
 
 ## Daily use
 
-- «в канбан: позвонить в банк до пятницы» — Claude creates or updates a card.
+- «в канбан: позвонить в банк до пятницы» — Claude (or Codex) creates or updates
+  a card.
 - «обсидиан: найди заметку про …», «запиши в обсидиан …» — Claude works in the
   vault through Basic Memory.
 - The board page is <http://localhost:4000>; the same tasks are lines in
@@ -92,8 +95,11 @@ The vault, boards and cards stay as they are.
   obsidian-basic-memory` (`~/.local/bin/claude` when `claude` is not found)
   must show `Connected`. If it does not, rerun the installer; it re-registers
   the server.
-- **Claude does not react to «в канбан»** in a new session: check that
-  `~/.claude/rules/obsidian-kanban.md` exists; rerun the installer if not.
+- **Claude does not react to «в канбан»** in a new session: `claude mcp get
+  obsidian-kanban` must show `Connected`, and `~/.claude/rules/obsidian-kanban.md`
+  must exist; rerun the installer if not.
+- **Codex has no kanban tools**: `codex mcp get obsidian-kanban` must list the
+  server. Codex installed after the board: rerun the installer.
 
 ## Uninstall
 
@@ -101,6 +107,6 @@ The vault, boards and cards stay as they are.
 ~/obsidian-kanban-app/scripts/install-personal-mac.sh --uninstall
 ```
 
-It stops the board server and removes the Claude wiring. The vault with all
+It stops the board server and removes the Claude and Codex wiring. The vault with all
 boards, the checkout and the downloaded runtimes stay; delete them by hand if
 wanted.

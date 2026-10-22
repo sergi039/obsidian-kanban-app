@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted; the client strategy is replaced by [ADR 0003](0003-agent-access-through-local-mcp.md) (2026-10-22): Claude Code and Codex through the local MCP server, registered by the one-script install.
 
 ## Context
 
