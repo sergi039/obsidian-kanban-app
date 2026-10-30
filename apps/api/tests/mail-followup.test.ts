@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { AppConfig, CalendarAccount } from '../src/config.js';
 import type { ThreadMessage } from '../src/mail-followup.js';
+import { migrateEmailThreads } from '../src/email-threads.js';
 
 let testDb: InstanceType<typeof Database>;
 
@@ -27,6 +28,8 @@ function seedEmailCard(id = 'card0001', email: Record<string, unknown> = { provi
     INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number, source, source_meta)
     VALUES (?, 'work', 'Backlog', 0, 'Answer about renewal', '- [ ] Answer about renewal', 1, 'email', ?)
   `).run(id, JSON.stringify({ email }));
+  // A card made before mail threads: the boot migration gives it its origin thread.
+  migrateEmailThreads(testDb);
 }
 
 function reminderRows() {

@@ -247,6 +247,27 @@ export async function deleteComment(cardId: string, commentId: string): Promise<
   });
 }
 
+// Email threads a card follows
+export type FollowUpMode = 'await_reply' | 'owe_reply';
+
+/** Follow up one of the card's threads; `reminder` is null when the awaited answer is already there. */
+export async function followUpEmailThread(
+  cardId: string,
+  emailThreadId: string,
+  options: { days: number; mode: FollowUpMode; timezone: string },
+): Promise<{ reminder: Reminder | null }> {
+  return request<{ reminder: Reminder | null }>('/reminders/follow-up', {
+    method: 'POST',
+    body: JSON.stringify({ card_id: cardId, email_thread_id: emailThreadId, ...options }),
+  });
+}
+
+export async function detachEmailThread(cardId: string, emailThreadId: string): Promise<Card> {
+  return request<Card>(`/cards/${encodeURIComponent(cardId)}/email-threads/${encodeURIComponent(emailThreadId)}`, {
+    method: 'DELETE',
+  });
+}
+
 // Reminders API
 export async function fetchBoardReminders(boardId: string): Promise<Reminder[]> {
   return request<Reminder[]>(`/reminders?board_id=${encodeURIComponent(boardId)}`);

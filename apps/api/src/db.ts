@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { PROJECT_ROOT } from './config.js';
+import { migrateEmailThreads } from './email-threads.js';
 
 let db: Database.Database | null = null;
 
@@ -141,6 +142,9 @@ const INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(status, trigger_at, snoozed_until)`,
   `CREATE INDEX IF NOT EXISTS idx_reminders_source_uid ON reminders(source, source_uid)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_source_unique ON reminders(card_id, source, source_uid) WHERE source IS NOT NULL AND source_uid IS NOT NULL`,
+  `CREATE INDEX IF NOT EXISTS idx_card_email_threads_card ON card_email_threads(card_id)`,
+  // One active follow-up per thread; finished ones stay as history.
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_thread_follow_up ON reminders(email_thread_id) WHERE kind = 'follow_up' AND email_thread_id IS NOT NULL AND status IN ('scheduled', 'snoozed')`,
 ];
 
 const MIGRATIONS = [
@@ -246,19 +250,44 @@ const MIGRATIONS = [
   `ALTER TABLE cards ADD COLUMN deleted_at TEXT`,
   `ALTER TABLE cards ADD COLUMN trashed_lines TEXT`,
   `ALTER TABLE cards ADD COLUMN trashed_after TEXT`,
+  // Email threads a card follows, one row per thread; cards.email_threads is their
+  // projection for card payloads, reminders.email_thread_id ties a follow-up to one.
+  `CREATE TABLE IF NOT EXISTS card_email_threads (
+    id TEXT PRIMARY KEY,
+    card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+    source_uid TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL,
+    account TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    thread_id TEXT,
+    internet_message_id TEXT,
+    subject TEXT,
+    from_addr TEXT,
+    received_at TEXT,
+    origin INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `ALTER TABLE cards ADD COLUMN email_threads TEXT DEFAULT '[]'`,
+  `ALTER TABLE reminders ADD COLUMN email_thread_id TEXT`,
 	];
 
 /** Columns added by migrations that the code depends on; migration errors are swallowed, so check them. */
-const REQUIRED_CARD_COLUMNS = ['checklist', 'links', 'calendar_events', 'deleted_at', 'trashed_lines', 'trashed_after'];
+const REQUIRED_CARD_COLUMNS = ['checklist', 'links', 'calendar_events', 'deleted_at', 'trashed_lines', 'trashed_after', 'email_threads'];
+const REQUIRED_REMINDER_COLUMNS = ['email_thread_id'];
+
+function assertColumns(database: Database.Database, table: string, required: string[]): void {
+  const present = new Set(
+    (database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((col) => col.name),
+  );
+  const missing = required.filter((name) => !present.has(name));
+  if (missing.length > 0) {
+    throw new Error(`Database migration failed: ${table} table is missing columns ${missing.join(', ')}`);
+  }
+}
 
 function assertCardColumns(database: Database.Database): void {
-  const present = new Set(
-    (database.prepare('PRAGMA table_info(cards)').all() as Array<{ name: string }>).map((col) => col.name),
-  );
-  const missing = REQUIRED_CARD_COLUMNS.filter((name) => !present.has(name));
-  if (missing.length > 0) {
-    throw new Error(`Database migration failed: cards table is missing columns ${missing.join(', ')}`);
-  }
+  assertColumns(database, 'cards', REQUIRED_CARD_COLUMNS);
+  assertColumns(database, 'reminders', REQUIRED_REMINDER_COLUMNS);
 }
 
 /**
@@ -276,6 +305,7 @@ export function createTestDb(): Database.Database {
     testDb.exec(sql);
   }
   assertCardColumns(testDb);
+  migrateEmailThreads(testDb);
   return testDb;
 }
 
@@ -304,6 +334,7 @@ export function getDb(dbPath?: string): Database.Database {
     db.exec(sql);
   }
   assertCardColumns(db);
+  migrateEmailThreads(db);
 
   return db;
 }

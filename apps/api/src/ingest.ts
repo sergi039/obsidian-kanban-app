@@ -11,6 +11,7 @@ import { updateSyncStateHash } from './writeback.js';
 import { fireEvent } from './automations.js';
 import { formatCard } from './utils.js';
 import { EmailRefSchema, emailSourceMeta, emailSourceUid, emailSourceUrl, type EmailRef } from './email-provenance.js';
+import { insertThread, refreshEmailThreads } from './email-threads.js';
 
 export const SOURCE_VALUES = ['telegram', 'email', 'web-clipper', 'claude', 'openai', 'mobile', 'manual'] as const;
 export type IngestSource = (typeof SOURCE_VALUES)[number];
@@ -238,6 +239,8 @@ interface Provenance {
   sourceUid: string;
   sourceUrl: string | null;
   sourceMeta: Record<string, unknown> | undefined;
+  /** The validated email of an email capture: the card's origin mail thread. */
+  email?: EmailRef;
 }
 
 /** Provenance of a capture from an email: everything is derived from the email's provider ids. */
@@ -258,6 +261,7 @@ function emailProvenance(input: IngestCardInput, email: unknown): Provenance {
     sourceUid: emailSourceUid(parsed.data),
     sourceUrl: emailSourceUrl(parsed.data),
     sourceMeta: { ...input.sourceMeta, email: emailSourceMeta(parsed.data) },
+    email: parsed.data,
   };
 }
 
@@ -421,6 +425,11 @@ export function ingestCard(input: IngestCardInput, config: AppConfig = loadConfi
         sourceUrl,
         sourceMeta,
       );
+
+      if (origin.email) {
+        insertThread(db, id, origin.email, true);
+        refreshEmailThreads(db, id);
+      }
 
       db.prepare(`
         UPDATE inbox_captures

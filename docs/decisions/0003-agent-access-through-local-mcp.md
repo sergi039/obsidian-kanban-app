@@ -12,7 +12,7 @@ Accepted 2026-10-22 by the owner. Replaces the client strategy of [ADR 0002](000
 
 ## Decision
 
-- The MCP server calls the same routes as the web page (`/api/boards`, `/api/cards`, `/api/reminders/follow-up`), with no token on loopback and `KANBAN_API_TOKEN` when the board runs with `API_TOKEN`. Its eight tools find, add, update, move, close and comment on cards and follow up emails; adding to a description or links is merged by the API in one step (`append_description`, `add_links`).
+- The MCP server calls the same routes as the web page (`/api/boards`, `/api/cards`, `/api/reminders/follow-up`), with no token on loopback and `KANBAN_API_TOKEN` when the board runs with `API_TOKEN`. Its tools find, add, update, move, close and comment on cards, attach email threads and follow them up; adding to a description or links is merged by the API in one step (`append_description`, `add_links`).
 - The one-script install builds it and registers it for Claude Code and, when present, Codex. The rule keeps only what is not in the tools: the trigger, the column and the Obsidian link.
 - Not now: Claude Code / Codex plugins from this repository, a `.mcpb` for Claude Desktop chat, a remote MCP endpoint.
 

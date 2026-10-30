@@ -15,7 +15,7 @@ export interface KanbanServerOptions extends ApiOptions {
 }
 
 export const SERVER_NAME = 'obsidian-kanban';
-const SERVER_VERSION = '0.2.0';
+const SERVER_VERSION = '0.3.0';
 const LIST_LIMIT_DEFAULT = 50;
 const LIST_LIMIT_MAX = 200;
 const FOLLOW_UP_DAYS_MAX = 90;
@@ -25,6 +25,7 @@ Use these tools when the user asks to add, change, move, close or find a task ("
 - Board: from kanban_list_boards. One board: use it. Several, and the request does not say which: ask one short question naming them.
 - Before creating, look for the same task with kanban_list_cards (search) and update that card instead of adding a second one.
 - The description stands without the chat: what, why, the next step and the deadline in 2-6 lines.
+- An email about a task the board already has (another thread, another mailbox): kanban_attach_email, not a second card.
 - Reply with the card's card_url.`;
 
 const Link = z.object({
@@ -60,8 +61,18 @@ interface ApiCard {
   due_date: string | null;
   description: string | null;
   links: Array<{ url: string; title: string }>;
+  email_threads?: ApiEmailThread[];
   updated_at: string;
   _writeBackWarning?: string;
+}
+
+interface ApiEmailThread {
+  id: string;
+  provider: string;
+  account: string;
+  subject: string | null;
+  origin: boolean;
+  follow_up: { mode: string | null; state: string | null; status: string; trigger_at: string } | null;
 }
 
 function toLinks(links: LinkInput[]): Array<{ url: string; title: string }> {
@@ -90,6 +101,17 @@ export function createKanbanServer(options: KanbanServerOptions): McpServer {
     due_date: card.due_date,
     description: card.description ?? '',
     links: card.links,
+    // The email threads the card follows; a follow-up names one by id when there are several.
+    email_threads: (card.email_threads ?? []).map((thread) => ({
+      id: thread.id,
+      mailbox: thread.account,
+      provider: thread.provider,
+      subject: thread.subject,
+      card_made_from_it: thread.origin,
+      follow_up: thread.follow_up
+        ? { mode: thread.follow_up.mode, state: thread.follow_up.state, status: thread.follow_up.status, trigger_at: thread.follow_up.trigger_at }
+        : null,
+    })),
     updated_at: card.updated_at,
     card_url: cardUrl(card.board_id, card.id),
     // The board saved the change but could not write it into the Markdown file.
@@ -275,24 +297,54 @@ export function createKanbanServer(options: KanbanServerOptions): McpServer {
   );
 
   server.registerTool(
+    'kanban_attach_email',
+    {
+      title: 'Attach an email to a card',
+      description:
+        'Follow one more email thread on an existing card, e.g. the same task in another mailbox. Pass the provider '
+        + 'ids, never the email body. The board then shows a badge for that mailbox, the thread can be followed up, '
+        + 'and capturing this thread later returns this card. A thread that already belongs to another card is refused '
+        + 'with that card\'s id.',
+      inputSchema: { card_id: z.string().min(1), email: Email },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ card_id, email }) => {
+      const attached = await api('POST', `/cards/${encodeURIComponent(card_id)}/email-threads`, email);
+      const body = attached.body as { email_thread_id: string; card: ApiCard };
+      return json({
+        status: attached.status === 201 ? 'attached' : 'already_attached',
+        email_thread_id: body.email_thread_id,
+        card: shape(body.card),
+      });
+    },
+  );
+
+  server.registerTool(
     'kanban_follow_up',
     {
       title: 'Follow up an email',
       description:
-        'For a card made from an email: remind `days` days after the last message of the side being waited on, '
+        'For a card with an email thread: remind `days` days after the last message of the side being waited on, '
         + 'unless that answer arrives first. mode await_reply waits for their answer ("remind me if they do not '
-        + 'answer"), owe_reply for the user\'s own ("remind me to answer"). reminder null in the result means the '
-        + 'answer is already there.',
+        + 'answer"), owe_reply for the user\'s own ("remind me to answer"). A card with several threads needs '
+        + 'email_thread_id from its email_threads. reminder null in the result means the answer is already there.',
       inputSchema: {
         card_id: z.string().min(1),
+        email_thread_id: z.string().min(1).optional().describe('Which of the card\'s email threads; needed when it has several'),
         days: z.number().int().min(1).max(FOLLOW_UP_DAYS_MAX),
         mode: z.enum(['await_reply', 'owe_reply']).default('await_reply'),
         timezone: z.string().min(1).optional().describe('IANA time zone; this Mac\'s by default'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    async ({ card_id, days, mode, timezone }) =>
-      json((await api('POST', '/reminders/follow-up', { card_id, days, mode, timezone: timezone ?? timeZone })).body),
+    async ({ card_id, email_thread_id, days, mode, timezone }) =>
+      json((await api('POST', '/reminders/follow-up', {
+        card_id,
+        ...(email_thread_id ? { email_thread_id } : {}),
+        days,
+        mode,
+        timezone: timezone ?? timeZone,
+      })).body),
   );
 
   return server;

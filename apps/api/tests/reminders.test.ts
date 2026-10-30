@@ -67,8 +67,16 @@ describe('reminders routes', () => {
         source_meta TEXT DEFAULT '{}',
         seq_id INTEGER,
         deleted_at TEXT,
+        email_threads TEXT DEFAULT '[]',
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS card_email_threads (
+        id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+        source_uid TEXT NOT NULL UNIQUE, provider TEXT NOT NULL, account TEXT NOT NULL, message_id TEXT NOT NULL,
+        thread_id TEXT, internet_message_id TEXT, subject TEXT, from_addr TEXT, received_at TEXT,
+        origin INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT (datetime('now'))
       );
 
       CREATE TABLE reminders (
@@ -88,6 +96,7 @@ describe('reminders routes', () => {
         source_uid TEXT,
         source_url TEXT,
         source_meta TEXT DEFAULT '{}',
+        email_thread_id TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       );

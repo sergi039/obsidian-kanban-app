@@ -36,6 +36,19 @@ function createDb(): InstanceType<typeof Database> {
       labels TEXT DEFAULT '[]', due_date TEXT, sub_items TEXT DEFAULT '[]',
       description TEXT DEFAULT '', source_fingerprint TEXT, links TEXT DEFAULT '[]',
       source TEXT, source_uid TEXT, source_url TEXT, source_meta TEXT DEFAULT '{}', seq_id INTEGER, deleted_at TEXT, trashed_lines TEXT, trashed_after TEXT,
+      email_threads TEXT DEFAULT '[]',
+      created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS card_email_threads (
+      id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      source_uid TEXT NOT NULL UNIQUE, provider TEXT NOT NULL, account TEXT NOT NULL, message_id TEXT NOT NULL,
+      thread_id TEXT, internet_message_id TEXT, subject TEXT, from_addr TEXT, received_at TEXT,
+      origin INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS reminders (
+      id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, kind TEXT NOT NULL DEFAULT 'custom',
+      status TEXT NOT NULL DEFAULT 'scheduled', trigger_at TEXT NOT NULL, snoozed_until TEXT, last_fired_at TEXT,
+      source_meta TEXT DEFAULT '{}', email_thread_id TEXT,
       created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS inbox_captures (

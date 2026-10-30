@@ -13,7 +13,8 @@ The board's MCP server (`apps/mcp`) gives Claude Code, Codex and Claude Desktop 
 | `kanban_replace_description` | Rewrites the whole description; the only tool that removes text, marked destructive |
 | `kanban_move_card` | Moves a card to another column; to the done column closes it |
 | `kanban_add_comment` | Adds a comment (author `agent`) |
-| `kanban_follow_up` | For a card from an email: a reminder if the awaited answer does not come in N days |
+| `kanban_attach_email` | Follows one more email thread on a card, e.g. the same task in another mailbox; the board shows a badge per mailbox |
+| `kanban_follow_up` | For one of the card's email threads: a reminder if the awaited answer does not come in N days (`email_thread_id` when the card has several) |
 
 The server also hands the assistant short instructions: use these tools for «в канбан» / "add to kanban", ask which board when several fit, look for the same task before adding one, write a description that stands without the chat, and answer with the card's `card_url`.
 
@@ -81,6 +82,7 @@ The server derives the rest:
 - `source` is `email`. `POST /api/cards` answers 201 for a new card, 200 with the existing card when the thread already has one, and 409 `capture_deleted` when the thread's card was deleted for good. `kanban_create_card` returns the existing card with status `existing` and changes nothing on it; the agent adds to it with `kanban_update_card`.
 - `source_uid` is `<provider>:<mailbox>:thread:<thread_id>`, or `…:message:<message_id>` without a thread id. The same thread again returns the card it already has, even when the title or message differs. The same thread in another mailbox is another task.
 - `source_url` opens the email, in the formats invoice-zero's `buildEmailLink` uses: Gmail `https://mail.google.com/mail/u/<mailbox>/#all/<message_id>`; Outlook work/school `https://outlook.office.com/mail/deeplink/read/<message_id>`; consumer Outlook (outlook.com, hotmail, live, msn) `https://outlook.live.com/mail/0/inbox/id/<thread_id or message_id>`. It is written into the task line as `[from:email](…)` and is the card's first link.
+- An email about a task the board already has, from another thread or mailbox, goes on that card with `kanban_attach_email` (`POST /api/cards/<id>/email-threads`, [reminders.md](reminders.md#email-threads-of-a-card)); cards list their threads in `email_threads`.
 - `source_meta.email` keeps only the fields above. Unknown fields in `email` are rejected, and so is a `source_meta` key that looks like an email body (`body`, `html`, `text`, `raw`, …). For every source, a `source_meta` key that looks like a credential (`token`, `secret`, `password`, `api_key`, `cookie`, …) is rejected.
 
 ## Calendar events for a task
