@@ -308,8 +308,12 @@ export function writeBackColumn(
   }
 }
 
-/** Matches the kb marker (kb:id + optional kb:col) anywhere in the line. */
-const KB_MARKER_RE = /<!--\s*kb:id=[a-zA-Z0-9_-]+(?:\s+kb:col=[A-Za-z0-9+_-]+)?\s*-->/;
+/**
+ * Matches the kb marker (kb:id + optional kb:col) anywhere in the line.
+ * kb:col accepts what KB_ID_RE in parser.ts accepts: encodeCol percent-encodes
+ * non-ASCII column names (%D0%A1…), and a narrower class made renames drop the marker.
+ */
+const KB_MARKER_RE = /<!--\s*kb:id=[a-zA-Z0-9_-]+(?:\s+kb:col=[^\s]+)?\s*-->/;
 /** Matches a [from:source](url) source link (first occurrence). */
 const SOURCE_LINK_RE = /\[from:[a-z][a-z0-9_-]*\]\((https?:\/\/[^)]+)\)/i;
 
