@@ -101,6 +101,19 @@ describe('migrateEmailThreads', () => {
     })]);
   });
 
+  it('refuses to boot when a follow-up cannot be tied to a thread, but passes an email card without one', async () => {
+    const { migrateEmailThreads } = await import('../src/email-threads.js');
+    insertCard('bare0001', { source: 'email', source_meta: {} });
+    migrateEmailThreads(testDb);
+    expect(testDb.prepare('SELECT COUNT(*) AS n FROM card_email_threads').get()).toEqual({ n: 0 });
+
+    testDb.prepare(`
+      INSERT INTO reminders (id, card_id, board_id, kind, status, trigger_at, source, source_meta)
+      VALUES ('lost-fu', 'bare0001', 'work', 'follow_up', 'scheduled', '2026-10-20T00:00:00Z', 'email', ?)
+    `).run(JSON.stringify({ follow_up: { mode: 'await_reply', days: 3, state: 'waiting' } }));
+    expect(() => migrateEmailThreads(testDb)).toThrow(/follow-up\(s\) lost-fu \(card bare0001\) have no readable email/);
+  });
+
   it('refuses to boot when two cards claim the same thread instead of dropping one', async () => {
     const { migrateEmailThreads } = await import('../src/email-threads.js');
     insertCard('mail0001', { source: 'email', source_meta: { email: WORK_EMAIL } });

@@ -227,6 +227,7 @@ export function migrateEmailThreads(db: Database.Database): void {
       }
       insertThread(db, card.id, ref, true);
     }
+    // Such a card never had a thread to follow (follow-ups needed source_meta.email), so it loses nothing.
     if (unreadable > 0) {
       console.warn(`[db] ${unreadable} email card(s) have no readable source_meta.email: no mail thread for them`);
     }
@@ -237,13 +238,13 @@ export function migrateEmailThreads(db: Database.Database): void {
       WHERE reminders.kind = 'follow_up' AND reminders.source = 'email' AND reminders.email_thread_id IS NULL
         AND json_extract(reminders.source_meta, '$.follow_up') IS NOT NULL
     `).all() as Array<{ id: string; card_id: string; thread_id: string | null }>;
+    // A follow-up without a thread would silently stop being checked: refuse instead.
     const orphans = followUps.filter((row) => !row.thread_id);
-    for (const row of followUps) {
-      if (!row.thread_id) continue;
-      db.prepare('UPDATE reminders SET email_thread_id = ? WHERE id = ?').run(row.thread_id, row.id);
-    }
     if (orphans.length > 0) {
-      console.warn(`[db] ${orphans.length} follow-up(s) have no mail thread and are no longer checked: ${orphans.map((r) => r.id).join(', ')}`);
+      throw new Error(`follow-up(s) ${orphans.map((r) => `${r.id} (card ${r.card_id})`).join(', ')} have no readable email on their card`);
+    }
+    for (const row of followUps) {
+      db.prepare('UPDATE reminders SET email_thread_id = ? WHERE id = ?').run(row.thread_id, row.id);
     }
 
     const stale = db.prepare(`
