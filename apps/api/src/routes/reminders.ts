@@ -7,6 +7,7 @@ import { safeJsonParse } from '../utils.js';
 import { loadConfig } from '../config.js';
 import { cardUrl } from '../card-links.js';
 import { createFollowUp, FollowUpError, FOLLOW_UP_MODES } from '../mail-followup.js';
+import { refreshEmailThreads } from '../email-threads.js';
 
 const reminders = new Hono();
 
@@ -115,6 +116,8 @@ type ReminderEventType =
   | 'reminder-deleted';
 
 function emitReminderChanged(type: ReminderEventType, row: Record<string, unknown>): void {
+  // A follow-up's status is part of its card's mail badges.
+  if (row.kind === 'follow_up' && typeof row.card_id === 'string') refreshEmailThreads(getDb(), row.card_id);
   broadcast({
     type,
     reminderId: row.id != null ? String(row.id) : undefined,
@@ -123,6 +126,18 @@ function emitReminderChanged(type: ReminderEventType, row: Record<string, unknow
     timestamp: new Date().toISOString(),
   });
 }
+
+/** Reviving a follow-up on a thread that has an active one breaks its unique index: a 409, not a 500. */
+function isThreadFollowUpConflict(err: unknown): boolean {
+  return err instanceof Error
+    && (err as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE'
+    && err.message.includes('email_thread_id');
+}
+
+const THREAD_FOLLOW_UP_CONFLICT = {
+  error: 'The email thread already has an active follow-up',
+  code: 'thread_follow_up_active',
+};
 
 async function safeParseJson(c: { req: { json: () => Promise<unknown> } }): Promise<unknown | null> {
   try {
@@ -299,6 +314,8 @@ reminders.post('/', async (c) => {
 
 const FollowUpSchema = z.object({
   card_id: z.string().min(1),
+  /** The card's email thread to follow; may be left out when the card has one. */
+  email_thread_id: z.string().min(1).optional(),
   /** Remind this many days after the message the wait counts from. */
   days: z.number().int().min(1).max(90),
   /** await_reply: waiting for their answer; owe_reply: the owner has to answer. */
@@ -318,6 +335,7 @@ reminders.post('/follow-up', async (c) => {
   try {
     const result = await createFollowUp({
       cardId: parsed.data.card_id,
+      emailThreadId: parsed.data.email_thread_id,
       mode: parsed.data.mode,
       days: parsed.data.days,
       channel: parsed.data.channel,
@@ -326,13 +344,16 @@ reminders.post('/follow-up', async (c) => {
     });
     if (!result.reminderId) {
       // The awaited answer is already in the thread: nothing to remind about.
-      return c.json({ follow_up: result.followUp, reminder: null });
+      return c.json({ follow_up: result.followUp, email_thread_id: result.emailThreadId, reminder: null });
     }
     const reminder = getReminder(result.reminderId)!;
     emitReminderChanged(result.created ? 'reminder-created' : 'reminder-updated', reminder);
-    return c.json({ follow_up: result.followUp, reminder: formatReminder(reminder) }, result.created ? 201 : 200);
+    return c.json(
+      { follow_up: result.followUp, email_thread_id: result.emailThreadId, reminder: formatReminder(reminder) },
+      result.created ? 201 : 200,
+    );
   } catch (err) {
-    if (err instanceof FollowUpError) return c.json({ error: err.message, code: err.code }, err.status);
+    if (err instanceof FollowUpError) return c.json({ error: err.message, code: err.code, ...(err.details ?? {}) }, err.status);
     console.error('[follow-up] Failed to create a follow-up:', err);
     return c.json({ error: 'Failed to create the follow-up' }, 500);
   }
@@ -374,7 +395,12 @@ reminders.patch('/:id', async (c) => {
 
   sets.push("updated_at = datetime('now')");
   params.push(c.req.param('id'));
-  getDb().prepare(`UPDATE reminders SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  try {
+    getDb().prepare(`UPDATE reminders SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  } catch (err) {
+    if (isThreadFollowUpConflict(err)) return c.json(THREAD_FOLLOW_UP_CONFLICT, 409);
+    throw err;
+  }
 
   const updated = getReminder(c.req.param('id'))!;
   emitReminderChanged('reminder-updated', updated);
@@ -392,11 +418,16 @@ reminders.post('/:id/snooze', async (c) => {
   if (!existing) return c.json({ error: 'Reminder not found' }, 404);
 
   const snoozedUntil = parsed.data.until ?? new Date(Date.now() + parsed.data.minutes! * 60_000).toISOString();
-  getDb().prepare(`
-    UPDATE reminders
-    SET status = 'snoozed', snoozed_until = ?, updated_at = datetime('now')
-    WHERE id = ?
-  `).run(snoozedUntil, c.req.param('id'));
+  try {
+    getDb().prepare(`
+      UPDATE reminders
+      SET status = 'snoozed', snoozed_until = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(snoozedUntil, c.req.param('id'));
+  } catch (err) {
+    if (isThreadFollowUpConflict(err)) return c.json(THREAD_FOLLOW_UP_CONFLICT, 409);
+    throw err;
+  }
 
   const updated = getReminder(c.req.param('id'))!;
   emitReminderChanged('reminder-snoozed', updated);

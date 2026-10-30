@@ -113,3 +113,9 @@ This ADR decides **one open question: where does *provenance* live** — the met
 ## Consequences
 
 To be finalized with the decision. If **D**: small additive migrations, no marker/reconciler risk, provenance reuses the links pipeline; trade-off is loss of structured origin-type/rich-meta on a backup-less catastrophic rebuild.
+
+---
+
+## Amendment (2026-10-30) — email threads attached to a card
+
+A card can follow more than one email thread (the same task in the work and the personal mailbox). The provenance above is unchanged: the thread a card was made from stays in `source_meta.email` and in the `[from:email](url)` link of the task line. Threads attached later are rows of `card_email_threads` and live in the database only, like links added through the API (`add_links`) and reminders; they are not written into Markdown. Several `[from:…]` links cannot express them: the parser and the title write-back keep only the first reserved link. Trade-off: a rebuild of the database from Markdown without a backup loses attached threads and their follow-ups, as it loses reminders.

@@ -98,6 +98,7 @@ describe('obsidian-kanban MCP tools', () => {
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       'kanban_add_comment',
+      'kanban_attach_email',
       'kanban_create_card',
       'kanban_follow_up',
       'kanban_list_boards',
@@ -157,6 +158,24 @@ describe('obsidian-kanban MCP tools', () => {
     expect(again.data.card.id).toBe(first.data.card.id);
     expect(again.data.card.description).toBe('First summary');
     expect(again.data.card.title).toBe('Answer about the renewal');
+  });
+
+  it('attaches an email of another mailbox to the card and refuses a thread another card has', async () => {
+    const client = await connect();
+    const created = await call(client, 'kanban_create_card', { board_id: 'private', title: 'Renew the insurance', email });
+    const other = await call(client, 'kanban_create_card', { board_id: 'private', title: 'Something else' });
+    const work = { provider: 'outlook', account: 'owner@work.example', message_id: 'AAMk-1', thread_id: 'conv-1', subject: 'Insurance' };
+
+    const attached = await call(client, 'kanban_attach_email', { card_id: created.data.card.id, email: work });
+    expect(attached.data.status).toBe('attached');
+    expect(attached.data.card.email_threads).toEqual([
+      expect.objectContaining({ mailbox: 'owner@example.com', provider: 'gmail', card_made_from_it: true, follow_up: null }),
+      { id: attached.data.email_thread_id, mailbox: 'owner@work.example', provider: 'outlook', subject: 'Insurance', card_made_from_it: false, follow_up: null },
+    ]);
+    expect((await call(client, 'kanban_attach_email', { card_id: created.data.card.id, email: work })).data.status).toBe('already_attached');
+
+    const refused = await call(client, 'kanban_attach_email', { card_id: other.data.card.id, email: work });
+    expect(refused.error).toContain(`belongs to card ${created.data.card.id}`);
   });
 
   it('adds to the description and links of a card without losing the link to its email, and rewrites on request', async () => {
@@ -271,6 +290,10 @@ describe('obsidian-kanban MCP tools', () => {
     });
     const result = await call(client, 'kanban_follow_up', { card_id: 'abc', days: 3 });
     expect(result.data.reminder).toBeNull();
-    expect(bodies).toEqual([{ card_id: 'abc', days: 3, mode: 'await_reply', timezone: 'Europe/Madrid' }]);
+    await call(client, 'kanban_follow_up', { card_id: 'abc', email_thread_id: 't1', days: 2, mode: 'owe_reply', timezone: 'UTC' });
+    expect(bodies).toEqual([
+      { card_id: 'abc', days: 3, mode: 'await_reply', timezone: 'Europe/Madrid' },
+      { card_id: 'abc', email_thread_id: 't1', days: 2, mode: 'owe_reply', timezone: 'UTC' },
+    ]);
   });
 });

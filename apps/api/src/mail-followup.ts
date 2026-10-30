@@ -1,9 +1,10 @@
 /**
  * Email follow-ups (issue #2, EMAIL-3): "remind me if this thread gets no answer in N days".
  *
- * A follow-up is a `follow_up` reminder on a card made from an email (EMAIL-1/2: the
- * card's `source_meta.email` names the provider, mailbox and thread). Its
- * `source_meta.follow_up` records what is awaited:
+ * A follow-up is a `follow_up` reminder on one of the card's email threads
+ * (`card_email_threads`, `reminders.email_thread_id`): a card can follow threads in
+ * several mailboxes, each with its own follow-up. Its `source_meta.follow_up` records
+ * what is awaited:
  *
  * - `await_reply`: the owner wrote last and waits for the other side;
  * - `owe_reply`: the other side wrote last and the owner has to answer.
@@ -11,9 +12,10 @@
  * The reminder fires `days` after the message the wait counts from. Every sync reads
  * the thread's message headers (never a body) through the account credentials the
  * calendar sync already uses; once the awaited answer is in the thread, the reminder
- * is dismissed and the card gets a comment saying so. Automatic messages (out-of-office
- * replies, delivery failures, auto-generated notices) are not answers. Only sender and
- * date of the answer are stored.
+ * is dismissed and the card gets a comment saying so. A fired follow-up is still read
+ * for `LATE_ANSWER_DAYS`, so an answer that comes after the reminder still shows.
+ * Automatic messages (out-of-office replies, delivery failures, auto-generated notices)
+ * are not answers. Only sender and date of the answer are stored.
  * Without mailbox access (an unconfigured mailbox, a Google consent without Gmail)
  * the reminder still fires on time; it just cannot dismiss itself.
  */
@@ -25,6 +27,7 @@ import { fetchJson, graphAccessToken, googleAccessToken } from './calendar-provi
 import { broadcast } from './ws.js';
 import { safeJsonParse } from './utils.js';
 import { isProviderId } from './email-provenance.js';
+import { refreshEmailThreads, threadById, threadsOfCard, type EmailThreadRow } from './email-threads.js';
 
 export const FOLLOW_UP_MODES = ['await_reply', 'owe_reply'] as const;
 export type FollowUpMode = (typeof FOLLOW_UP_MODES)[number];
@@ -34,6 +37,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const THREAD_FETCH_TIMEOUT_MS = 20_000;
 const MAX_THREAD_PAGES = 10;
 const COMMENT_AUTHOR = 'kanban';
+/** How long a fired follow-up's thread is still read for a late answer. */
+export const LATE_ANSWER_DAYS = 30;
 
 /** One message of a thread, reduced to what a follow-up needs. */
 export interface ThreadMessage {
@@ -71,9 +76,23 @@ interface CardEmail {
 export type ThreadFetcher = (account: CalendarAccount, email: CardEmail, signal: AbortSignal) => Promise<ThreadMessage[]>;
 
 export class FollowUpError extends Error {
-  constructor(message: string, public status: 400 | 404, public code: string) {
+  constructor(
+    message: string,
+    public status: 400 | 404 | 409,
+    public code: string,
+    public details?: Record<string, unknown>,
+  ) {
     super(message);
   }
+}
+
+function threadEmail(thread: Pick<EmailThreadRow, 'provider' | 'account' | 'thread_id' | 'received_at'>): CardEmail {
+  return {
+    provider: thread.provider,
+    account: thread.account,
+    ...(thread.thread_id ? { thread_id: thread.thread_id } : {}),
+    ...(thread.received_at ? { received_at: thread.received_at } : {}),
+  };
 }
 
 // ---------------------------------------------------------------- rules (pure)
@@ -259,18 +278,20 @@ interface ActiveFollowUpRow {
   source_meta: string;
 }
 
-function activeFollowUp(db: Database.Database, cardId: string): ActiveFollowUpRow | undefined {
+/** The thread's follow-up that is not over yet: an active one, else a fired one (still read for a late answer). */
+function openFollowUp(db: Database.Database, threadId: string): ActiveFollowUpRow | undefined {
   return db.prepare(`
     SELECT id, card_id, board_id, timezone, source_meta FROM reminders
-    WHERE card_id = ? AND kind = 'follow_up' AND status IN ('scheduled', 'snoozed')
-    ORDER BY created_at DESC LIMIT 1
-  `).get(cardId) as ActiveFollowUpRow | undefined;
+    WHERE email_thread_id = ? AND kind = 'follow_up' AND status IN ('scheduled', 'snoozed', 'fired')
+    ORDER BY CASE status WHEN 'fired' THEN 1 ELSE 0 END, updated_at DESC, created_at DESC LIMIT 1
+  `).get(threadId) as ActiveFollowUpRow | undefined;
 }
 
 /**
- * Dismiss an active follow-up because the awaited answer arrived, and say so on the card.
- * Returns false when the reminder changed meanwhile (fired, dismissed, deleted, or its
- * follow-up re-set): `row.source_meta` is the value this decision was made on.
+ * Dismiss a follow-up because the awaited answer arrived, and say so on the card.
+ * Returns false when the reminder changed meanwhile (dismissed, deleted, or its
+ * follow-up re-set) or the card went to the trash: `row.source_meta` is the value this
+ * decision was made on.
  */
 function markAnswered(db: Database.Database, row: ActiveFollowUpRow, follow: FollowUpState, answer: ThreadMessage, nowIso: string): boolean {
   const meta = safeJsonParse<Record<string, unknown>>(row.source_meta, {});
@@ -288,11 +309,13 @@ function markAnswered(db: Database.Database, row: ActiveFollowUpRow, follow: Fol
   return db.transaction(() => {
     const updated = db.prepare(`
       UPDATE reminders SET status = 'dismissed', dismissed_at = ?, source_meta = ?, updated_at = datetime('now')
-      WHERE id = ? AND status IN ('scheduled', 'snoozed') AND source_meta = ?
+      WHERE id = ? AND status IN ('scheduled', 'snoozed', 'fired') AND source_meta = ?
+        AND card_id IN (SELECT id FROM cards WHERE deleted_at IS NULL)
     `).run(nowIso, JSON.stringify({ ...meta, follow_up: answered }), row.id, row.source_meta);
     if (updated.changes === 0) return false;
     db.prepare('INSERT INTO comments (id, card_id, author, text) VALUES (?, ?, ?, ?)').run(newId(), row.card_id, COMMENT_AUTHOR, text);
     db.prepare("UPDATE cards SET updated_at = datetime('now') WHERE id = ?").run(row.card_id);
+    refreshEmailThreads(db, row.card_id);
     return true;
   })();
 }
@@ -303,10 +326,16 @@ function notifyAnswered(row: ActiveFollowUpRow): void {
   broadcast({ type: 'card-updated', cardId: row.card_id, boardId: row.board_id, timestamp });
 }
 
+function notifyCardChanged(row: ActiveFollowUpRow): void {
+  broadcast({ type: 'card-updated', cardId: row.card_id, boardId: row.board_id, timestamp: new Date().toISOString() });
+}
+
 // ---------------------------------------------------------------- create
 
 export interface CreateFollowUpInput {
   cardId: string;
+  /** The card's thread to follow; may be left out when the card has exactly one. */
+  emailThreadId?: string;
   mode: FollowUpMode;
   days: number;
   channel: string;
@@ -319,6 +348,29 @@ export interface CreateFollowUpResult {
   reminderId: string | null;
   created: boolean;
   followUp: FollowUpState;
+  emailThreadId: string;
+}
+
+/** The thread a follow-up is for: the named one, or the card's only thread. */
+function followedThread(db: Database.Database, cardId: string, emailThreadId: string | undefined): EmailThreadRow {
+  if (emailThreadId) {
+    const thread = threadById(db, emailThreadId);
+    if (!thread || thread.card_id !== cardId) {
+      throw new FollowUpError('The card has no such email thread', 404, 'thread_not_found');
+    }
+    return thread;
+  }
+  const threads = threadsOfCard(db, cardId);
+  if (threads.length === 0) {
+    throw new FollowUpError('A follow-up needs an email thread on the card', 400, 'not_an_email_card');
+  }
+  if (threads.length > 1) {
+    const list = threads.map((thread) => `${thread.id} ${thread.account}${thread.subject ? ` «${thread.subject}»` : ''}`).join('; ');
+    throw new FollowUpError(`The card follows several email threads, name one with email_thread_id: ${list}`, 400, 'thread_required', {
+      threads: threads.map((thread) => ({ id: thread.id, account: thread.account, subject: thread.subject })),
+    });
+  }
+  return threads[0];
 }
 
 export async function createFollowUp(
@@ -327,19 +379,17 @@ export async function createFollowUp(
 ): Promise<CreateFollowUpResult> {
   assertTimezone(input.timezone);
   const db = getDb();
-  const card = db.prepare('SELECT id, board_id, title, source, source_meta, deleted_at FROM cards WHERE id = ?').get(input.cardId) as
-    | { id: string; board_id: string; title: string; source: string | null; source_meta: string; deleted_at: string | null }
+  const card = db.prepare('SELECT id, board_id, title, deleted_at FROM cards WHERE id = ?').get(input.cardId) as
+    | { id: string; board_id: string; title: string; deleted_at: string | null }
     | undefined;
   if (!card || card.deleted_at) throw new FollowUpError('Card not found', 404, 'card_not_found');
-  const email = safeJsonParse<{ email?: CardEmail }>(card.source_meta, {}).email;
-  if (card.source !== 'email' || !email?.provider || !email.account) {
-    throw new FollowUpError('A follow-up needs a card made from an email', 400, 'not_an_email_card');
-  }
+  const thread = followedThread(db, card.id, input.emailThreadId);
+  const email = threadEmail(thread);
   if (!email.thread_id) {
-    throw new FollowUpError('The card\'s email has no thread id to follow', 400, 'no_thread_id');
+    throw new FollowUpError('The email has no thread id to follow', 400, 'no_thread_id');
   }
   if (!isProviderId(email.provider, email.thread_id)) {
-    throw new FollowUpError(`The card's thread id is not a ${email.provider} thread id`, 400, 'invalid_thread_id');
+    throw new FollowUpError(`The thread id is not a ${email.provider} thread id`, 400, 'invalid_thread_id');
   }
 
   const config = deps.config ?? loadConfig();
@@ -360,9 +410,13 @@ export async function createFollowUp(
     }
   }
 
-  // The card may have gone to the trash while the thread was read.
+  // The card may have gone to the trash, or the thread been detached, while the thread was read.
+  // From here on nothing awaits, so the checks and the writes below see the same state.
   const live = db.prepare('SELECT deleted_at FROM cards WHERE id = ?').get(card.id) as { deleted_at: string | null } | undefined;
   if (!live || live.deleted_at) throw new FollowUpError('Card not found', 404, 'card_not_found');
+  if (threadById(db, thread.id)?.card_id !== card.id) {
+    throw new FollowUpError('The email thread was detached from the card', 409, 'thread_detached');
+  }
 
   const baselineAt = messages ? baselineFor(input.mode, messages, nowIso) : nowIso;
   const answer = messages ? findAnswer(input.mode, baselineAt, messages) : null;
@@ -375,17 +429,17 @@ export async function createFollowUp(
     checked_at: messages ? nowIso : null,
     error,
   };
-  const existing = activeFollowUp(db, card.id);
+  const existing = openFollowUp(db, thread.id);
 
   if (answer) {
     const answered: FollowUpState = { ...followUp, state: 'answered', answered_at: answer.at, answered_by: answer.from };
-    // An older follow-up on this card is over too.
+    // An older follow-up on this thread is over too.
     if (existing && markAnswered(db, existing, followUp, answer, nowIso)) notifyAnswered(existing);
-    return { reminderId: null, created: false, followUp: answered };
+    return { reminderId: null, created: false, followUp: answered, emailThreadId: thread.id };
   }
 
   const triggerAt = new Date(new Date(baselineAt).getTime() + input.days * DAY_MS).toISOString();
-  const subject = safeJsonParse<{ email?: { subject?: string } }>(card.source_meta, {}).email?.subject || card.title;
+  const subject = thread.subject || card.title;
   const message = input.message?.trim()
     || (input.mode === 'await_reply' ? `Нет ответа: «${subject}»` : `Ответить: «${subject}»`);
   const cardMeta = { follow_up: followUp };
@@ -397,15 +451,17 @@ export async function createFollowUp(
         message = ?, source_meta = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(triggerAt, input.channel, input.timezone, message, JSON.stringify({ ...meta, ...cardMeta }), existing.id);
-    return { reminderId: existing.id, created: false, followUp };
+    refreshEmailThreads(db, card.id);
+    return { reminderId: existing.id, created: false, followUp, emailThreadId: thread.id };
   }
 
   const id = newId();
   db.prepare(`
-    INSERT INTO reminders (id, card_id, board_id, kind, channel, status, trigger_at, timezone, message, source, source_meta)
-    VALUES (?, ?, ?, 'follow_up', ?, 'scheduled', ?, ?, ?, 'email', ?)
-  `).run(id, card.id, card.board_id, input.channel, triggerAt, input.timezone, message, JSON.stringify(cardMeta));
-  return { reminderId: id, created: true, followUp };
+    INSERT INTO reminders (id, card_id, board_id, kind, channel, status, trigger_at, timezone, message, source, source_meta, email_thread_id)
+    VALUES (?, ?, ?, 'follow_up', ?, 'scheduled', ?, ?, ?, 'email', ?, ?)
+  `).run(id, card.id, card.board_id, input.channel, triggerAt, input.timezone, message, JSON.stringify(cardMeta), thread.id);
+  refreshEmailThreads(db, card.id);
+  return { reminderId: id, created: true, followUp, emailThreadId: thread.id };
 }
 
 // ---------------------------------------------------------------- sync
@@ -424,19 +480,32 @@ let running: Promise<void> | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let shutdown: AbortController | null = null;
 
-/** Read every active follow-up's thread once; dismiss the ones whose answer arrived. */
+type SyncRow = ActiveFollowUpRow & Pick<EmailThreadRow, 'provider' | 'account' | 'thread_id' | 'received_at'>;
+
+/** Read the thread of every follow-up still in play once; dismiss the ones whose answer arrived. */
 export async function runFollowUpSync(deps: { fetchThread?: ThreadFetcher; now?: () => Date; config?: AppConfig } = {}): Promise<void> {
   if (running) return running;
   running = (async () => {
     const db = getDb();
     const config = deps.config ?? loadConfig();
     const fetchThread = deps.fetchThread ?? fetchThreadMessages;
+    const lateSince = new Date((deps.now ?? (() => new Date()))().getTime() - LATE_ANSWER_DAYS * DAY_MS).toISOString();
+    // Active follow-ups, and fired ones for a late answer unless the thread has an active one again.
     const rows = db.prepare(`
       SELECT reminders.id, reminders.card_id, reminders.board_id, reminders.timezone, reminders.source_meta,
-        cards.source_meta AS card_meta
-      FROM reminders JOIN cards ON cards.id = reminders.card_id
-      WHERE reminders.kind = 'follow_up' AND reminders.status IN ('scheduled', 'snoozed') AND cards.deleted_at IS NULL
-    `).all() as Array<ActiveFollowUpRow & { card_meta: string }>;
+        t.provider, t.account, t.thread_id, t.received_at
+      FROM reminders
+      JOIN card_email_threads t ON t.id = reminders.email_thread_id AND t.card_id = reminders.card_id
+      JOIN cards ON cards.id = reminders.card_id
+      WHERE reminders.kind = 'follow_up' AND cards.deleted_at IS NULL
+        AND (reminders.status IN ('scheduled', 'snoozed')
+          OR (reminders.status = 'fired' AND COALESCE(reminders.last_fired_at, reminders.trigger_at) >= ?
+            AND NOT EXISTS (
+              SELECT 1 FROM reminders other
+              WHERE other.email_thread_id = reminders.email_thread_id AND other.kind = 'follow_up'
+                AND other.status IN ('scheduled', 'snoozed')
+            )))
+    `).all(lateSince) as SyncRow[];
 
     let answered = 0;
     let failed = 0;
@@ -445,14 +514,19 @@ export async function runFollowUpSync(deps: { fetchThread?: ThreadFetcher; now?:
       if (shutdown?.signal.aborted) return; // shutting down: never write after close
       const meta = safeJsonParse<{ follow_up?: FollowUpState }>(row.source_meta, {});
       const follow = meta.follow_up;
-      const email = safeJsonParse<{ email?: CardEmail }>(row.card_meta, {}).email;
-      if (!follow || !email) continue;
+      if (!follow) continue;
+      const email = threadEmail(row);
       const nowIso = (deps.now ?? (() => new Date()))().toISOString();
-      // Compare-and-set on the meta read above: a follow-up re-set while the thread was
-      // being read keeps its new values, and the next run checks it.
+      // Compare-and-set on the meta read above: a follow-up re-set, dismissed or detached
+      // while the thread was being read keeps its new values, and the next run checks it.
       const record = (patch: Partial<FollowUpState>) => {
-        db.prepare(`UPDATE reminders SET source_meta = ? WHERE id = ? AND status IN ('scheduled', 'snoozed') AND source_meta = ?`)
-          .run(JSON.stringify({ ...meta, follow_up: { ...follow, ...patch } }), row.id, row.source_meta);
+        const updated = db.prepare(`
+          UPDATE reminders SET source_meta = ?
+          WHERE id = ? AND status IN ('scheduled', 'snoozed', 'fired') AND source_meta = ?
+            AND card_id IN (SELECT id FROM cards WHERE deleted_at IS NULL)
+        `).run(JSON.stringify({ ...meta, follow_up: { ...follow, ...patch } }), row.id, row.source_meta);
+        // The badge shows state and error, not the check time: only a change reaches the board.
+        if (updated.changes > 0 && refreshEmailThreads(db, row.card_id)) notifyCardChanged(row);
       };
       const account = mailAccountFor(config, email);
       if (!account) {
@@ -481,8 +555,9 @@ export async function runFollowUpSync(deps: { fetchThread?: ThreadFetcher; now?:
           }
         } else if (rebased) {
           const triggerAt = new Date(new Date(current.baseline_at).getTime() + current.days * DAY_MS).toISOString();
-          db.prepare(`UPDATE reminders SET trigger_at = ?, source_meta = ?, updated_at = datetime('now') WHERE id = ? AND status IN ('scheduled', 'snoozed') AND source_meta = ?`)
+          const updated = db.prepare(`UPDATE reminders SET trigger_at = ?, source_meta = ?, updated_at = datetime('now') WHERE id = ? AND status IN ('scheduled', 'snoozed') AND source_meta = ?`)
             .run(triggerAt, JSON.stringify({ ...meta, follow_up: { ...current, state: 'waiting', checked_at: nowIso, error: null } }), row.id, row.source_meta);
+          if (updated.changes > 0 && refreshEmailThreads(db, row.card_id)) notifyCardChanged(row);
         } else {
           record({ state: 'waiting', checked_at: nowIso, error: null });
         }

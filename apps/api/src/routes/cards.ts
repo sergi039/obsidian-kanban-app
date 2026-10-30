@@ -12,6 +12,7 @@ import { formatCard, normalizePositions, safeJsonParse } from '../utils.js';
 import { trashCard, restoreCard, TrashError } from '../trash.js';
 import { ingestCard, IngestError } from '../ingest.js';
 import { EmailRefSchema } from '../email-provenance.js';
+import { attachEmailThread, detachEmailThread, EmailThreadError } from '../email-threads.js';
 import { notifyCardsClosed } from '../obsidian-context.js';
 import type Database from 'better-sqlite3';
 
@@ -227,6 +228,47 @@ cards.post('/', async (c) => {
     console.error('[cards] Failed to create card:', err);
     return c.json({ error: 'Failed to create card' }, 500);
   }
+});
+
+function emailThreadErrorResponse(c: { json: (body: unknown, status: 400 | 404 | 409) => Response }, err: EmailThreadError) {
+  return c.json({ error: err.message, code: err.code, ...(err.details ?? {}) }, err.status);
+}
+
+// POST /api/cards/:id/email-threads — follow one more email thread on this card (201 attached, 200 already here)
+cards.post('/:id/email-threads', async (c) => {
+  const id = c.req.param('id');
+  const body = await safeParseJson(c);
+  if (body === null) return c.json({ error: 'Invalid JSON body' }, 400);
+  const parsed = EmailRefSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'Invalid body', details: parsed.error.flatten() }, 400);
+
+  const db = getDb();
+  try {
+    const result = attachEmailThread(db, id, parsed.data);
+    const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
+    if (result.created) {
+      broadcast({ type: 'card-updated', cardId: id, boardId: card.board_id as string, timestamp: new Date().toISOString() });
+    }
+    return c.json({ email_thread_id: result.thread.id, card: formatCard(card) }, result.created ? 201 : 200);
+  } catch (err) {
+    if (err instanceof EmailThreadError) return emailThreadErrorResponse(c, err);
+    throw err;
+  }
+});
+
+// DELETE /api/cards/:id/email-threads/:threadId — stop following an attached thread
+cards.delete('/:id/email-threads/:threadId', (c) => {
+  const id = c.req.param('id');
+  const db = getDb();
+  try {
+    detachEmailThread(db, id, c.req.param('threadId'), new Date().toISOString());
+  } catch (err) {
+    if (err instanceof EmailThreadError) return emailThreadErrorResponse(c, err);
+    throw err;
+  }
+  const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as Record<string, unknown>;
+  broadcast({ type: 'card-updated', cardId: id, boardId: card.board_id as string, timestamp: new Date().toISOString() });
+  return c.json(formatCard(card));
 });
 
 // POST /api/cards/bulk-move — move multiple cards to a column, current order preserved:

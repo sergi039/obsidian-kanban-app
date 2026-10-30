@@ -176,19 +176,38 @@ This prevents duplicate OS/email/calendar delivery if the process crashes after 
 
 If `API_TOKEN` is enabled for the Kanban API, set `KANBAN_API_TOKEN` for the agent. Do not commit tokens to the repository.
 
+## Email threads of a card
+
+A card follows one or more email threads, possibly in different mailboxes (`card_email_threads`, one row per thread; a thread belongs to one card). A card made from an email has that thread as its origin (EMAIL-1/2: `source_meta.email`, the `[from:email]` link in Markdown). More threads are attached later, e.g. the same task in the work and the personal mailbox:
+
+```http
+POST /api/cards/<card-id>/email-threads
+Content-Type: application/json
+
+{ "provider": "gmail", "account": "me@example.com", "message_id": "<Gmail message id>", "thread_id": "<Gmail threadId>", "subject": "…" }
+```
+
+- The body is the same `email` object a capture takes (provider ids and header fields, never a body); `thread_id` is required. `201` attached, `200` already on this card, `409 thread_on_other_card` with that card's `card_id`, `404` for a missing or trashed card.
+- The thread's capture key then points at the card, so capturing that thread later returns this card instead of a second one. An explicit attach takes over the key of a thread whose card was deleted for good.
+- `DELETE /api/cards/<card-id>/email-threads/<thread-id>` detaches an attached thread: its follow-up is dismissed and its capture key released. The origin thread cannot be detached (`400 origin_thread`).
+- Attached threads live in the database only, like links added through the API and reminders ([ADR 0001](decisions/0001-provenance.md), amendment of 2026-10-30).
+- Every card the API returns carries `email_threads`: `id`, `provider`, `account`, `subject`, `from`, `received_at`, `internet_message_id`, `url` (opens the thread, same formats as the origin link), `origin`, and `follow_up` (the thread's active follow-up, else its last one: `reminder_id`, `mode`, `days`, `state`, `status`, `trigger_at`, `snoozed_until`, `last_fired_at`, `answered_at`, `answered_by`, `error`) or `null`. The board shows one badge per mailbox with the follow-up's state, and the card detail a Mail section where each thread can be followed up, snoozed, stopped or detached.
+
 ## Email follow-ups
 
-"Remind me if nobody answers this thread in 3 days" on a card made from an email (EMAIL-1/2: the card carries `source_meta.email` with provider, mailbox and thread id):
+"Remind me if nobody answers this thread in 3 days" on one of the card's email threads:
 
 ```http
 POST /api/reminders/follow-up
 Content-Type: application/json
 
-{ "card_id": "<card-id>", "days": 3, "mode": "await_reply", "channel": "macos", "timezone": "Europe/Madrid" }
+{ "card_id": "<card-id>", "email_thread_id": "<thread-id>", "days": 3, "mode": "await_reply", "channel": "macos", "timezone": "Europe/Madrid" }
 ```
+
+- `email_thread_id` comes from the card's `email_threads`; a card with one thread may leave it out. A card with several answers `400 thread_required`, listing them. Each thread has its own follow-up, at most one active (`reminders.email_thread_id`).
 
 - `mode`: `await_reply` (default) — the owner wrote last and waits for the other side; `owe_reply` — the other side wrote last and the owner has to answer.
 - The reminder (`kind: follow_up`) fires `days` after the message the wait counts from: the owner's last message for `await_reply`, theirs for `owe_reply`. `source_meta.follow_up` records mode, days, that time (`baseline_at`), `state` and the last error.
-- `201`: a new follow-up; `200` with the same reminder: the card's active follow-up was updated; `200` with `reminder: null`: the awaited answer is already in the thread.
-- Every 10 minutes the API reads the thread of every active follow-up: message headers, never a body. When the awaited answer is there, the reminder is dismissed and the card gets a comment from `kanban` saying when and from whom; only that sender and date are stored. Out-of-office replies, delivery failures and other automatic mail (Exchange message class, `Auto-Submitted`, `X-Autoreply`, `Precedence: auto_reply`, `mailer-daemon`/`postmaster`, `multipart/report`) are not answers. A follow-up made while the thread was unreadable is re-anchored on the thread at the first good read. `/api/health` reports the run under `followUps`.
+- `201`: a new follow-up; `200` with the same reminder: the thread's follow-up (active, or fired and not answered) was set again; `200` with `reminder: null`: the awaited answer is already in the thread. Reviving a follow-up through `PATCH` or snooze while its thread has another active one answers `409 thread_follow_up_active`.
+- Every 10 minutes the API reads the thread of every active follow-up, and of a fired one for 30 more days, so an answer after the reminder still shows: message headers, never a body. When the awaited answer is there, the reminder is dismissed and the card gets a comment from `kanban` saying when and from whom; only that sender and date are stored. Out-of-office replies, delivery failures and other automatic mail (Exchange message class, `Auto-Submitted`, `X-Autoreply`, `Precedence: auto_reply`, `mailer-daemon`/`postmaster`, `multipart/report`) are not answers. A follow-up made while the thread was unreadable is re-anchored on the thread at the first good read. `/api/health` reports the run under `followUps`.
 - The mailbox is read with the credentials of the calendar account that has the same address: Microsoft Graph app-only for Outlook (needs `Mail.Read`), the stored Google refresh token for Gmail (needs the `gmail.metadata` scope on top of `calendar.readonly`; run `./node_modules/.bin/tsx apps/api/src/cli/google-consent.ts` to renew the grant with it). Without access the follow-up keeps `state: "unchecked"` with the reason and still fires on time; it only cannot dismiss itself.

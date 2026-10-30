@@ -402,6 +402,7 @@ obsidian-kanban-app/
 - **Comments** — full CRUD with linkified URLs, author avatars, timestamps
 - **Reminders** — per-card reminder records with due/upcoming badges, snooze/dismiss, and polling-friendly API state
 - **Calendar events** — events from the work (Outlook, Microsoft Graph) and personal (Google) calendars appear on their card automatically; the card shows the nearest one as a direct link (`+N` expands the rest) and opens each in the right account
+- **Mail badges** — a card follows email threads in one or more mailboxes; it shows a badge per mailbox (the account's label, e.g. Work or Personal) with the follow-up state: waiting, reminder passed, answered, mailbox not readable. A click opens the thread in Gmail or Outlook on the web; several threads in one mailbox expand into a list with a Gmail search. The card detail follows each thread up, snoozes, stops or detaches it ([reminders.md](reminders.md#email-threads-of-a-card))
 - **Custom fields** — TEXT, NUMBER, DATE, SINGLE_SELECT, ITERATION types per board
 - **Done checkbox** — tick the checkbox on a board card to move it to Done (`[x]` in Markdown); untick to send it back to Backlog
 - **Closed cards on top** — a closed card lands at the top of Done, whether it was closed by the checkbox, the card's status, a bulk close, or `[x]` typed in Obsidian; only dragging puts it exactly where it is dropped

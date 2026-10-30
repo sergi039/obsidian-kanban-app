@@ -47,6 +47,40 @@ export interface CalendarEvent {
   account: string | null;
 }
 
+export type EmailProvider = 'gmail' | 'outlook';
+
+/** A thread's follow-up as the server last saw it (`state` is the follow-up's own). */
+export interface EmailFollowUp {
+  reminder_id: string;
+  mode: 'await_reply' | 'owe_reply' | null;
+  days: number | null;
+  state: 'waiting' | 'unchecked' | 'answered' | null;
+  status: ReminderStatus;
+  trigger_at: string;
+  snoozed_until: string | null;
+  last_fired_at: string | null;
+  answered_at: string | null;
+  answered_by: string | null;
+  error: string | null;
+}
+
+/** An email thread the card follows; one card can follow threads in several mailboxes. */
+export interface EmailThread {
+  id: string;
+  provider: EmailProvider;
+  /** Address of the mailbox the thread is in. */
+  account: string;
+  subject: string | null;
+  from: string | null;
+  received_at: string | null;
+  internet_message_id: string | null;
+  /** Opens the thread in the mailbox's web client. */
+  url: string;
+  /** The card was made from this email; it cannot be detached. */
+  origin: boolean;
+  follow_up: EmailFollowUp | null;
+}
+
 export interface Card {
   id: string;
   seq_id: number | null;
@@ -65,6 +99,8 @@ export interface Card {
   checklist: ChecklistItem[];
   links: LinkItem[];
   calendar_events: CalendarEvent[];
+  /** Email threads the card follows; sent by the server with every card. */
+  email_threads?: EmailThread[];
   source_fingerprint: string | null;
   source: string | null;
   source_uid: string | null;

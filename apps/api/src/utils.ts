@@ -1,4 +1,5 @@
 import type { CalendarEvent } from './calendar-events.js';
+import type { EmailThreadView } from './email-threads.js';
 
 /**
  * Shared utility functions used across route handlers and modules.
@@ -27,6 +28,7 @@ export function formatCard(row: Record<string, unknown>) {
     checklist: safeJsonParse<{id:string;title:string;done:boolean}[]>(row.checklist as string, []),
     links: safeJsonParse<{url:string;title:string}[]>(row.links as string, []),
     calendar_events: safeJsonParse<CalendarEvent[]>(row.calendar_events as string, []),
+    email_threads: safeJsonParse<EmailThreadView[]>(row.email_threads as string, []),
     source_meta: safeJsonParse<Record<string, unknown>>(row.source_meta as string, {}),
   };
 }

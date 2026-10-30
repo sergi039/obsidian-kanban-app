@@ -38,6 +38,7 @@ import {
   toLocalDateTimeInput,
 } from '../lib/reminder-utils';
 import { CalendarEventsSection } from './CalendarEventsSection';
+import { EmailThreadsSection } from './EmailThreadsSection';
 import { Icon } from './Icon';
 
 interface Props {
@@ -859,6 +860,15 @@ export function CardDetail({ card, columns, priorities, categories, fields, onCl
 
               {/* Calendar events */}
               <CalendarEventsSection card={card} title={displayTitle} dueDate={dueDate || null} />
+
+              {/* Email threads the card follows */}
+              <EmailThreadsSection
+                card={card}
+                onChanged={async () => {
+                  await refreshReminderState();
+                  await onUpdate();
+                }}
+              />
 
               {/* Sub-items */}
               {card.sub_items.length > 0 && (

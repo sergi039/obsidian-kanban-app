@@ -3,6 +3,7 @@ import type { Card, PriorityDef, CategoryDef, Reminder } from '../types';
 import { extractLinks } from '../lib/link-utils';
 import { formatReminderTime, isDueReminder, nextActiveReminder } from '../lib/reminder-utils';
 import { CalendarEventsChip } from './CalendarEventsChip';
+import { EmailThreadsChip } from './EmailThreadsChip';
 import { Icon } from './Icon';
 
 interface Props {
@@ -199,6 +200,7 @@ export function KanbanCard({ card, priorities, categories = [], reminders = [], 
           </span>
         )}
         <CalendarEventsChip events={card.calendar_events ?? []} />
+        <EmailThreadsChip threads={card.email_threads ?? []} />
         {nextReminder && (
           <span
             className={`text-[11px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 whitespace-nowrap ${

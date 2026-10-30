@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-30
+
+### Mail badges: one card can follow threads in several mailboxes
+- A card shows a badge for each mailbox it follows an email thread in, named by its account (Work, Personal), with the state of that thread's follow-up: waiting, reminder passed, answered, mailbox not readable. A click opens the thread in Gmail or Outlook on the web without opening the card; several threads in one mailbox expand into a list with a Gmail search for them (by subject when their Message-IDs are not known, marked as approximate). Outlook on the web has no documented search link, so its threads open one by one.
+- The card detail has a Mail section: for each thread, follow it up ("remind if they don't answer" or "remind me to answer", in 1–14 days), snooze it a day, stop it, or detach a thread that was attached later.
+- Claude Code and Codex attach an email from another mailbox to an existing card with the new `kanban_attach_email`, and `kanban_follow_up` takes the thread (`email_thread_id`) when a card has several. Capturing an attached thread again returns its card.
+- Each thread has its own follow-up. A fired follow-up is still read for 30 days, so an answer that comes after the reminder turns the badge green and comments on the card; before, checking stopped when the reminder fired.
+- On first start the database gets the new table: every card made from an email gets its thread, and its earlier follow-ups are tied to it. The step runs in one transaction and stops the start with an error rather than skip a conflict.
+
 ## 2026-10-22
 
 ### Other sites can no longer use the owner's sign-in to kanban.cervantes50.com (backlog B-4)

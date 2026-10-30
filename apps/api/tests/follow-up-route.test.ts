@@ -38,6 +38,8 @@ describe('POST /api/reminders/follow-up', () => {
       INSERT INTO cards (id, board_id, column_name, position, title, raw_line, line_number)
       VALUES ('plain001', 'work', 'Backlog', 1, 'Plain', '- [ ] Plain', 2)
     `).run();
+    const { migrateEmailThreads } = await import('../src/email-threads.js');
+    migrateEmailThreads(testDb);
   });
 
   afterEach(() => testDb.close());
