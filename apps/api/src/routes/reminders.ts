@@ -7,7 +7,7 @@ import { safeJsonParse } from '../utils.js';
 import { loadConfig } from '../config.js';
 import { cardUrl } from '../card-links.js';
 import { createFollowUp, FollowUpError, FOLLOW_UP_MODES } from '../mail-followup.js';
-import { refreshEmailThreads } from '../email-threads.js';
+import { refreshEmailThreads, threadById } from '../email-threads.js';
 
 const reminders = new Hono();
 
@@ -137,6 +137,18 @@ function isThreadFollowUpConflict(err: unknown): boolean {
 const THREAD_FOLLOW_UP_CONFLICT = {
   error: 'The email thread already has an active follow-up',
   code: 'thread_follow_up_active',
+};
+
+/** A follow-up whose thread was detached is never read again, so it must not become active. */
+function revivesDetachedFollowUp(row: Record<string, unknown>, nextStatus: unknown): boolean {
+  if (row.kind !== 'follow_up' || typeof row.email_thread_id !== 'string') return false;
+  if (nextStatus !== 'scheduled' && nextStatus !== 'snoozed') return false;
+  return threadById(getDb(), row.email_thread_id)?.card_id !== row.card_id;
+}
+
+const THREAD_DETACHED = {
+  error: 'The email thread of this follow-up was detached from the card',
+  code: 'thread_detached',
 };
 
 async function safeParseJson(c: { req: { json: () => Promise<unknown> } }): Promise<unknown | null> {
@@ -392,6 +404,7 @@ reminders.patch('/:id', async (c) => {
   }
 
   if (sets.length === 0) return c.json(formatReminder(existing));
+  if (revivesDetachedFollowUp(existing, fields.status ?? existing.status)) return c.json(THREAD_DETACHED, 409);
 
   sets.push("updated_at = datetime('now')");
   params.push(c.req.param('id'));
@@ -416,6 +429,7 @@ reminders.post('/:id/snooze', async (c) => {
 
   const existing = getReminder(c.req.param('id'));
   if (!existing) return c.json({ error: 'Reminder not found' }, 404);
+  if (revivesDetachedFollowUp(existing, 'snoozed')) return c.json(THREAD_DETACHED, 409);
 
   const snoozedUntil = parsed.data.until ?? new Date(Date.now() + parsed.data.minutes! * 60_000).toISOString();
   try {

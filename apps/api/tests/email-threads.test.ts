@@ -190,6 +190,14 @@ describe('attach and detach', () => {
     expect(testDb.prepare('SELECT status FROM reminders WHERE id = ?').get(reminderId)).toEqual({ status: 'dismissed' });
     expect(testDb.prepare("SELECT COUNT(*) AS n FROM inbox_captures WHERE source_uid = 'gmail:me@gmail.example:thread:18abc'").get()).toEqual({ n: 0 });
     expect((await request(app, 'DELETE', `/api/cards/mail0001/email-threads/${threadId}`)).status).toBe(404);
+
+    // Its follow-up would never be read again: it cannot be brought back.
+    const snooze = await request(app, 'POST', `/api/reminders/${reminderId}/snooze`, { minutes: 10 });
+    expect(snooze.status).toBe(409);
+    expect((await snooze.json()).code).toBe('thread_detached');
+    expect((await request(app, 'PATCH', `/api/reminders/${reminderId}`, { status: 'scheduled' })).status).toBe(409);
+    expect((await request(app, 'PATCH', `/api/reminders/${reminderId}`, { message: 'note' })).status).toBe(200);
+    expect(testDb.prepare('SELECT status FROM reminders WHERE id = ?').get(reminderId)).toEqual({ status: 'dismissed' });
   });
 
   it('returns the card with the attached thread when that thread is captured again', async () => {
