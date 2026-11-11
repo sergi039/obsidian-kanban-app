@@ -197,6 +197,24 @@ describe('writeBackTitle', () => {
     expect(updated).toContain('- [ ] ⏫ New name [from:telegram](https://t.me/x/2) <!-- kb:id=t5000001 kb:col=In+Progress -->');
   });
 
+  it('keeps the kb marker of a card in a column with a non-ASCII name', async () => {
+    // encodeCol percent-encodes the column, so «Сделано на неделе» is written as %D0%A1…+%D0%BD…
+    const { encodeCol } = await import('../src/parser.js');
+    const marker = `<!-- kb:id=t5500001 kb:col=${encodeCol('Сделано на неделе')} -->`;
+    const rawLine = `- [ ] Старое название ${marker}`;
+    writeMd('Tasks/Board.md', `${rawLine}\n`);
+    seedCard({ id: 't5500001', rawLine, title: 'Старое название' });
+
+    const { writeBackTitle } = await import('../src/writeback.js');
+    expect(writeBackTitle('t5500001', 'Новое название').success).toBe(true);
+    expect(readMd('Tasks/Board.md')).toBe(`- [ ] Новое название ${marker}\n`);
+
+    // Without the marker the next rename would be refused with "Card has no kb:id marker".
+    const second = writeBackTitle('t5500001', 'Ещё раз');
+    expect(second.success).toBe(true);
+    expect(readMd('Tasks/Board.md')).toBe(`- [ ] Ещё раз ${marker}\n`);
+  });
+
   it('re-extracts links from the new line into the links column', async () => {
     const rawLine = '- [ ] Old [docs](https://example.com/old) <!-- kb:id=t6000001 -->';
     writeMd('Tasks/Board.md', `${rawLine}\n`);
